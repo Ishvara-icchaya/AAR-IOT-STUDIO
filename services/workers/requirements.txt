@@ -1,0 +1,8 @@
+kafka-python-ng==2.2.3
+redis==5.2.0
+minio==7.2.10
+psycopg2-binary==2.9.10
+httpx==0.28.1
+paho-mqtt==2.1.0
+aiocoap==0.4.17
+websockets==15.0.1

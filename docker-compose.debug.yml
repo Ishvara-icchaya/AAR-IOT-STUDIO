@@ -1,0 +1,87 @@
+# Merge: docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+# Used by ./run.sh debug — structured JSON logs (AAR_LOG_JSON), pipeline traces, verbose HTTP.
+
+services:
+  api:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--log-level",
+        "debug",
+        "--access-log",
+        "--use-colors",
+      ]
+
+  frontend:
+    environment:
+      VITE_DEBUG: "true"
+      VITE_AAR_TRACE: "true"
+    command:
+      ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--debug"]
+
+  worker-ingest:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  worker-scrubber:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  worker-workflow:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  worker-publish:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  worker-ai:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  scheduler:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  worker-mqtt-bridge:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG

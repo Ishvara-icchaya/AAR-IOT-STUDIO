@@ -1,0 +1,77 @@
+"""Unacknowledged alert summary for header and dashboards."""
+
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.access_control import allowed_site_ids_for_user
+from app.core.redis_sync import get_redis
+from app.models.alert import Alert
+from app.models.user import User
+from app.schemas.alert import AlertUnacknowledgedSummary
+
+
+def unacknowledged_summary(db: Session, user: User) -> AlertUnacknowledgedSummary:
+    allowed = allowed_site_ids_for_user(db, user)
+    filt: list = [
+        Alert.customer_id == user.customer_id,
+        Alert.acknowledged.is_(False),
+    ]
+    if allowed is not None:
+        if len(allowed) == 0:
+            return AlertUnacknowledgedSummary(
+                critical=0,
+                warning=0,
+                info=0,
+                total_unacknowledged=0,
+                by_site={},
+                has_critical=False,
+                critical_recent_count=0,
+            )
+        filt.append(Alert.site_id.in_(allowed))
+
+    total = int(db.scalar(select(func.count()).select_from(Alert).where(*filt)) or 0)
+
+    by_site: dict[str, int] = {}
+    site_rows = db.execute(
+        select(Alert.site_id, func.count()).where(*filt).group_by(Alert.site_id)
+    ).all()
+    for sid, cnt in site_rows:
+        key = str(sid) if sid else "_none"
+        by_site[key] = int(cnt)
+
+    def _count_sev(sev: str) -> int:
+        return int(
+            db.scalar(
+                select(func.count()).select_from(Alert).where(*filt, Alert.severity == sev)
+            )
+            or 0
+        )
+
+    critical = _count_sev("critical")
+    warning = _count_sev("warning")
+    info = _count_sev("info")
+
+    return AlertUnacknowledgedSummary(
+        critical=critical,
+        warning=warning,
+        info=info,
+        total_unacknowledged=total,
+        by_site=by_site,
+        has_critical=critical > 0,
+        critical_recent_count=critical,
+    )
+
+
+def redis_unacked_hint(customer_id: uuid.UUID) -> int | None:
+    r = get_redis()
+    if not r:
+        return None
+    try:
+        v = r.get(f"alerts:unacked:count:{customer_id}")
+        return int(v) if v is not None else None
+    except Exception:
+        return None

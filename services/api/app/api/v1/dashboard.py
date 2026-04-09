@@ -1,0 +1,565 @@
+"""Dashboard CRUD, freeze, live, sources, primary (per-user)."""
+
+from __future__ import annotations
+
+import logging
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.api.deps import get_current_user
+from app.core.dashboard_status import DASHBOARD_DRAFT, DASHBOARD_FROZEN
+from app.core.pipeline_log import emit as pipeline_emit
+from app.db.session import get_db
+from app.models.dashboard import Dashboard
+from app.models.dashboard_user_preference import DashboardUserPreference
+from app.models.data_object import DataObject
+from app.models.device import Device
+from app.models.user import User
+from app.models.user_site import UserSite
+from app.models.workflow_result_object import WorkflowResultObject
+from app.schemas.dashboard_layout import iter_widgets
+from app.schemas.dashboard import (
+    ClearPrimaryDashboardResponse,
+    DashboardCreate,
+    DashboardFreezeResponse,
+    DashboardListItem,
+    DashboardListResponse,
+    DashboardLiveResponse,
+    DashboardRead,
+    DashboardPreviewBody,
+    DashboardShareRequest,
+    DashboardShareUsersResponse,
+    DashboardSourcesDataObjectsResponse,
+    DashboardSourcesResultObjectsResponse,
+    DashboardUpdate,
+    DataObjectSourceRow,
+    ResultObjectSourceRow,
+)
+from app.services.dashboard_live import build_live_payload
+from app.services.dashboard_validation import (
+    validate_layout_for_save,
+    validate_site_coherence,
+    validate_sources_exist,
+    validate_widgets_for_freeze,
+)
+
+router = APIRouter()
+log = logging.getLogger(__name__)
+
+
+def _access_dashboard(db: Session, user: User, d: Dashboard | None) -> Dashboard:
+    if not d or d.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dashboard not found")
+    allowed = allowed_site_ids_for_user(db, user)
+    if d.site_id and not user_may_access_site(user, d.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    return d
+
+
+def _is_primary(db: Session, user_id: uuid.UUID, dashboard_id: uuid.UUID) -> bool:
+    pref = db.get(DashboardUserPreference, user_id)
+    return bool(pref and pref.primary_dashboard_id == dashboard_id)
+
+
+def _dashboard_read(db: Session, user: User, d: Dashboard) -> DashboardRead:
+    return DashboardRead(
+        id=d.id,
+        customer_id=d.customer_id,
+        site_id=d.site_id,
+        name=d.name,
+        description=d.description,
+        status=d.status,
+        layout=dict(d.layout or {}),
+        created_by=d.created_by,
+        created_at=d.created_at,
+        updated_at=d.updated_at,
+        is_primary=_is_primary(db, user.id, d.id),
+    )
+
+
+@router.get("/sources/data-objects", response_model=DashboardSourcesDataObjectsResponse)
+def list_data_object_sources(
+    site_id: uuid.UUID = Query(...),
+    limit: int = Query(200, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    stmt = (
+        select(DataObject)
+        .join(Device, Device.id == DataObject.device_id)
+        .where(DataObject.customer_id == user.customer_id, Device.site_id == site_id)
+        .order_by(DataObject.updated_at.desc())
+        .limit(limit)
+    )
+    rows = list(db.scalars(stmt).all())
+    items = [
+        DataObjectSourceRow(
+            id=r.id,
+            device_id=r.device_id,
+            site_id=site_id,
+            name=r.name,
+            lifecycle_status=r.lifecycle_status,
+            updated_at=r.updated_at,
+        )
+        for r in rows
+    ]
+    return DashboardSourcesDataObjectsResponse(items=items)
+
+
+@router.get("/sources/result-objects", response_model=DashboardSourcesResultObjectsResponse)
+def list_result_object_sources(
+    site_id: uuid.UUID = Query(...),
+    limit: int = Query(200, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    stmt = (
+        select(WorkflowResultObject)
+        .where(
+            WorkflowResultObject.customer_id == user.customer_id,
+            WorkflowResultObject.site_id == site_id,
+        )
+        .order_by(WorkflowResultObject.created_at.desc())
+        .limit(limit)
+    )
+    rows = list(db.scalars(stmt).all())
+    items = [
+        ResultObjectSourceRow(
+            id=r.id,
+            workflow_id=r.workflow_id,
+            result_object_name=r.result_object_name,
+            site_id=r.site_id,
+            created_at=r.created_at,
+        )
+        for r in rows
+    ]
+    return DashboardSourcesResultObjectsResponse(items=items)
+
+
+@router.get("", response_model=DashboardListResponse)
+def list_dashboards(
+    site_id: uuid.UUID | None = None,
+    q: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    if allowed is not None and len(allowed) == 0:
+        return DashboardListResponse(items=[])
+    stmt = select(Dashboard).where(Dashboard.customer_id == user.customer_id)
+    if site_id is not None:
+        stmt = stmt.where(Dashboard.site_id == site_id)
+        if not user_may_access_site(user, site_id, allowed):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    elif allowed is not None:
+        stmt = stmt.where(Dashboard.site_id.in_(allowed))
+    if q and q.strip():
+        stmt = stmt.where(Dashboard.name.ilike(f"%{q.strip()}%"))
+    stmt = stmt.order_by(Dashboard.updated_at.desc())
+    rows = list(db.scalars(stmt).all())
+    items = [
+        DashboardListItem(
+            id=d.id,
+            site_id=d.site_id,
+            name=d.name,
+            status=d.status,
+            updated_at=d.updated_at,
+            is_primary=_is_primary(db, user.id, d.id),
+        )
+        for d in rows
+    ]
+    pipeline_emit(log, component="api.dashboard", action="list", status="ok", count=len(items))
+    return DashboardListResponse(items=items)
+
+
+@router.post("/clear-primary", response_model=ClearPrimaryDashboardResponse)
+def clear_primary_dashboard(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Clear this user's primary dashboard (Enterprise landing shows no_primary_dashboard)."""
+    pref = db.get(DashboardUserPreference, user.id)
+    if pref:
+        pref.primary_dashboard_id = None
+        db.add(pref)
+        db.commit()
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="primary_cleared",
+        status="ok",
+        user_id=str(user.id),
+    )
+    return ClearPrimaryDashboardResponse(primary_dashboard_id=None)
+
+
+@router.post("", response_model=DashboardRead, status_code=status.HTTP_201_CREATED)
+def create_dashboard(
+    body: DashboardCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, body.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    errs = validate_layout_for_save(layout=body.layout, site_id=body.site_id, require_widgets=False)
+    if errs:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"errors": errs})
+    d = Dashboard(
+        customer_id=user.customer_id,
+        site_id=body.site_id,
+        name=body.name,
+        description=body.description,
+        layout=dict(body.layout or {}),
+        status=DASHBOARD_DRAFT,
+        created_by=user.id,
+    )
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="created",
+        status="ok",
+        dashboard_id=str(d.id),
+        user_id=str(user.id),
+    )
+    return _dashboard_read(db, user, d)
+
+
+@router.get("/{dashboard_id}", response_model=DashboardRead)
+def get_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    return _dashboard_read(db, user, d)
+
+
+@router.put("/{dashboard_id}", response_model=DashboardRead)
+def update_dashboard(
+    dashboard_id: uuid.UUID,
+    body: DashboardUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    if d.status == DASHBOARD_FROZEN:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Unfreeze dashboard before editing",
+        )
+    if body.site_id is not None:
+        allowed = allowed_site_ids_for_user(db, user)
+        site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
+        if not site:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+        if not user_may_access_site(user, body.site_id, allowed):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+        d.site_id = body.site_id
+    if body.name is not None:
+        d.name = body.name
+    if body.description is not None:
+        d.description = body.description
+    if body.layout is not None:
+        layout = dict(body.layout)
+        errs = validate_layout_for_save(layout=layout, site_id=d.site_id, require_widgets=False)
+        if errs:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"errors": errs})
+        d.layout = layout
+    db.commit()
+    db.refresh(d)
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="updated",
+        status="ok",
+        dashboard_id=str(d.id),
+        user_id=str(user.id),
+    )
+    return _dashboard_read(db, user, d)
+
+
+@router.delete("/{dashboard_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    pref = db.get(DashboardUserPreference, user.id)
+    if pref and pref.primary_dashboard_id == d.id:
+        pref.primary_dashboard_id = None
+    db.delete(d)
+    db.commit()
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="deleted",
+        status="ok",
+        dashboard_id=str(dashboard_id),
+        user_id=str(user.id),
+    )
+    return None
+
+
+@router.post("/{dashboard_id}/duplicate", response_model=DashboardRead)
+def duplicate_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    copy = Dashboard(
+        customer_id=d.customer_id,
+        site_id=d.site_id,
+        name=f"Copy of {d.name}"[:255],
+        description=d.description,
+        layout=dict(d.layout or {}),
+        status=DASHBOARD_DRAFT,
+        created_by=user.id,
+    )
+    db.add(copy)
+    db.commit()
+    db.refresh(copy)
+    return _dashboard_read(db, user, copy)
+
+
+@router.post("/{dashboard_id}/freeze", response_model=DashboardFreezeResponse)
+def freeze_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    layout = dict(d.layout or {})
+    errs = validate_layout_for_save(layout=layout, site_id=d.site_id, require_widgets=True)
+    errs += validate_sources_exist(db, customer_id=user.customer_id, layout=layout)
+    errs += validate_site_coherence(
+        dashboard_site_id=d.site_id, layout=layout, db=db, customer_id=user.customer_id
+    )
+    if len(iter_widgets(layout)) == 0:
+        errs.append("at least one widget required before freeze")
+    errs += validate_widgets_for_freeze(layout=layout)
+    if errs:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"errors": errs})
+    d.status = DASHBOARD_FROZEN
+    db.commit()
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="frozen",
+        status="ok",
+        dashboard_id=str(d.id),
+        user_id=str(user.id),
+    )
+    return DashboardFreezeResponse(id=d.id, status=d.status)
+
+
+@router.post("/{dashboard_id}/unfreeze", response_model=DashboardRead)
+def unfreeze_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    d.status = DASHBOARD_DRAFT
+    db.commit()
+    db.refresh(d)
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="unfrozen",
+        status="ok",
+        dashboard_id=str(d.id),
+        user_id=str(user.id),
+    )
+    return _dashboard_read(db, user, d)
+
+
+@router.post("/{dashboard_id}/set-primary", response_model=DashboardRead)
+def set_primary_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Exactly one primary per user: `dashboard_user_preferences.user_id` is the primary key."""
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    if d.status != DASHBOARD_FROZEN:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Only frozen dashboards can be set as primary",
+        )
+    pref = db.get(DashboardUserPreference, user.id)
+    if not pref:
+        pref = DashboardUserPreference(user_id=user.id)
+        db.add(pref)
+    pref.primary_dashboard_id = d.id
+    db.commit()
+    db.refresh(d)
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="primary_set",
+        status="ok",
+        dashboard_id=str(d.id),
+        user_id=str(user.id),
+    )
+    return _dashboard_read(db, user, d)
+
+
+def _live_bundle(db: Session, user: User, d: Dashboard) -> dict:
+    meta = {
+        "id": str(d.id),
+        "name": d.name,
+        "description": d.description,
+        "status": d.status,
+        "site_id": str(d.site_id) if d.site_id else None,
+        "layout": dict(d.layout or {}),
+    }
+    return build_live_payload(
+        db,
+        customer_id=user.customer_id,
+        layout=dict(d.layout or {}),
+        dashboard_meta=meta,
+        dashboard_site_id=d.site_id,
+    )
+
+
+@router.get("/{dashboard_id}/live", response_model=DashboardLiveResponse)
+def get_dashboard_live(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    if d.status != DASHBOARD_FROZEN:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Live view requires a frozen dashboard",
+        )
+    bundle = _live_bundle(db, user, d)
+    pref = db.get(DashboardUserPreference, user.id)
+    primary_id = d.id if pref and pref.primary_dashboard_id == d.id else None
+    pipeline_emit(log, component="api.dashboard", action="live", status="ok", dashboard_id=str(d.id))
+    return DashboardLiveResponse(
+        dashboard=bundle["dashboard"],
+        widgets=bundle["widgets"],
+        rendered_at=bundle["rendered_at"],
+        primary_dashboard_id=primary_id,
+    )
+
+
+@router.post("/{dashboard_id}/preview", response_model=DashboardLiveResponse)
+def preview_dashboard(
+    dashboard_id: uuid.UUID,
+    body: DashboardPreviewBody | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Resolve widget data even when dashboard is still draft (builder preview)."""
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    layout_use = dict(body.layout) if body and body.layout is not None else dict(d.layout or {})
+    meta = {
+        "id": str(d.id),
+        "name": d.name,
+        "description": d.description,
+        "status": d.status,
+        "site_id": str(d.site_id) if d.site_id else None,
+        "layout": layout_use,
+    }
+    bundle = build_live_payload(
+        db,
+        customer_id=user.customer_id,
+        layout=layout_use,
+        dashboard_meta=meta,
+        dashboard_site_id=d.site_id,
+    )
+    pref = db.get(DashboardUserPreference, user.id)
+    primary_id = d.id if pref and pref.primary_dashboard_id == d.id else None
+    return DashboardLiveResponse(
+        dashboard=bundle["dashboard"],
+        widgets=bundle["widgets"],
+        rendered_at=bundle["rendered_at"],
+        primary_dashboard_id=primary_id,
+    )
+
+
+@router.post("/{dashboard_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+def share_dashboard(
+    dashboard_id: uuid.UUID,
+    body: DashboardShareRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    for uid in body.user_ids:
+        target = db.get(User, uid)
+        if not target:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"User {uid} not found")
+        if target.customer_id != user.customer_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                detail="Share targets must belong to the same customer",
+            )
+        if d.site_id and not target.is_superuser:
+            link = db.scalar(
+                select(UserSite).where(UserSite.user_id == uid, UserSite.site_id == d.site_id)
+            )
+            if not link:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN,
+                    detail=f"User {uid} is not assigned to this dashboard's site; cannot share",
+                )
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="share_validated",
+        status="ok",
+        dashboard_id=str(dashboard_id),
+        user_id=str(user.id),
+        target_count=len(body.user_ids),
+    )
+    return None
+
+
+@router.get("/{dashboard_id}/share-users", response_model=DashboardShareUsersResponse)
+def list_share_users(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    _access_dashboard(db, user, d)
+    return DashboardShareUsersResponse(items=[])

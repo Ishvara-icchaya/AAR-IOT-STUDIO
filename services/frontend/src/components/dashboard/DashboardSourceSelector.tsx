@@ -1,0 +1,77 @@
+import { useEffect, useState } from "react";
+import * as dashApi from "@/api/dashboard";
+
+type Props = {
+  siteId: string | null;
+  sourceType: "data_object" | "result_object";
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+};
+
+export function DashboardSourceSelector({ siteId, sourceType, value, onChange, disabled }: Props) {
+  const [items, setItems] = useState<{ id: string; label: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!siteId) {
+      setItems([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      try {
+        if (sourceType === "data_object") {
+          const r = await dashApi.listDashboardDataObjectSources(siteId);
+          if (cancelled) return;
+          setItems(
+            (r?.items ?? []).map((x) => ({
+              id: x.id,
+              label: `${x.name} (${x.id.slice(0, 8)}…)`,
+            })),
+          );
+        } else {
+          const r = await dashApi.listDashboardResultObjectSources(siteId);
+          if (cancelled) return;
+          setItems(
+            (r?.items ?? []).map((x) => ({
+              id: x.id,
+              label: `${x.result_object_name} (${x.id.slice(0, 8)}…)`,
+            })),
+          );
+        }
+      } catch {
+        if (!cancelled) setItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [siteId, sourceType]);
+
+  if (!siteId) {
+    return <p className="dash-widget__muted">Select a dashboard site to load sources.</p>;
+  }
+
+  return (
+    <label className="dash-drawer__label">
+      Source ({sourceType.replace("_", " ")})
+      <select
+        className="dash-drawer__input"
+        value={value}
+        disabled={disabled || loading}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">— Select —</option>
+        {items.map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}

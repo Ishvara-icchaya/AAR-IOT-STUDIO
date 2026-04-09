@@ -1,0 +1,500 @@
+# AAR-IoT-Studio Phase 1 — infrastructure + api + frontend + workers
+# Kafka: KRaft only (no ZooKeeper). See docs/ENTERPRISE_FEATURES_EXPORT_UPDATED.md
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aar_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-aar_metadata}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aar} -d ${POSTGRES_DB:-aar_metadata}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: ${TIMESCALE_USER:-aar}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD:-aar_dev_change_me}
+      POSTGRES_DB: ${TIMESCALE_DB:-aar_timeseries}
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER:-aar} -d ${TIMESCALE_DB:-aar_timeseries}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "16379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_dev_change_me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # KRaft only (no ZooKeeper). apache/kafka image — Bitnami tags vary by registry; this tag is widely available.
+  kafka:
+    image: apache/kafka:3.8.1
+    hostname: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka_data:/tmp/kraft-combined-logs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      until mc ls local >/dev/null 2>&1; do sleep 1; done;
+      mc mb -p local/$${API_MINIO_BUCKET_RAW:-aar-raw} || true;
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_dev_change_me}
+      API_MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: ${API_DATABASE_URL:-postgresql+psycopg2://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      TIMESCALE_DATABASE_URL: ${API_TIMESCALE_URL:-postgresql+psycopg2://aar:aar_dev_change_me@timescaledb:5432/aar_timeseries}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      MINIO_ENDPOINT: ${API_MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
+      MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+      CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-admin123}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      RAW_INGEST_MAX_BYTES: ${RAW_INGEST_MAX_BYTES:-33554432}
+      KAFKA_PUBLISH_RAW_INGEST: ${KAFKA_PUBLISH_RAW_INGEST:-true}
+      KAFKA_RAW_INGEST_TOPIC: ${KAFKA_RAW_INGEST_TOPIC:-raw.ingest}
+      PLATFORM_MQTT_BROKER_ENABLED: ${PLATFORM_MQTT_BROKER_ENABLED:-false}
+      MQTT_BRIDGE_DEPLOYED: ${MQTT_BRIDGE_DEPLOYED:-false}
+      MQTT_BROKER_PROBE_HOST: ${MQTT_BROKER_PROBE_HOST:-127.0.0.1}
+      MQTT_BROKER_PROBE_PORT: ${MQTT_BROKER_PROBE_PORT:-1883}
+      PLATFORM_MQTT_EXTERNAL_HOST_HINT: ${PLATFORM_MQTT_EXTERNAL_HOST_HINT:-}
+      COAP_LISTENER_DEPLOYED: ${COAP_LISTENER_DEPLOYED:-false}
+      WEBSOCKET_INGEST_DEPLOYED: ${WEBSOCKET_INGEST_DEPLOYED:-false}
+      REST_POLLER_DEPLOYED: ${REST_POLLER_DEPLOYED:-false}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    environment:
+      # Same-origin /api/v1 → Vite proxies to API (works from localhost or LAN :5173). Override with full URL if needed.
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+      VITE_DEV_PROXY_TARGET: ${VITE_DEV_PROXY_TARGET:-http://api:8000}
+    ports:
+      - "5173:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker-ingest:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.ingest"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_EMIT_SCRUBBER_INPUT: ${KAFKA_EMIT_SCRUBBER_INPUT:-true}
+      KAFKA_SCRUBBER_INPUT_TOPIC: ${KAFKA_SCRUBBER_INPUT_TOPIC:-scrubber.input}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Platform MQTT broker (Eclipse Mosquitto). Sensors publish here; worker-mqtt-bridge subscribes.
+  # Host port defaults to 18883 (avoids conflict with a local broker on 1883). Container still listens on 1883.
+  # Workers use hostname mosquitto and port 1883 on the Docker network. Override: MQTT_BROKER_PUBLISH_PORT=1883
+  # Set on the api service (e.g. in .env): PLATFORM_MQTT_BROKER_ENABLED=true, MQTT_BRIDGE_DEPLOYED=true,
+  # MQTT_BROKER_PROBE_HOST=mosquitto, PLATFORM_MQTT_EXTERNAL_HOST_HINT=<LAN IP>.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "${MQTT_BROKER_PUBLISH_PORT:-18883}:1883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+
+  # Bridges MQTT JSON into raw.ingest. Subscriptions = union of per-device topics (Manage Devices) + optional MQTT_TOPICS env.
+  # Default broker is the mosquitto service;
+  # set MQTT_BROKER_HOST to a LAN IP to use an external broker instead (you can omit mosquitto).
+  # Register devices whose name matches payload device_id and sites whose name matches site_id.
+  # CoAP (UDP), WebSocket outbound clients, REST polling — optional profile "ingress".
+  # Set COAP_LISTENER_DEPLOYED / WEBSOCKET_INGEST_DEPLOYED / REST_POLLER_DEPLOYED=true on api
+  # and publish UDP ${COAP_LISTENER_PUBLISH_PORT:-5683} for sensors.
+  worker-coap-listener:
+    profiles: ["ingress"]
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.coap_listener"]
+    ports:
+      - "${COAP_LISTENER_PUBLISH_PORT:-5683}:5683/udp"
+    environment:
+      COAP_BIND_HOST: ${COAP_BIND_HOST:-0.0.0.0}
+      COAP_BIND_PORT: ${COAP_BIND_PORT:-5683}
+      COAP_RESOURCE_PATH: ${COAP_RESOURCE_PATH:-ingest}
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      MINIO_ENDPOINT: ${API_MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
+      MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_RAW_INGEST_TOPIC: ${KAFKA_RAW_INGEST_TOPIC:-raw.ingest}
+      KAFKA_PUBLISH_RAW_INGEST: ${KAFKA_PUBLISH_RAW_INGEST:-true}
+      RAW_INGEST_MAX_BYTES: ${RAW_INGEST_MAX_BYTES:-33554432}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  worker-websocket-ingest:
+    profiles: ["ingress"]
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.ws_ingest"]
+    environment:
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      MINIO_ENDPOINT: ${API_MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
+      MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_RAW_INGEST_TOPIC: ${KAFKA_RAW_INGEST_TOPIC:-raw.ingest}
+      KAFKA_PUBLISH_RAW_INGEST: ${KAFKA_PUBLISH_RAW_INGEST:-true}
+      RAW_INGEST_MAX_BYTES: ${RAW_INGEST_MAX_BYTES:-33554432}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  worker-rest-poller:
+    profiles: ["ingress"]
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.rest_poller"]
+    environment:
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      MINIO_ENDPOINT: ${API_MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
+      MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_RAW_INGEST_TOPIC: ${KAFKA_RAW_INGEST_TOPIC:-raw.ingest}
+      KAFKA_PUBLISH_RAW_INGEST: ${KAFKA_PUBLISH_RAW_INGEST:-true}
+      RAW_INGEST_MAX_BYTES: ${RAW_INGEST_MAX_BYTES:-33554432}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # Per-device broker_host comes from Postgres. LAN IPs (e.g. 192.168.x.x) must be routable from this
+  # container; fix firewall/routing if connect fails. Brokers on the Docker host: use host.docker.internal.
+  # Quick check from this container: docker compose exec worker-mqtt-bridge python -c "import socket;s=socket.create_connection(('BROKER_IP',1883),5);print('tcp ok')"
+  worker-mqtt-bridge:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.mqtt_bridge"]
+    environment:
+      # Ingest uses each device endpoint's saved broker_host/port/auth/topic from Postgres (grouped connections).
+      # MQTT_BROKER_HOST / MQTT_BROKER_PORT apply only to optional MQTT_TOPICS below (not to per-device ingest).
+      MQTT_BROKER_HOST: ${MQTT_BROKER_HOST:-mosquitto}
+      MQTT_BROKER_PORT: ${MQTT_BROKER_PORT:-1883}
+      # Optional comma-separated patterns subscribed on MQTT_BROKER_HOST only (ops hook; devices use saved config).
+      MQTT_TOPICS: ${MQTT_TOPICS:-}
+      # Merged with topics from active device_endpoints (protocol=mqtt); reload interval for DB changes.
+      MQTT_TOPIC_RESYNC_SECONDS: ${MQTT_TOPIC_RESYNC_SECONDS:-90}
+      MQTT_CLIENT_ID: ${MQTT_CLIENT_ID:-aar-worker-mqtt-bridge}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      MINIO_ENDPOINT: ${API_MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
+      MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_RAW_INGEST_TOPIC: ${KAFKA_RAW_INGEST_TOPIC:-raw.ingest}
+      KAFKA_PUBLISH_RAW_INGEST: ${KAFKA_PUBLISH_RAW_INGEST:-true}
+      RAW_INGEST_MAX_BYTES: ${RAW_INGEST_MAX_BYTES:-33554432}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mosquitto:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  worker-scrubber:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.scrubber"]
+    environment:
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_SCRUBBER_INPUT_TOPIC: ${KAFKA_SCRUBBER_INPUT_TOPIC:-scrubber.input}
+      KAFKA_DATA_OBJECT_CREATED_TOPIC: ${KAFKA_DATA_OBJECT_CREATED_TOPIC:-data_object.created}
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      MINIO_ENDPOINT: ${API_MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
+      MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
+      MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      RAW_INGEST_MAX_BYTES: ${RAW_INGEST_MAX_BYTES:-33554432}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  worker-workflow:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.workflow"]
+    environment:
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_DATA_OBJECT_CREATED_TOPIC: ${KAFKA_DATA_OBJECT_CREATED_TOPIC:-data_object.created}
+      KAFKA_WORKFLOW_OBJECT_CREATED_TOPIC: ${KAFKA_WORKFLOW_OBJECT_CREATED_TOPIC:-workflow_object.created}
+      KAFKA_RESULT_OBJECT_CREATED_TOPIC: ${KAFKA_RESULT_OBJECT_CREATED_TOPIC:-result_object.created}
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  worker-timeseries-state:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.timeseries_state"]
+    environment:
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_DATA_OBJECT_CREATED_TOPIC: ${KAFKA_DATA_OBJECT_CREATED_TOPIC:-data_object.created}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-publish:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.publish"]
+    environment:
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-ai:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.ai_worker"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.scheduler"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ollama:
+    profiles: ["llm"]
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  timescale_data:
+  redis_data:
+  minio_data:
+  kafka_data:
+  mosquitto_data:
+  ollama_data:

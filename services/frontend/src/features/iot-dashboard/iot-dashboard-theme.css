@@ -1,0 +1,22 @@
+/**
+ * Theme tokens for the IoT Operations Console only.
+ * Parent must use id="iot-dashboard-root" (Tailwind `important` selector).
+ */
+#iot-dashboard-root {
+  --iot-background: 222 47% 5%;
+  --iot-foreground: 210 40% 98%;
+  --iot-card: 222 40% 8%;
+  --iot-card-foreground: 210 40% 98%;
+  --iot-muted: 217 33% 14%;
+  --iot-muted-foreground: 215 20% 55%;
+  --iot-accent: 187 100% 42%;
+  --iot-accent-foreground: 222 47% 5%;
+  --iot-primary: 187 100% 45%;
+  --iot-primary-foreground: 222 47% 5%;
+  --iot-border: 188 35% 22%;
+  --iot-input: 217 33% 18%;
+  --iot-ring: 187 100% 45%;
+  --iot-radius: 0.75rem;
+  isolation: isolate;
+  font-family: Inter, system-ui, sans-serif;
+}
