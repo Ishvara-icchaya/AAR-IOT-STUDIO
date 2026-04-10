@@ -39,3 +39,18 @@ export type DashboardLiveDTO = {
   rendered_at: string;
   primary_dashboard_id?: string | null;
 };
+
+export type EnterpriseSiteObjectCountRowDTO = {
+  site_id: string;
+  site_name: string;
+  data_object_count: number;
+  result_object_count: number;
+  total_count: number;
+};
+
+export type EnterpriseSiteObjectCountsDTO = {
+  items: EnterpriseSiteObjectCountRowDTO[];
+  total: number;
+  page: number;
+  page_size: number;
+};

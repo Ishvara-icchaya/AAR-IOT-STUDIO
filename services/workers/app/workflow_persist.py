@@ -74,9 +74,13 @@ def load_workflow_graph(*, workflow_id: str) -> tuple[list[dict[str, Any]], list
 
 def load_data_object_payload(*, data_object_id: str, customer_id: str) -> dict[str, Any] | None:
     sql = """
-    SELECT payload, kpi_json, health_status, lifecycle_status
-    FROM data_objects
-    WHERE id = %s::uuid AND customer_id = %s::uuid
+    SELECT d.payload, d.kpi_json, d.health_status, d.lifecycle_status,
+           dev.operational_status, s.operational_status, cust.operational_status
+    FROM data_objects d
+    INNER JOIN devices dev ON dev.id = d.device_id
+    INNER JOIN sites s ON s.id = d.site_id
+    INNER JOIN customers cust ON cust.id = d.customer_id
+    WHERE d.id = %s::uuid AND d.customer_id = %s::uuid
     """
     conn = psycopg2.connect(_db_url())
     try:
@@ -85,9 +89,12 @@ def load_data_object_payload(*, data_object_id: str, customer_id: str) -> dict[s
             row = cur.fetchone()
             if not row:
                 return None
-            payload, kpi, health, lifecycle = row
+            payload, kpi, health, lifecycle, dev_op, site_op, cust_op = row
             if str(lifecycle).lower() != "published":
                 return None
+            for op in (dev_op, site_op, cust_op):
+                if str(op or "active").lower() != "active":
+                    return None
             out = dict(payload or {})
             out["_kpi"] = dict(kpi or {})
             if health:

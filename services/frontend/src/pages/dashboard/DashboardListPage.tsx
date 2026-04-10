@@ -5,11 +5,13 @@ import { apiFetch } from "@/api/client";
 import * as dashApi from "@/api/dashboard";
 import type { DashboardListItemDTO } from "@/types/dashboard";
 import { PageStatus } from "@/components/PageStatus";
+import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { PageShell } from "@/layouts/PageShell";
 
 type SiteRow = { id: string; name: string };
 
 export function DashboardListPage() {
+  const { tryHandleResourceInUseError } = useResourceInUse();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [siteId, setSiteId] = useState("");
   const [q, setQ] = useState("");
@@ -56,6 +58,7 @@ export function DashboardListPage() {
       await dashApi.deleteDashboard(id);
       await load();
     } catch (e) {
+      if (tryHandleResourceInUseError(e)) return;
       setErr(e instanceof Error ? e.message : "Delete failed");
     }
   }

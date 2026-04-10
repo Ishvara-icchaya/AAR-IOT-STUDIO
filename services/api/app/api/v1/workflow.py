@@ -40,10 +40,9 @@ from app.schemas.workflow_graph import (
     WorkflowUpdate,
     WorkflowValidateResponse,
 )
-from app.services.dashboard_dependency_service import (
-    check_workflow_outputs_in_use,
-    resource_in_use_detail,
-)
+from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
+from app.services.dependency_service import workflow_delete_dependencies
+from app.services.lifecycle_actions import archive_workflow, deactivate_workflow, reactivate_workflow
 from app.services.workflow_graph_run import WorkflowGraphError, execute_graph
 from app.services.workflow_ops import duplicate_workflow, load_workflow_eager, replace_workflow_graph
 from app.services.workflow_validation import full_validation_errors
@@ -238,6 +237,60 @@ def update_workflow(
     return WorkflowRead.model_validate(wf)
 
 
+@router.get("/{workflow_id}/dependencies", response_model=DependenciesListResponse)
+def get_workflow_dependencies(
+    workflow_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    wf = db.get(Workflow, workflow_id)
+    wf = _ensure_workflow_access(db, user, wf)
+    deps = workflow_delete_dependencies(db, customer_id=user.customer_id, workflow_id=workflow_id)
+    return DependenciesListResponse(dependencies=deps)
+
+
+@router.post("/{workflow_id}/deactivate")
+def post_deactivate_workflow(
+    workflow_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    wf = db.get(Workflow, workflow_id)
+    wf = _ensure_workflow_access(db, user, wf)
+    deactivate_workflow(db, wf)
+    db.commit()
+    db.refresh(wf)
+    return {"id": str(wf.id), "lifecycle_status": wf.lifecycle_status, "is_published": wf.is_published}
+
+
+@router.post("/{workflow_id}/reactivate")
+def post_reactivate_workflow(
+    workflow_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    wf = db.get(Workflow, workflow_id)
+    wf = _ensure_workflow_access(db, user, wf)
+    reactivate_workflow(db, wf)
+    db.commit()
+    db.refresh(wf)
+    return {"id": str(wf.id), "lifecycle_status": wf.lifecycle_status, "is_published": wf.is_published}
+
+
+@router.post("/{workflow_id}/archive")
+def post_archive_workflow(
+    workflow_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    wf = db.get(Workflow, workflow_id)
+    wf = _ensure_workflow_access(db, user, wf)
+    archive_workflow(db, wf)
+    db.commit()
+    db.refresh(wf)
+    return {"id": str(wf.id), "lifecycle_status": wf.lifecycle_status, "is_published": wf.is_published}
+
+
 @router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_workflow(
     workflow_id: uuid.UUID,
@@ -251,12 +304,12 @@ def delete_workflow(
             status.HTTP_400_BAD_REQUEST,
             detail="Stop publish before deleting workflow",
         )
-    blocked = check_workflow_outputs_in_use(db, customer_id=user.customer_id, workflow_id=workflow_id)
-    if blocked:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail=resource_in_use_detail(resource_label="workflow", dashboards=blocked),
-        )
+    deps = workflow_delete_dependencies(db, customer_id=user.customer_id, workflow_id=workflow_id)
+    raise_conflict_if_in_use(
+        deps,
+        message="Workflow cannot be deleted while dependencies exist",
+        deactivate_url=f"/workflows/{workflow_id}/deactivate",
+    )
     db.delete(wf)
     db.commit()
     return None

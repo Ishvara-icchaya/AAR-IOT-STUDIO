@@ -1,11 +1,16 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
+
+/** Above shell content, page-card glow (stacking contexts), and dashboard z-1000 overlays. */
+const Z_BACKDROP = 12000;
+const Z_PANEL = 12001;
 
 const backdrop: CSSProperties = {
   position: "fixed",
   inset: 0,
   background: "rgba(0,0,0,0.45)",
-  zIndex: 200,
+  zIndex: Z_BACKDROP,
   animation: "ops-backdrop-in 0.2s ease-out",
 };
 
@@ -15,7 +20,7 @@ const panelBase: CSSProperties = {
   right: 0,
   height: "100vh",
   maxWidth: "100%",
-  zIndex: 201,
+  zIndex: Z_PANEL,
   display: "flex",
   flexDirection: "column",
   background: "var(--color-surface)",
@@ -52,7 +57,7 @@ export function ConfigDrawer({
 
   if (!open) return null;
 
-  return (
+  const node = (
     <>
       <button
         type="button"
@@ -130,4 +135,7 @@ export function ConfigDrawer({
       </aside>
     </>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(node, document.body);
 }

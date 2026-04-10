@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,5 +27,6 @@ class DeviceObject(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False
     )
     mapping: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
 
     device: Mapped["Device"] = relationship(back_populates="device_object")

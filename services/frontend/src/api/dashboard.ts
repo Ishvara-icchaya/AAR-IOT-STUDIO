@@ -1,5 +1,11 @@
 import { apiFetch } from "@/api/client";
-import type { DashboardLayoutV1, DashboardListItemDTO, DashboardLiveDTO, DashboardReadDTO } from "@/types/dashboard";
+import type {
+  DashboardLayoutV1,
+  DashboardListItemDTO,
+  DashboardLiveDTO,
+  DashboardReadDTO,
+  EnterpriseSiteObjectCountsDTO,
+} from "@/types/dashboard";
 
 export async function listDashboards(params?: { site_id?: string; q?: string }) {
   const qs = new URLSearchParams();
@@ -76,6 +82,14 @@ export async function getEnterpriseDashboard() {
   return apiFetch<DashboardLiveDTO>("/enterprise-dashboard");
 }
 
+export async function getEnterpriseSiteObjectCounts(params?: { page?: number; page_size?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.page != null) qs.set("page", String(params.page));
+  if (params?.page_size != null) qs.set("page_size", String(params.page_size));
+  const s = qs.toString();
+  return apiFetch<EnterpriseSiteObjectCountsDTO>(`/enterprise-dashboard/site-object-counts${s ? `?${s}` : ""}`);
+}
+
 export type DataObjectSourceItem = {
   id: string;
   device_id: string;
@@ -119,6 +133,27 @@ export async function listMapEligibleObjects(siteId: string) {
   );
 }
 
+/** Site markers for custom UIs; `light=true` (default) omits KPI blobs — use `getMapObjectDetail` per feature. */
+export async function getMapRuntimeMarkers(params: {
+  siteId: string;
+  latitudeField?: string;
+  longitudeField?: string;
+  kpiFields?: string[];
+  excludedSourceIds?: string[];
+  light?: boolean;
+}) {
+  const qs = new URLSearchParams();
+  qs.set("site_id", params.siteId);
+  qs.set("latitude_field", params.latitudeField ?? "gps.lat");
+  qs.set("longitude_field", params.longitudeField ?? "gps.lon");
+  if (params.kpiFields?.length) qs.set("kpi_fields", params.kpiFields.join(","));
+  if (params.excludedSourceIds?.length) qs.set("excludedSourceIds", params.excludedSourceIds.join(","));
+  qs.set("light", params.light === false ? "false" : "true");
+  return apiFetch<{ markers: Record<string, unknown>[] }>(`/dashboards/map-runtime/markers?${qs.toString()}`, {
+    cache: "no-store",
+  });
+}
+
 export async function getMapObjectDetail(params: {
   siteId: string;
   sourceType: string;
@@ -133,5 +168,7 @@ export async function getMapObjectDetail(params: {
   if (params.kpiKeys?.length) params.kpiKeys.forEach((k) => qs.append("kpiKeys", k));
   if (params.displayFieldPaths?.length)
     params.displayFieldPaths.forEach((k) => qs.append("displayFieldPaths", k));
-  return apiFetch<{ detail: Record<string, unknown> }>(`/dashboards/map-runtime/detail?${qs.toString()}`);
+  return apiFetch<{ detail: Record<string, unknown> }>(`/dashboards/map-runtime/detail?${qs.toString()}`, {
+    cache: "no-store",
+  });
 }

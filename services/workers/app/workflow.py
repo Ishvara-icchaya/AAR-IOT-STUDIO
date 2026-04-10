@@ -74,7 +74,8 @@ def _process_event(data: dict) -> None:
         def load_obj(did):
             pl = load_data_object_payload(data_object_id=str(did), customer_id=customer_id)
             if pl is None:
-                raise WorkflowGraphError("data_object not found or not published")
+                # Unpublished, inactive lineage, or retired operational scope — skip without error alerts.
+                raise WorkflowGraphError("filtered_out")
             return pl
 
         def load_static(sid):

@@ -870,11 +870,11 @@ export function DeviceManagePage() {
                   <button
                     type="button"
                     style={secBtnSm}
-                    disabled={validating || !savedEndpoint || submitting}
+                    disabled={validating || submitting}
                     title={
                       savedEndpoint
                         ? "Checks broker/URL connectivity, payload receipt in Postgres, refreshes bridge observability, and reloads Latest archived raw + preview."
-                        : "Save the configuration once, then run validation."
+                        : "Requires a saved endpoint first — use Save configuration, then run validation (or try now to see the server message)."
                     }
                     onClick={() => void runValidation()}
                   >

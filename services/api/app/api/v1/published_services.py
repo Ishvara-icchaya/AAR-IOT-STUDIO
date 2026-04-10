@@ -20,18 +20,25 @@ from app.schemas.published_service import (
     PublishedServiceUpdate,
     PublishedTargetDefaultsResponse,
 )
+from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
+from app.services.dependency_service import published_service_delete_dependencies
+from app.services.lifecycle_actions import (
+    archive_published_service,
+    deactivate_published_service,
+    reactivate_published_service,
+)
 from app.services.port_config_service import get_publish_target_defaults
 from app.services.published_service_service import (
     PublishedServiceForbidden,
     PublishedServiceNotFound,
     create_service,
-    delete_service,
     get_service,
     get_service_detail,
     list_data_object_sources,
     list_delivery_logs,
     list_result_object_sources,
     list_services,
+    require_published_service,
     set_status,
     update_service,
 )
@@ -162,14 +169,96 @@ def update_published(
     return PublishedServiceRead.model_validate(row)
 
 
+@router.get("/{service_id}/dependencies", response_model=DependenciesListResponse)
+def get_published_dependencies(
+    service_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        require_published_service(db, user, service_id)
+    except PublishedServiceNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service not found") from None
+    except PublishedServiceForbidden:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted") from None
+    deps = published_service_delete_dependencies(db, customer_id=user.customer_id, service_id=service_id)
+    return DependenciesListResponse(dependencies=deps)
+
+
+@router.post("/{service_id}/deactivate")
+def post_deactivate_published(
+    service_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        row = require_published_service(db, user, service_id)
+    except PublishedServiceNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service not found") from None
+    except PublishedServiceForbidden:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted") from None
+    deactivate_published_service(db, row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id), "status": row.status}
+
+
+@router.post("/{service_id}/reactivate")
+def post_reactivate_published(
+    service_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        row = require_published_service(db, user, service_id)
+    except PublishedServiceNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service not found") from None
+    except PublishedServiceForbidden:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted") from None
+    reactivate_published_service(db, row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id), "status": row.status}
+
+
+@router.post("/{service_id}/archive")
+def post_archive_published(
+    service_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        row = require_published_service(db, user, service_id)
+    except PublishedServiceNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service not found") from None
+    except PublishedServiceForbidden:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted") from None
+    archive_published_service(db, row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id), "status": row.status}
+
+
 @router.delete("/{service_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_published(
     service_id: uuid.UUID,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not delete_service(db, user, service_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service not found")
+    try:
+        row = require_published_service(db, user, service_id)
+    except PublishedServiceNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Service not found") from None
+    except PublishedServiceForbidden:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted") from None
+    deps = published_service_delete_dependencies(db, customer_id=user.customer_id, service_id=service_id)
+    raise_conflict_if_in_use(
+        deps,
+        message="Published service cannot be deleted while blocked by policy",
+        deactivate_url=f"/published-services/{service_id}/deactivate",
+    )
+    db.delete(row)
+    db.commit()
     pipeline_emit(log, component="api.published_services", action="deleted", status="ok", service_id=str(service_id))
     return None
 

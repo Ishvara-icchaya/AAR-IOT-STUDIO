@@ -2698,6 +2698,317 @@ a:hover {
   overflow: hidden;
 }
 
+/* Enterprise map: ~80% map + ~20% side (table row + pagination row; no scrollbars). */
+.dash-map-widget--enterprise .dash-map-widget__enterprise-grid {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.65rem;
+  min-height: 400px;
+  width: 100%;
+}
+
+.dash-map-widget--enterprise .dash-map-widget__map-col {
+  flex: 4 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-map-widget--enterprise .dash-map-widget__side {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow: hidden;
+}
+
+.dash-map-widget__side-table-wrap {
+  flex: 1 1 50%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-map-widget__side-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  flex: 0 0 auto;
+}
+
+.dash-map-widget__count-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  table-layout: fixed;
+  margin-top: 0.25rem;
+}
+
+.dash-map-widget__count-table th {
+  text-align: left;
+  padding: 0.2rem 0.15rem 0.35rem 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.dash-map-widget__count-table td {
+  padding: 0.28rem 0.15rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
+  vertical-align: top;
+}
+
+.dash-map-widget__count-table tr:last-child td {
+  border-bottom: none;
+}
+
+.dash-map-widget__cell-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-map-widget__num {
+  text-align: right;
+  width: 2.4rem;
+}
+
+.dash-map-widget__side-pager {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding-top: 0.15rem;
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 55%, transparent);
+}
+
+.dash-map-widget__pager-btn {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--color-border) 75%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.dash-map-widget__pager-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dash-map-widget__pager-meta {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  flex: 1;
+  text-align: center;
+}
+
+/* —— Dashboard map widget: modern basemap chrome + asset popup (MapLibre) —— */
+.dash-widget--map .dash-map-widget__map {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--color-border) 75%, transparent),
+    0 4px 28px color-mix(in oklab, #000 16%, transparent);
+}
+
+.dash-widget--map .maplibregl-ctrl-group {
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 2px 14px color-mix(in oklab, #000 20%, transparent) !important;
+  border: 1px solid color-mix(in oklab, var(--color-border) 65%, transparent) !important;
+  background: color-mix(in oklab, var(--color-surface-elevated) 96%, transparent) !important;
+}
+
+.dash-widget--map .maplibregl-ctrl-group button {
+  width: 34px !important;
+  height: 34px !important;
+}
+
+.dash-widget--map .maplibregl-ctrl-scale {
+  border-radius: 8px !important;
+  padding: 2px 8px !important;
+  font-size: 0.72rem !important;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent) !important;
+  background: color-mix(in oklab, var(--color-surface-elevated) 94%, transparent) !important;
+  box-shadow: 0 2px 10px color-mix(in oklab, #000 14%, transparent) !important;
+}
+
+.dash-map-popup-shell .maplibregl-popup-content {
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.dash-map-popup-shell .maplibregl-popup-tip {
+  border-top-color: color-mix(in oklab, var(--color-surface-elevated) 98%, #000 2%);
+}
+
+.dash-map-popup {
+  min-width: 240px;
+  max-width: 380px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-text);
+  background: linear-gradient(
+    165deg,
+    color-mix(in oklab, var(--color-surface-elevated) 99%, #fff 1%) 0%,
+    color-mix(in oklab, var(--color-surface) 97%, transparent) 100%
+  );
+  border: 1px solid color-mix(in oklab, var(--color-border) 82%, transparent);
+  box-sizing: border-box;
+}
+
+.dash-map-popup__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 88%, transparent);
+}
+
+.dash-map-popup__title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-map-popup__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dash-map-popup__badge--green {
+  background: color-mix(in oklab, #22c55e 22%, transparent);
+  color: #15803d;
+}
+.dash-map-popup__badge--yellow {
+  background: color-mix(in oklab, #eab308 24%, transparent);
+  color: #a16207;
+}
+.dash-map-popup__badge--red {
+  background: color-mix(in oklab, #ef4444 22%, transparent);
+  color: #b91c1c;
+}
+.dash-map-popup__badge--offline {
+  background: color-mix(in oklab, #64748b 22%, transparent);
+  color: #475569;
+}
+.dash-map-popup__badge--neutral {
+  background: color-mix(in oklab, var(--color-border) 50%, transparent);
+  color: var(--color-text-muted);
+}
+
+.dash-map-popup__msg,
+.dash-map-popup__hint {
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.dash-map-popup__hint {
+  animation: dash-map-popup-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes dash-map-popup-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.dash-map-popup__loading .dash-map-popup__head {
+  border-bottom: none;
+}
+
+.dash-map-popup__section {
+  padding: 0.45rem 0.85rem 0.65rem;
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 55%, transparent);
+}
+
+.dash-map-popup__section--compact .dash-map-popup__table td {
+  font-size: 0.72rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.dash-map-popup__section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.dash-map-popup__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.dash-map-popup__table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 0.28rem 0.5rem 0.28rem 0;
+  width: 38%;
+  vertical-align: top;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
+}
+
+.dash-map-popup__table td {
+  padding: 0.28rem 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
+  word-break: break-word;
+}
+
+.dash-map-popup__table tr:last-child th,
+.dash-map-popup__table tr:last-child td {
+  border-bottom: none;
+}
+
+.dash-map-popup__footer {
+  margin: 0;
+  padding: 0.35rem 0.85rem 0.55rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  opacity: 0.75;
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 50%, transparent);
+}
+
+.dash-map-popup--bare .dash-map-popup__head {
+  border-bottom: none;
+}
+
 .dash-widget--error {
   border-color: color-mix(in oklab, #f87171 42%, var(--color-border));
   box-shadow:

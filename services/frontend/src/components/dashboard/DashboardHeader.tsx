@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as dashApi from "@/api/dashboard";
+import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { layoutToApiJson, useDashboardBuilderStore } from "@/stores/dashboardBuilderStore";
 
 type Props = { dashboardId: string };
 
 export function DashboardHeader({ dashboardId }: Props) {
+  const { tryHandleResourceInUseError } = useResourceInUse();
   const nav = useNavigate();
   const name = useDashboardBuilderStore((s) => s.name);
   const description = useDashboardBuilderStore((s) => s.description);
@@ -92,6 +94,7 @@ export function DashboardHeader({ dashboardId }: Props) {
       await dashApi.deleteDashboard(dashboardId);
       nav("/dashboard/list");
     } catch (e) {
+      if (tryHandleResourceInUseError(e)) return;
       setErr(e instanceof Error ? e.message : "Delete failed");
     }
   }

@@ -249,6 +249,65 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
               onChange={(e) => patchBinding({ healthField: e.target.value || undefined })}
             />
           </label>
+
+          <fieldset
+            style={{ border: "1px solid var(--border, #ccc)", borderRadius: "var(--radius)", padding: "0.5rem 0.75rem", marginTop: "0.5rem" }}
+          >
+            <legend className="dash-widget__muted" style={{ fontSize: "0.85rem", padding: "0 0.25rem" }}>
+              Map behavior (live view)
+            </legend>
+            <label className="dash-drawer__label dash-drawer__check" style={{ marginBottom: "0.35rem" }}>
+              <input
+                type="checkbox"
+                checked={c.autoFitOnFirstLoad !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ autoFitOnFirstLoad: e.target.checked })}
+              />
+              Auto-fit to markers on first load
+            </label>
+            <label className="dash-drawer__label dash-drawer__check" style={{ marginBottom: "0.35rem" }}>
+              <input
+                type="checkbox"
+                checked={c.autoFitOnRefresh === true}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ autoFitOnRefresh: e.target.checked })}
+              />
+              Auto-fit on every refresh (overrides preserve viewport)
+            </label>
+            <label className="dash-drawer__label dash-drawer__check" style={{ marginBottom: "0.35rem" }}>
+              <input
+                type="checkbox"
+                checked={c.preserveViewport !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ preserveViewport: e.target.checked })}
+              />
+              Preserve center / zoom between refreshes (when auto-fit on refresh is off)
+            </label>
+            <label className="dash-drawer__label dash-drawer__check" style={{ marginBottom: "0.35rem" }}>
+              <input
+                type="checkbox"
+                checked={c.clusterMarkers !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ clusterMarkers: e.target.checked })}
+              />
+              Cluster markers (GeoJSON layers; always on if count exceeds max direct)
+            </label>
+            <label className="dash-drawer__label">
+              Max direct markers before forcing clusters
+              <input
+                className="dash-drawer__input"
+                type="number"
+                min={10}
+                max={500}
+                value={typeof c.maxDirectMarkers === "number" ? c.maxDirectMarkers : 80}
+                disabled={disabled}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  patchConfig({ maxDirectMarkers: Number.isFinite(n) ? n : 80 });
+                }}
+              />
+            </label>
+          </fieldset>
         </>
       )}
     </div>

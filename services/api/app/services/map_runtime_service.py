@@ -84,6 +84,61 @@ def list_eligible_map_objects(
     return out
 
 
+def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
+    """Strip heavy fields (KPI blobs, long messages) for list/preview payloads; detail comes from /detail."""
+    out: dict[str, Any] = {
+        "latitude": marker.get("latitude"),
+        "longitude": marker.get("longitude"),
+        "display_name": marker.get("display_name"),
+        "device_name": marker.get("device_name"),
+        "site_name": marker.get("site_name"),
+        "health_status": marker.get("health_status"),
+        "blink_mode": marker.get("blink_mode"),
+        "updated_at": marker.get("updated_at"),
+    }
+    st = marker.get("source_type")
+    sid = marker.get("source_id")
+    if st is not None:
+        out["source_type"] = st
+    if sid is not None:
+        out["source_id"] = sid
+    return out
+
+
+def lighten_map_markers(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [map_marker_to_light(m) for m in markers]
+
+
+def compute_map_init_from_markers(markers: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Initial center/zoom/bounds so the client can construct the map without a world-scale flash."""
+    lats: list[float] = []
+    lons: list[float] = []
+    for m in markers:
+        lat = m.get("latitude")
+        lon = m.get("longitude")
+        try:
+            if lat is not None and lon is not None:
+                lats.append(float(lat))
+                lons.append(float(lon))
+        except (TypeError, ValueError):
+            continue
+    if not lats:
+        return None
+    min_lat, max_lat = min(lats), max(lats)
+    min_lon, max_lon = min(lons), max(lons)
+    cx = (min_lon + max_lon) / 2.0
+    cy = (min_lat + max_lat) / 2.0
+    span_lon = max_lon - min_lon
+    span_lat = max_lat - min_lat
+    if span_lon < 1e-9 and span_lat < 1e-9:
+        return {"center": [cx, cy], "zoom": 12, "bounds": [[min_lon, min_lat], [max_lon, max_lat]]}
+    return {
+        "center": [cx, cy],
+        "zoom": 10,
+        "bounds": [[min_lon, min_lat], [max_lon, max_lat]],
+    }
+
+
 def _apply_kpi_fields(marker: dict[str, Any], kpi_fields: list[str]) -> dict[str, Any]:
     if not kpi_fields:
         return marker

@@ -17,6 +17,7 @@ from app.services.map_runtime_service import (
     internal_aggregator_visibility,
     list_eligible_map_objects,
     map_marker_detail,
+    map_marker_to_light,
     markers_with_redis_first,
 )
 
@@ -85,10 +86,14 @@ def map_markers(
     longitude_field: str = Query("gps.lon"),
     kpi_fields: str = Query("", description="Comma-separated KPI paths"),
     excluded_source_ids: str = Query("", alias="excludedSourceIds"),
+    light: bool = Query(
+        True,
+        description="If true, omit KPI maps and long health text (use /detail on click).",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Runtime markers for a site (Redis-first, same shape as dashboard map widget)."""
+    """Runtime markers for a site (Redis-first, same shape as dashboard map widget when light=false)."""
     allowed = allowed_site_ids_for_user(db, user)
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
@@ -109,6 +114,8 @@ def map_markers(
         health_field=None,
         pg_markers_fn=_map_markers_site,
     )
+    if light:
+        markers = [map_marker_to_light(m) for m in markers]
     return MapMarkersResponse(markers=markers)
 
 

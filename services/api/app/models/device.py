@@ -35,6 +35,7 @@ class Device(Base, TimestampMixin):
     """Inactive: soft off; referential integrity — use Stop/Inactive instead of delete."""
     polling_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     """Stop/restart polling toggles this field."""
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
 
     customer: Mapped["Customer"] = relationship(back_populates="devices")
     site: Mapped["Site"] = relationship(back_populates="devices")

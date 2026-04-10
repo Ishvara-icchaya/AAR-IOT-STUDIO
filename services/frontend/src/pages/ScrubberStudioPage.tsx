@@ -919,6 +919,7 @@ export function ScrubberStudioPage() {
     try {
       const data = await apiFetch<RawListHeadResp>(
         `/raw-data-objects?device_id=${encodeURIComponent(did)}&limit=1&offset=0`,
+        { cache: "no-store" },
       );
       const first = data?.items?.[0];
       setLatestForDevice({
@@ -938,17 +939,26 @@ export function ScrubberStudioPage() {
     try {
       const p = await apiFetch<RawPreviewResp>(
         `/raw-data-objects/${rawId}/preview?offset=0&max_bytes=${64 * 1024}`,
+        { cache: "no-store" },
       );
       setRawPreview(p);
       rawPreviewCacheRef.current = p;
       setRawPreviewStale(false);
       await loadLatestIngestion();
+      try {
+        const v = await apiFetch<VerifyResp>(`/raw-data-objects/${rawId}/verify?rehash=false`, {
+          cache: "no-store",
+        });
+        if (v) setVerify(v);
+      } catch {
+        /* keep prior verify */
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Raw preview failed";
       if (rawPreviewCacheRef.current) {
         setRawPreview(rawPreviewCacheRef.current);
         setRawPreviewStale(true);
-        setErr(`${msg} — showing last loaded payload (offline).`);
+        setErr(`${msg} — showing last loaded payload (sample status may be stale).`);
       } else {
         setRawPreview(null);
         setRawPreviewStale(false);
@@ -956,6 +966,41 @@ export function ScrubberStudioPage() {
       }
     }
   }, [rawId, loadLatestIngestion]);
+
+  /**
+   * Button handler: new ingests create new raw rows; the same rawId always reads the same MinIO object.
+   * We re-query the device list head first and navigate to the newest raw when it differs, then reload preview.
+   */
+  const refreshRawFollowLatest = useCallback(async () => {
+    if (!rawId) return;
+    const did = deviceId || verify?.device_id;
+    if (did) {
+      setIngestionBusy(true);
+      try {
+        const data = await apiFetch<RawListHeadResp>(
+          `/raw-data-objects?device_id=${encodeURIComponent(did)}&limit=1&offset=0`,
+          { cache: "no-store" },
+        );
+        const first = data?.items?.[0];
+        const headId = first?.id ?? null;
+        const headAt = first?.ingested_at ?? null;
+        setLatestForDevice({ id: headId, ingestedAt: headAt });
+        if (headId && !uuidEq(headId, rawId)) {
+          const params = new URLSearchParams();
+          params.set("rawId", headId);
+          params.set("deviceId", did);
+          if (safeReturnTo) params.set("returnTo", safeReturnTo);
+          navigate(`/scrubber/create?${params.toString()}`, { replace: true });
+          return;
+        }
+      } catch {
+        setLatestForDevice({ id: null, ingestedAt: null });
+      } finally {
+        setIngestionBusy(false);
+      }
+    }
+    await loadRawPreview();
+  }, [rawId, deviceId, verify?.device_id, loadRawPreview, navigate, safeReturnTo]);
 
   useEffect(() => {
     rawPreviewCacheRef.current = null;
@@ -972,7 +1017,9 @@ export function ScrubberStudioPage() {
     void (async () => {
       setErr(null);
       try {
-        const v = await apiFetch<VerifyResp>(`/raw-data-objects/${rawId}/verify?rehash=false`);
+        const v = await apiFetch<VerifyResp>(`/raw-data-objects/${rawId}/verify?rehash=false`, {
+          cache: "no-store",
+        });
         setVerify(v);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Verify failed");
@@ -1279,13 +1326,12 @@ export function ScrubberStudioPage() {
     navigate(`/scrubber/create?${params.toString()}`, { replace: true });
   }, [latestForDevice.id, deviceId, verify?.device_id, safeReturnTo, navigate]);
 
+  /** True when this raw row matches the list API head and verify does not contradict (sample freshness — not MQTT). */
   const rawIngestionOnline = useMemo(() => {
-    if (!rawId) return false;
-    if (rawPreviewStale) return false;
-    if (verify?.is_latest_for_device === true) return true;
+    if (!rawId || rawPreviewStale) return false;
+    if (!latestForDevice.id || !uuidEq(latestForDevice.id, rawId)) return false;
     if (verify?.is_latest_for_device === false) return false;
-    if (!latestForDevice.id) return false;
-    return uuidEq(latestForDevice.id, rawId);
+    return true;
   }, [rawId, latestForDevice.id, rawPreviewStale, verify?.is_latest_for_device]);
 
   useEffect(() => {
@@ -1383,12 +1429,14 @@ export function ScrubberStudioPage() {
           <span
             title={
               rawIngestionOnline
-                ? "This archived raw is the newest for the device (verified server-side)."
+                ? "This archived raw is the newest sample for the device (list + verify agree)."
                 : rawPreviewStale
                   ? "Preview failed last refresh; bytes may be stale."
                   : verify?.is_latest_for_device === false
                     ? "A newer raw exists for this device — use “Use latest sample”."
-                    : "Not the newest raw for this device, or still loading."
+                    : !latestForDevice.id
+                      ? "Could not load newest raw id for this device (or none yet)."
+                      : "This raw is not the list head for the device — use “Use latest sample”, or wait for list to load."
             }
             style={{
               padding: "0.15rem 0.45rem",
@@ -1400,7 +1448,7 @@ export function ScrubberStudioPage() {
               border: `1px solid ${rawIngestionOnline ? "var(--page-status-success-border)" : "var(--page-status-warn-border)"}`,
             }}
           >
-            {ingestionBusy ? "…" : rawIngestionOnline ? "Online" : "Offline"}
+            {ingestionBusy ? "…" : rawIngestionOnline ? "Latest sample" : "Not latest"}
           </span>
           <span>
             Device <code>{verify.device_id.slice(0, 8)}…</code>
@@ -1421,18 +1469,19 @@ export function ScrubberStudioPage() {
                 : rawIngestionOnline
                   ? "This sample is the latest raw archived for the device."
                   : rawPreviewStale
-                    ? "Showing last loaded bytes (offline) — refresh failed."
+                    ? "Showing last loaded bytes — preview refresh failed."
                     : !latestForDevice.id
-                      ? "No archived raw for this device yet (offline)."
-                      : "This sample is not the latest raw (offline)."}
+                      ? "No archived raw for this device yet, or list could not be loaded."
+                      : "This sample is not the newest archived raw for the device — try “Use latest sample”."}
             </p>
             <div style={{ flex: 1, minHeight: 0 }}>{rawPanelBody}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
               <button
                 type="button"
                 className="scrubber-btn scrubber-btn--secondary"
-                onClick={() => void loadRawPreview()}
+                onClick={() => void refreshRawFollowLatest()}
                 disabled={!rawId}
+                title="Fetches the newest archived raw for this device; if it is newer than the open sample, switches to it, then reloads bytes from the archive."
               >
                 Refresh raw
               </button>
@@ -2282,7 +2331,7 @@ function renderStepEditor(
         setForm={setForm}
         pathSuggestions={ui.pathSuggestions}
         pathSamples={ui.pathSamples}
-        datalistId={PATH_HINTS_DATALIST_ID}
+        selectPath={form.selectPath}
       />
     );
   }

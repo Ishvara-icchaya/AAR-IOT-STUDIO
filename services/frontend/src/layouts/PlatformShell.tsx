@@ -6,6 +6,7 @@ import { dbg } from "@/lib/debug";
 import { FooterBar } from "./shell/FooterBar";
 import { HeaderBar } from "./shell/HeaderBar";
 import { PageMessageBar } from "./shell/PageMessageBar";
+import { ResourceInUseProvider } from "@/contexts/ResourceInUseContext";
 import { ShellMessageProvider } from "./shell/ShellMessageContext";
 import { titleFromPath } from "./shell/navigation";
 
@@ -19,6 +20,7 @@ export function PlatformShell() {
 
   return (
     <ShellMessageProvider>
+      <ResourceInUseProvider>
       <OpsShellProvider>
         <div className="shell shell--app shell--ops">
           <HeaderBar />
@@ -37,6 +39,7 @@ export function PlatformShell() {
           </div>
         </div>
       </OpsShellProvider>
+      </ResourceInUseProvider>
     </ShellMessageProvider>
   );
 }

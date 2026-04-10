@@ -15,9 +15,11 @@ from app.models.customer import Customer
 from app.models.site import Site
 from app.models.user import User
 from app.models.user_site import UserSite
+from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.schemas.site import SiteCreate, SiteRead
 from app.schemas.user_admin import UserCreate, UserRead
-from app.services.dashboard_dependency_service import check_site_in_use, resource_in_use_detail
+from app.services.dependency_service import site_delete_dependencies
+from app.services.lifecycle_actions import archive_site, deactivate_site, reactivate_site
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -138,6 +140,64 @@ def create_site(
     return SiteRead.model_validate(site)
 
 
+@router.get("/sites/{site_id}/dependencies", response_model=DependenciesListResponse)
+def get_site_dependencies(
+    site_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    site = db.get(Site, site_id)
+    if not site or site.customer_id != admin.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    deps = site_delete_dependencies(db, customer_id=admin.customer_id, site_id=site_id)
+    return DependenciesListResponse(dependencies=deps)
+
+
+@router.post("/sites/{site_id}/deactivate")
+def post_deactivate_site(
+    site_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    site = db.get(Site, site_id)
+    if not site or site.customer_id != admin.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    deactivate_site(db, site)
+    db.commit()
+    db.refresh(site)
+    return {"id": str(site.id), "operational_status": site.operational_status}
+
+
+@router.post("/sites/{site_id}/reactivate")
+def post_reactivate_site(
+    site_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    site = db.get(Site, site_id)
+    if not site or site.customer_id != admin.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    reactivate_site(db, site)
+    db.commit()
+    db.refresh(site)
+    return {"id": str(site.id), "operational_status": site.operational_status}
+
+
+@router.post("/sites/{site_id}/archive")
+def post_archive_site(
+    site_id: uuid.UUID,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    site = db.get(Site, site_id)
+    if not site or site.customer_id != admin.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    archive_site(db, site)
+    db.commit()
+    db.refresh(site)
+    return {"id": str(site.id), "operational_status": site.operational_status}
+
+
 @router.delete("/sites/{site_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_site(
     site_id: uuid.UUID,
@@ -148,12 +208,12 @@ def delete_site(
     site = db.get(Site, site_id)
     if not site or site.customer_id != admin.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
-    blocked = check_site_in_use(db, customer_id=admin.customer_id, site_id=site_id)
-    if blocked:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail=resource_in_use_detail(resource_label="site", dashboards=blocked),
-        )
+    deps = site_delete_dependencies(db, customer_id=admin.customer_id, site_id=site_id)
+    raise_conflict_if_in_use(
+        deps,
+        message="Site cannot be deleted while dependencies exist",
+        deactivate_url=f"/administration/sites/{site_id}/deactivate",
+    )
     db.delete(site)
     db.commit()
     return None

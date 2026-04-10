@@ -39,7 +39,15 @@ from app.schemas.dashboard import (
     DataObjectSourceRow,
     ResultObjectSourceRow,
 )
+from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
+from app.services.dependency_service import dashboard_delete_dependencies
 from app.services.dashboard_live import build_live_payload
+from app.services.lifecycle_actions import (
+    archive_dashboard,
+    clear_primary_dashboard_for_all_users,
+    deactivate_dashboard,
+    reactivate_dashboard,
+)
 from app.services.dashboard_validation import (
     validate_layout_for_save,
     validate_site_coherence,
@@ -305,6 +313,60 @@ def update_dashboard(
     return _dashboard_read(db, user, d)
 
 
+@router.get("/{dashboard_id}/dependencies", response_model=DependenciesListResponse)
+def get_dashboard_dependencies(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    deps = dashboard_delete_dependencies(db, customer_id=user.customer_id, dashboard_id=dashboard_id)
+    return DependenciesListResponse(dependencies=deps)
+
+
+@router.post("/{dashboard_id}/deactivate")
+def post_deactivate_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    deactivate_dashboard(db, d)
+    db.commit()
+    db.refresh(d)
+    return {"id": str(d.id), "status": d.status}
+
+
+@router.post("/{dashboard_id}/reactivate")
+def post_reactivate_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    reactivate_dashboard(db, d)
+    db.commit()
+    db.refresh(d)
+    return {"id": str(d.id), "status": d.status}
+
+
+@router.post("/{dashboard_id}/archive")
+def post_archive_dashboard(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    archive_dashboard(db, d)
+    db.commit()
+    db.refresh(d)
+    return {"id": str(d.id), "status": d.status}
+
+
 @router.delete("/{dashboard_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_dashboard(
     dashboard_id: uuid.UUID,
@@ -313,9 +375,14 @@ def delete_dashboard(
 ):
     d = db.get(Dashboard, dashboard_id)
     d = _access_dashboard(db, user, d)
-    pref = db.get(DashboardUserPreference, user.id)
-    if pref and pref.primary_dashboard_id == d.id:
-        pref.primary_dashboard_id = None
+    clear_primary_dashboard_for_all_users(db, dashboard_id=dashboard_id)
+    db.flush()
+    deps = dashboard_delete_dependencies(db, customer_id=user.customer_id, dashboard_id=dashboard_id)
+    raise_conflict_if_in_use(
+        deps,
+        message="Dashboard cannot be deleted while it is still referenced",
+        deactivate_url=f"/dashboards/{dashboard_id}/deactivate",
+    )
     db.delete(d)
     db.commit()
     pipeline_emit(

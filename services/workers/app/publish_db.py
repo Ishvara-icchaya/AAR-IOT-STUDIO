@@ -15,7 +15,13 @@ log = logging.getLogger(__name__)
 
 def _db_url() -> str:
     u = os.environ.get("METADATA_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
-    return u.replace("postgresql+psycopg2://", "postgresql://")
+    u = u.replace("postgresql+psycopg2://", "postgresql://").strip()
+    if not u:
+        raise RuntimeError(
+            "METADATA_DATABASE_URL or DATABASE_URL must be set "
+            "(e.g. postgresql://user:pass@postgres:5432/aar_metadata for Docker Compose)"
+        )
+    return u
 
 
 def fetch_active_services(
@@ -41,9 +47,16 @@ def fetch_active_services(
 
 def load_data_object_payload(conn, *, customer_id: str, data_object_id: str) -> dict[str, Any] | None:
     sql = """
-    SELECT id, name, payload, kpi_json, health_status, updated_at
-    FROM data_objects
-    WHERE id = %s::uuid AND customer_id = %s::uuid
+    SELECT d.id, d.name, d.payload, d.kpi_json, d.health_status, d.updated_at
+    FROM data_objects d
+    INNER JOIN devices dev ON dev.id = d.device_id
+    INNER JOIN sites s ON s.id = d.site_id
+    INNER JOIN customers cust ON cust.id = d.customer_id
+    WHERE d.id = %s::uuid AND d.customer_id = %s::uuid
+      AND d.lifecycle_status = 'published'
+      AND dev.operational_status = 'active'
+      AND s.operational_status = 'active'
+      AND cust.operational_status = 'active'
     """
     with conn.cursor() as cur:
         cur.execute(sql, (data_object_id, customer_id))
@@ -66,6 +79,7 @@ def load_result_object_payload(conn, *, customer_id: str, result_object_id: str)
     SELECT id, result_object_name, workflow_id, payload_json, created_at
     FROM workflow_result_objects
     WHERE id = %s::uuid AND customer_id = %s::uuid
+      AND operational_status = 'active'
     """
     with conn.cursor() as cur:
         cur.execute(sql, (result_object_id, customer_id))

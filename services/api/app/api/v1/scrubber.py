@@ -21,13 +21,16 @@ from app.schemas.data_object import DataObjectListResponse, DataObjectRead
 from app.schemas.scrubber_generate_health import GenerateHealthMappingRequest, GenerateHealthMappingResponse
 from app.schemas.scrubber_test_llm import TestLlmOverlayRequest, TestLlmOverlayResponse
 from app.schemas.scrubber_preview import ScrubberPreviewRequest, ScrubberPreviewResponse
+from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.schemas.scrubber_stale_ingestion import (
     StaleIngestionDeviceItem,
     StaleIngestionDeviceListResponse,
 )
-from app.services.dashboard_dependency_service import (
-    check_data_object_in_use,
-    resource_in_use_detail,
+from app.services.dependency_service import data_object_delete_dependencies
+from app.services.lifecycle_actions import (
+    archive_data_object,
+    deactivate_data_object,
+    reactivate_data_object,
 )
 from app.services.scrubber_engine import apply_llm_health_kpi_overlay_public
 from app.services.scrubber_generate_health_service import generate_health_mapping
@@ -295,6 +298,88 @@ def list_devices_stale_ingestion(
     return StaleIngestionDeviceListResponse(items=out, stale_after_hours=stale_after_hours)
 
 
+@router.get("/data-objects/{data_object_id}/dependencies", response_model=DependenciesListResponse)
+def get_data_object_dependencies(
+    data_object_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(DataObject, data_object_id)
+    if not row or row.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "data_object not found")
+    device = db.get(Device, row.device_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
+    allowed = allowed_site_ids_for_user(db, user)
+    if not user_may_access_site(user, device.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    deps = data_object_delete_dependencies(db, customer_id=user.customer_id, data_object_id=data_object_id)
+    return DependenciesListResponse(dependencies=deps)
+
+
+@router.post("/data-objects/{data_object_id}/deactivate")
+def post_deactivate_data_object(
+    data_object_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(DataObject, data_object_id)
+    if not row or row.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "data_object not found")
+    device = db.get(Device, row.device_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
+    allowed = allowed_site_ids_for_user(db, user)
+    if not user_may_access_site(user, device.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    deactivate_data_object(db, row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id), "lifecycle_status": row.lifecycle_status}
+
+
+@router.post("/data-objects/{data_object_id}/reactivate")
+def post_reactivate_data_object(
+    data_object_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(DataObject, data_object_id)
+    if not row or row.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "data_object not found")
+    device = db.get(Device, row.device_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
+    allowed = allowed_site_ids_for_user(db, user)
+    if not user_may_access_site(user, device.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    reactivate_data_object(db, row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id), "lifecycle_status": row.lifecycle_status}
+
+
+@router.post("/data-objects/{data_object_id}/archive")
+def post_archive_data_object(
+    data_object_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(DataObject, data_object_id)
+    if not row or row.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "data_object not found")
+    device = db.get(Device, row.device_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
+    allowed = allowed_site_ids_for_user(db, user)
+    if not user_may_access_site(user, device.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    archive_data_object(db, row)
+    db.commit()
+    db.refresh(row)
+    return {"id": str(row.id), "lifecycle_status": row.lifecycle_status}
+
+
 @router.delete("/data-objects/{data_object_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_data_object(
     data_object_id: uuid.UUID,
@@ -310,12 +395,12 @@ def delete_data_object(
     allowed = allowed_site_ids_for_user(db, user)
     if not user_may_access_site(user, device.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
-    blocked = check_data_object_in_use(db, customer_id=user.customer_id, data_object_id=data_object_id)
-    if blocked:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            detail=resource_in_use_detail(resource_label="data object", dashboards=blocked),
-        )
+    deps = data_object_delete_dependencies(db, customer_id=user.customer_id, data_object_id=data_object_id)
+    raise_conflict_if_in_use(
+        deps,
+        message="Data object is used by other resources",
+        deactivate_url=f"/scrubber/data-objects/{data_object_id}/deactivate",
+    )
     db.delete(row)
     db.commit()
     pipeline_emit(

@@ -1,4 +1,5 @@
 import { traceHeadersEnabled } from "@/lib/debug";
+import { parseResourceInUseDetail } from "@/lib/resourceInUse";
 
 const TOKEN_KEY = "aar_access_token";
 
@@ -26,6 +27,29 @@ function formatError(data: unknown, statusText: string): string {
     return JSON.stringify(d);
   }
   return statusText;
+}
+
+function formatHttpErrorMessage(body: unknown, statusText: string): string {
+  const conflict = parseResourceInUseDetail(body);
+  if (conflict) return conflict.message;
+  return formatError(body, statusText);
+}
+
+/** Thrown by `apiFetch` on non-OK responses; carries the parsed JSON body for 409 conflict handling. */
+export class ApiHttpError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, body: unknown, statusText: string) {
+    super(formatHttpErrorMessage(body, statusText));
+    this.name = "ApiHttpError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export function isApiHttpError(e: unknown): e is ApiHttpError {
+  return e instanceof ApiHttpError;
 }
 
 export async function apiFetch<T = unknown>(
@@ -60,6 +84,6 @@ export async function apiFetch<T = unknown>(
   }
   if (r.status === 204) return null;
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(formatError(data, r.statusText));
+  if (!r.ok) throw new ApiHttpError(r.status, data, r.statusText);
   return data as T;
 }

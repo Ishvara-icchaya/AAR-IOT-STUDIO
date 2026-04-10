@@ -8,7 +8,6 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.dashboard_status import DASHBOARD_FROZEN
 from app.models.dashboard import Dashboard
 from app.models.data_object import DataObject
 from app.models.workflow_result_object import WorkflowResultObject
@@ -89,14 +88,10 @@ def _layout_refs(db: Session, *, layout: dict[str, Any]) -> tuple[set[uuid.UUID]
     return data_ids, result_ids, device_ids
 
 
-def _frozen_dashboards(db: Session, *, customer_id: uuid.UUID) -> list[Dashboard]:
+def _all_dashboards(db: Session, *, customer_id: uuid.UUID) -> list[Dashboard]:
+    """All tenant dashboards — layout bindings affect referential integrity for any status."""
     return list(
-        db.scalars(
-            select(Dashboard).where(
-                Dashboard.customer_id == customer_id,
-                Dashboard.status == DASHBOARD_FROZEN,
-            )
-        ).all()
+        db.scalars(select(Dashboard).where(Dashboard.customer_id == customer_id)).all()
     )
 
 
@@ -104,7 +99,7 @@ def dashboards_referencing_data_object(
     db: Session, *, customer_id: uuid.UUID, data_object_id: uuid.UUID
 ) -> list[Dashboard]:
     hits: list[Dashboard] = []
-    for d in _frozen_dashboards(db, customer_id=customer_id):
+    for d in _all_dashboards(db, customer_id=customer_id):
         data_ids, _, _ = _layout_refs(db, layout=dict(d.layout or {}))
         if data_object_id in data_ids:
             hits.append(d)
@@ -115,7 +110,7 @@ def dashboards_referencing_result_object(
     db: Session, *, customer_id: uuid.UUID, result_object_id: uuid.UUID
 ) -> list[Dashboard]:
     hits: list[Dashboard] = []
-    for d in _frozen_dashboards(db, customer_id=customer_id):
+    for d in _all_dashboards(db, customer_id=customer_id):
         _, result_ids, _ = _layout_refs(db, layout=dict(d.layout or {}))
         if result_object_id in result_ids:
             hits.append(d)
@@ -126,7 +121,7 @@ def dashboards_referencing_site(
     db: Session, *, customer_id: uuid.UUID, site_id: uuid.UUID
 ) -> list[Dashboard]:
     hits: list[Dashboard] = []
-    for d in _frozen_dashboards(db, customer_id=customer_id):
+    for d in _all_dashboards(db, customer_id=customer_id):
         if d.site_id == site_id:
             hits.append(d)
     return hits
@@ -136,7 +131,7 @@ def dashboards_referencing_device(
     db: Session, *, customer_id: uuid.UUID, device_id: uuid.UUID
 ) -> list[Dashboard]:
     hits: list[Dashboard] = []
-    for d in _frozen_dashboards(db, customer_id=customer_id):
+    for d in _all_dashboards(db, customer_id=customer_id):
         data_ids, _, device_ids = _layout_refs(db, layout=dict(d.layout or {}))
         if device_id in device_ids:
             hits.append(d)
@@ -163,7 +158,7 @@ def dashboards_referencing_workflow_outputs(
     if not ro_ids:
         return []
     hits: list[Dashboard] = []
-    for d in _frozen_dashboards(db, customer_id=customer_id):
+    for d in _all_dashboards(db, customer_id=customer_id):
         _, result_ids, _ = _layout_refs(db, layout=dict(d.layout or {}))
         if result_ids & ro_ids:
             hits.append(d)
@@ -216,6 +211,6 @@ def resource_in_use_detail(*, resource_label: str, dashboards: list[Dashboard]) 
     noun = "dashboard" if n == 1 else "dashboards"
     return {
         "error": "resource_in_use",
-        "message": f"This {resource_label} is used by {n} frozen {noun}",
+        "message": f"This {resource_label} is used by {n} {noun}",
         "dashboards": [{"id": str(d.id), "name": d.name} for d in dashboards],
     }

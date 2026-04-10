@@ -34,5 +34,6 @@ class DeviceEndpoint(Base, TimestampMixin):
     first_payload_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_payload_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
 
     device: Mapped["Device"] = relationship(back_populates="endpoint")

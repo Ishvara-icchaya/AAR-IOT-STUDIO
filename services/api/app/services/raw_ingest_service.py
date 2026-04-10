@@ -338,17 +338,19 @@ def verify_raw_object(
     db.commit()
     db.refresh(row)
 
-    latest_id = db.execute(
-        select(RawDataObject.id)
-        .where(
-            RawDataObject.device_id == row.device_id,
-            RawDataObject.customer_id == user.customer_id,
+    latest_stmt = select(RawDataObject.id).where(
+        RawDataObject.device_id == row.device_id,
+        RawDataObject.customer_id == user.customer_id,
+    )
+    if allowed is not None:
+        latest_stmt = latest_stmt.join(Device, Device.id == RawDataObject.device_id).where(
+            Device.site_id.in_(allowed)
         )
-        .order_by(
+    latest_id = db.execute(
+        latest_stmt.order_by(
             RawDataObject.ingested_at.desc().nulls_last(),
             RawDataObject.id.desc(),
-        )
-        .limit(1)
+        ).limit(1)
     ).scalar_one_or_none()
     is_latest_for_device = latest_id is not None and latest_id == row.id
 

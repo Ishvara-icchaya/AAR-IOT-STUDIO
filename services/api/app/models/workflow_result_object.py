@@ -39,6 +39,7 @@ class WorkflowResultObject(Base):
     )
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     health_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

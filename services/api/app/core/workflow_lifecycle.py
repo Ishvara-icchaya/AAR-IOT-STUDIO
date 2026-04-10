@@ -5,6 +5,8 @@ WORKFLOW_LIFECYCLE = [
     "validated",
     "published",
     "stopped",
+    "inactive",
+    "archived",
     "failed",
 ]
 
@@ -12,6 +14,8 @@ WF_DRAFT = "draft"
 WF_VALIDATED = "validated"
 WF_PUBLISHED = "published"
 WF_STOPPED = "stopped"
+WF_INACTIVE = "inactive"
+WF_ARCHIVED = "archived"
 WF_FAILED = "failed"
 
 

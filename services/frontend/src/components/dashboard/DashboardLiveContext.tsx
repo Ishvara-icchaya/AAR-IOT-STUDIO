@@ -4,6 +4,8 @@ import { DEFAULT_MAP_STYLE_URL } from "@/lib/dashboardMapStyle";
 export type DashboardLiveRuntimeValue = {
   mapStyleUrl: string;
   usesDefaultDemoTiles?: boolean;
+  /** Enterprise landing: map widget shows side panel with paginated site counts. */
+  enterpriseMode?: boolean;
 };
 
 const DashboardLiveContext = createContext<DashboardLiveRuntimeValue | null>(null);
@@ -24,5 +26,6 @@ export function useDashboardLiveRuntime(): DashboardLiveRuntimeValue {
   const env = import.meta.env.VITE_DASHBOARD_MAP_STYLE_URL;
   return {
     mapStyleUrl: typeof env === "string" && env.trim() ? env.trim() : DEFAULT_MAP_STYLE_URL,
+    enterpriseMode: false,
   };
 }

@@ -5,6 +5,7 @@ DATA_OBJECT_LIFECYCLE = [
     "compiled",
     "published",
     "inactive",
+    "archived",
     "failed",
 ]
 
@@ -12,6 +13,7 @@ DATA_DRAFT = "draft"
 DATA_COMPILED = "compiled"
 DATA_PUBLISHED = "published"
 DATA_INACTIVE = "inactive"
+DATA_ARCHIVED = "archived"
 DATA_FAILED = "failed"
 
 

@@ -5,12 +5,14 @@ import { apiFetch } from "@/api/client";
 import * as wfApi from "@/api/workflow";
 import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
+import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { PageShell } from "@/layouts/PageShell";
 import type { WorkflowListItemDTO } from "@/types/workflow";
 
 type SiteRow = { id: string; name: string };
 
 export function WorkflowListPage() {
+  const { tryHandleResourceInUseError } = useResourceInUse();
   const { siteId: opsSiteId, refreshToken } = useOpsShell();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [siteId, setSiteId] = useState("");
@@ -77,6 +79,7 @@ export function WorkflowListPage() {
       await wfApi.deleteWorkflow(id);
       await load();
     } catch (e) {
+      if (tryHandleResourceInUseError(e)) return;
       setErr(e instanceof Error ? e.message : "Delete failed");
     }
   }

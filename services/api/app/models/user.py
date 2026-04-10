@@ -31,6 +31,7 @@ class User(Base, TimestampMixin):
     role: Mapped[str] = mapped_column(String(32), default="operator", nullable=False)
     """admin | operator — operators are scoped by user_sites when non-empty."""
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
 
     customer: Mapped["Customer"] = relationship(back_populates="users")
     site_links: Mapped[list["UserSite"]] = relationship(

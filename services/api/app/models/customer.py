@@ -21,6 +21,7 @@ class Customer(Base, TimestampMixin):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
 
     sites: Mapped[list["Site"]] = relationship(back_populates="customer")
     users: Mapped[list["User"]] = relationship(back_populates="customer")

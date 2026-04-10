@@ -14,6 +14,7 @@ from app.publish_failure_alerts import (
     should_emit_publish_failure_alert,
 )
 from app.publish_db import (
+    _db_url,
     fetch_active_services,
     insert_delivery_log,
     load_data_object_payload,
@@ -24,13 +25,6 @@ from app.publish_db import (
 from app.publish_dispatch import dispatch_publish
 
 log = logging.getLogger(__name__)
-
-
-def _db_url() -> str:
-    import os
-
-    u = os.environ.get("METADATA_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
-    return u.replace("postgresql+psycopg2://", "postgresql://")
 
 
 def process_kafka_value(data: dict[str, Any]) -> None:

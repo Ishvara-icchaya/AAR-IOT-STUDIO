@@ -24,7 +24,7 @@ export function DashboardWidgetPalette() {
   return (
     <aside className="dash-palette">
       <h2 className="dash-palette__title">Widgets</h2>
-      <p className="dash-palette__hint">Drag into a column slot.</p>
+      <p className="dash-palette__hint">Drag into a column slot. Map tiles expand to a full-width row automatically.</p>
       <div className="dash-palette__list">
         {PALETTE_WIDGET_TYPES.map((t) => (
           <PaletteItem key={t} type={t} />

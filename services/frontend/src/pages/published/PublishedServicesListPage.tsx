@@ -11,11 +11,13 @@ import {
 } from "@/api/publishedServices";
 import { apiFetch } from "@/api/client";
 import { PageStatus } from "@/components/PageStatus";
+import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { PageShell } from "@/layouts/PageShell";
 
 type SiteOpt = { id: string; name: string };
 
 export function PublishedServicesListPage() {
+  const { tryHandleResourceInUseError } = useResourceInUse();
   const [items, setItems] = useState<PublishedServiceRow[]>([]);
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [siteId, setSiteId] = useState("");
@@ -70,6 +72,7 @@ export function PublishedServicesListPage() {
       await deletePublishedService(id);
       await load();
     } catch (e) {
+      if (tryHandleResourceInUseError(e)) return;
       setErr(e instanceof Error ? e.message : "Delete failed");
     }
   }

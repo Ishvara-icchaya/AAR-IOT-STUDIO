@@ -120,3 +120,18 @@ class ClearPrimaryDashboardResponse(BaseModel):
     """After clear, Enterprise dashboard returns no_primary_dashboard until a new primary is set."""
 
     primary_dashboard_id: uuid.UUID | None = None
+
+
+class EnterpriseSiteObjectCountRow(BaseModel):
+    site_id: uuid.UUID
+    site_name: str
+    data_object_count: int
+    result_object_count: int
+    total_count: int
+
+
+class EnterpriseSiteObjectCountsResponse(BaseModel):
+    items: list[EnterpriseSiteObjectCountRow]
+    total: int
+    page: int
+    page_size: int

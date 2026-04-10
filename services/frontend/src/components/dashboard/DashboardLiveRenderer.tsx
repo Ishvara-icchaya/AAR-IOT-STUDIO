@@ -8,7 +8,10 @@ import { TableWidget } from "./widgets/TableWidget";
 import { DeviceTileWidget } from "./widgets/DeviceTileWidget";
 import { HealthSummaryWidget } from "./widgets/HealthSummaryWidget";
 import { AlertSummaryWidget } from "./widgets/AlertSummaryWidget";
-import { DashboardLiveProvider, type DashboardLiveRuntimeValue } from "./DashboardLiveContext";
+import {
+  DashboardLiveProvider,
+  type DashboardLiveRuntimeValue,
+} from "./DashboardLiveContext";
 
 const ChartWidgetLazy = lazy(() =>
   import("./widgets/ChartWidget").then((m) => ({ default: m.ChartWidget })),
@@ -172,16 +175,22 @@ export function DashboardLiveRenderer({
   widgets,
   renderedAt,
   dashboard,
+  enterpriseMode,
 }: {
   layout: unknown;
   widgets: DashboardLiveWidgetDTO[];
   renderedAt?: string;
   /** Full `dashboard` object from live/preview API (for map style + settings). */
   dashboard?: unknown;
+  /** Enterprise landing: enables map side panel (object counts by site). */
+  enterpriseMode?: boolean;
 }) {
   const byId = Object.fromEntries(widgets.map((w) => [w.widget_id, w])) as Record<string, DashboardLiveWidgetDTO>;
   const rows = parseRows(layout);
-  const runtime = buildRuntimeFromDashboard(dashboard);
+  const runtime: DashboardLiveRuntimeValue = {
+    ...buildRuntimeFromDashboard(dashboard),
+    enterpriseMode: enterpriseMode === true,
+  };
 
   if (rows.length === 0) {
     return (

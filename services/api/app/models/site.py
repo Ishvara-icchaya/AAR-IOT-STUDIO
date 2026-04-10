@@ -26,6 +26,7 @@ class Site(Base, TimestampMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
 
     customer: Mapped["Customer"] = relationship(back_populates="sites")
     devices: Mapped[list["Device"]] = relationship(back_populates="site")

@@ -6,7 +6,8 @@ import os
 from typing import Any
 
 # Public demo style — replace via AAR_DASHBOARD_MAP_STYLE_URL or layout.settings for production.
-DEFAULT_MAP_STYLE_URL = "https://demotiles.maplibre.org/style.json"
+# Carto Voyager (MapLibre GL) — modern vector tiles; keep in sync with frontend DEFAULT_MAP_STYLE_URL.
+DEFAULT_MAP_STYLE_URL = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
 
 
 def map_style_url_from_env() -> str:

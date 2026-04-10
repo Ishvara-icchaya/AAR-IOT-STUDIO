@@ -13,18 +13,18 @@ from app.db.session import get_db
 from app.models.device import Device
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.device_object import DeviceObject
-from app.models.raw_data_object import RawDataObject
 from app.models.user import User
 from app.schemas.device import (
     DeviceCreate,
-    DeviceDeleteFrozenDashboardRef,
     DeviceDeleteResponse,
     DeviceListResponse,
     DeviceRead,
     DeviceUpdate,
 )
+from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.alert_emit import emit_alert
-from app.services.dashboard_dependency_service import check_device_in_use
+from app.services.dependency_service import device_delete_dependencies
+from app.services.lifecycle_actions import archive_device, deactivate_device, reactivate_device
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -220,6 +220,72 @@ def update_device(
     return DeviceRead.model_validate(d)
 
 
+@router.get("/{device_id}/dependencies", response_model=DependenciesListResponse)
+def get_device_dependencies(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    deps = device_delete_dependencies(db, customer_id=user.customer_id, device_id=device_id)
+    return DependenciesListResponse(dependencies=deps)
+
+
+@router.post("/{device_id}/deactivate")
+def post_deactivate_device(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    deactivate_device(db, device)
+    db.commit()
+    db.refresh(device)
+    return {"id": str(device.id), "operational_status": device.operational_status, "is_active": device.is_active}
+
+
+@router.post("/{device_id}/reactivate")
+def post_reactivate_device(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    reactivate_device(db, device)
+    db.commit()
+    db.refresh(device)
+    return {"id": str(device.id), "operational_status": device.operational_status, "is_active": device.is_active}
+
+
+@router.post("/{device_id}/archive")
+def post_archive_device(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    archive_device(db, device)
+    db.commit()
+    db.refresh(device)
+    return {"id": str(device.id), "operational_status": device.operational_status, "is_active": device.is_active}
+
+
 @router.delete("/{device_id}", response_model=DeviceDeleteResponse)
 def delete_device(
     device_id: uuid.UUID,
@@ -233,32 +299,16 @@ def delete_device(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
 
-    cnt = db.scalar(
-        select(func.count()).select_from(RawDataObject).where(RawDataObject.device_id == device_id)
+    deps = device_delete_dependencies(db, customer_id=user.customer_id, device_id=device_id)
+    raise_conflict_if_in_use(
+        deps,
+        message="Device cannot be deleted while dependencies exist",
+        deactivate_url=f"/devices/{device_id}/deactivate",
     )
-    if cnt and cnt > 0:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "Device has raw_data_objects; use inactive/stop instead of delete",
-        )
-
-    frozen_refs = check_device_in_use(db, customer_id=user.customer_id, device_id=device_id)
-    n = len(frozen_refs)
 
     db.delete(device)
     db.commit()
 
-    if n:
-        pipeline_emit(
-            log,
-            component="api.devices",
-            action="frozen_dashboard_refs_at_device_delete",
-            status="warning",
-            device_id=str(device_id),
-            site_id=str(device.site_id),
-            frozen_dashboard_count=n,
-            frozen_dashboard_ids=",".join(str(d.id) for d in frozen_refs[:32]),
-        )
     pipeline_emit(
         log,
         component="api.devices",
@@ -266,22 +316,9 @@ def delete_device(
         status="ok",
         device_id=str(device_id),
         site_id=str(device.site_id),
-        frozen_dashboard_count=n,
     )
 
-    if not n:
-        return DeviceDeleteResponse()
-
-    return DeviceDeleteResponse(
-        warning=(
-            f"This device was still referenced by {n} frozen dashboard(s). "
-            "Those widgets may show a degraded state until dashboards are edited or unfrozen."
-        ),
-        frozen_dashboard_count=n,
-        frozen_dashboards=[
-            DeviceDeleteFrozenDashboardRef(id=str(d.id), name=d.name) for d in frozen_refs
-        ],
-    )
+    return DeviceDeleteResponse()
 
 
 @router.post("/{device_id}/polling/stop", response_model=DeviceRead)

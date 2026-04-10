@@ -18,7 +18,12 @@ from app.core.dashboard_runtime import merge_layout_settings
 from app.schemas.dashboard_layout import iter_widgets
 from app.services.dashboard_health import derive_blink_mode, extract_health_fields
 from app.services.map_eligibility import map_eligible_data_object, map_eligible_result_object
-from app.services.map_runtime_service import markers_manual_sources, markers_with_redis_first
+from app.services.map_runtime_service import (
+    compute_map_init_from_markers,
+    lighten_map_markers,
+    markers_manual_sources,
+    markers_with_redis_first,
+)
 
 
 def _bget(b: dict[str, Any], snake: str, camel: str) -> Any:
@@ -32,6 +37,17 @@ def _cget(cfg: dict[str, Any], snake: str, camel: str, default: Any = None) -> A
         return v
     v = cfg.get(camel)
     return default if v is None else v
+
+
+def _map_controls_dict(config: dict[str, Any]) -> dict[str, Any]:
+    mx = int(_cget(config, "max_direct_markers", "maxDirectMarkers", 80) or 80)
+    return {
+        "auto_fit_on_first_load": bool(_cget(config, "auto_fit_on_first_load", "autoFitOnFirstLoad", True)),
+        "auto_fit_on_refresh": bool(_cget(config, "auto_fit_on_refresh", "autoFitOnRefresh", False)),
+        "preserve_viewport": bool(_cget(config, "preserve_viewport", "preserveViewport", True)),
+        "cluster_markers": bool(_cget(config, "cluster_markers", "clusterMarkers", True)),
+        "max_direct_markers": max(10, min(500, mx)),
+    }
 
 
 def _get_path(obj: Any, path: str) -> Any:
@@ -782,14 +798,19 @@ def resolve_widget_data(
                 health_field=health_field,
                 pg_single_marker_fn=build_map_marker_for_source,
             )
+            light = lighten_map_markers(markers)
+            mi = compute_map_init_from_markers(light)
             data_ms: dict[str, Any] = {
                 "mode": "multi",
                 "latitude_field": latf,
                 "longitude_field": lonf,
-                "markers": markers,
+                "markers": light,
                 "manual_sources": True,
                 "site_id": str(dashboard_site_id),
+                "map_controls": _map_controls_dict(config),
             }
+            if mi:
+                data_ms["map_init"] = mi
             if len(markers) == 0:
                 data_ms["degraded"] = True
                 data_ms["warning"] = (
@@ -815,13 +836,18 @@ def resolve_widget_data(
                 health_field=health_field,
                 pg_markers_fn=_map_markers_site,
             )
+            light = lighten_map_markers(markers)
+            mi = compute_map_init_from_markers(light)
             data: dict[str, Any] = {
                 "mode": "multi",
                 "latitude_field": latf,
                 "longitude_field": lonf,
-                "markers": markers,
+                "markers": light,
                 "site_id": str(dashboard_site_id),
+                "map_controls": _map_controls_dict(config),
             }
+            if mi:
+                data["map_init"] = mi
             if len(markers) == 0:
                 data["degraded"] = True
                 data["warning"] = (
@@ -873,21 +899,30 @@ def resolve_widget_data(
             health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
-        kpis = {str(k): _get_path({**payload, **payload.get("_kpi", {})}, str(k)) for k in kpi_fields}
-        hmsg = payload.get("health_message")
         single_data: dict[str, Any] = {
             "mode": "single",
+            "source_type": str(st),
             "source_id": str(sid),
             "display_name": display_name,
             "latitude": lat,
             "longitude": lon,
-            "kpis": kpis,
             "health_status": hf.get("health_status"),
-            "health_message": str(hmsg) if hmsg else None,
             "blink_mode": blink,
             "updated_at": updated_at.isoformat() if updated_at else None,
             "site_id": str(dashboard_site_id) if dashboard_site_id else None,
+            "map_controls": _map_controls_dict(config),
         }
+        if lat is not None and lon is not None:
+            try:
+                flat = float(lat)
+                flon = float(lon)
+                single_data["map_init"] = {
+                    "center": [flon, flat],
+                    "zoom": 12,
+                    "bounds": [[flon, flat], [flon, flat]],
+                }
+            except (TypeError, ValueError):
+                pass
         if lat is None or lon is None:
             single_data["degraded"] = True
             single_data["warning"] = (

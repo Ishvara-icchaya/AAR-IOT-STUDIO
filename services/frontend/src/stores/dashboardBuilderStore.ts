@@ -1,5 +1,11 @@
 import { create } from "zustand";
-import type { DashboardLayoutModel, DashboardLayoutSettings, DashboardWidgetModel } from "@/types/dashboardLayout";
+import type {
+  DashboardColumnModel,
+  DashboardLayoutModel,
+  DashboardLayoutSettings,
+  DashboardRowModel,
+  DashboardWidgetModel,
+} from "@/types/dashboardLayout";
 import type { DashboardReadDTO } from "@/types/dashboard";
 import { ROW_PRESETS, type RowPresetKey, createDefaultWidget } from "@/lib/dashboardDefaults";
 
@@ -53,6 +59,61 @@ function normalizeLayout(raw: Record<string, unknown> | undefined): DashboardLay
     rows,
     ...(settings ? { settings } : {}),
   };
+}
+
+/**
+ * Map widgets must live in their own row with a single column (span 12). Split mixed rows
+ * in column order so non-map columns stay grouped before/after maps as separate rows.
+ */
+export function normalizeLayoutForMapWidgets(layout: DashboardLayoutModel): DashboardLayoutModel {
+  const nextRows: DashboardRowModel[] = [];
+
+  for (const row of layout.rows) {
+    let buf: DashboardColumnModel[] = [];
+    let firstChunk = true;
+
+    /** When `endOfRow` is false (flush before a map), drop non-map columns that have no widget — avoids junk rows. When `endOfRow` is true, keep placeholder columns so empty builder rows (e.g. after Add row) are not stripped. */
+    const flushBuf = (preferRowId: string, endOfRow: boolean) => {
+      if (buf.length === 0) return;
+      const hasWidget = buf.some((c) => c.widget != null);
+      if (!hasWidget && !endOfRow) {
+        buf = [];
+        return;
+      }
+      if (!hasWidget && endOfRow) {
+        const rid = firstChunk ? preferRowId : crypto.randomUUID();
+        firstChunk = false;
+        nextRows.push({
+          rowId: rid,
+          columns: buf.map((c) => ({ ...c })),
+        });
+        buf = [];
+        return;
+      }
+      const rid = firstChunk ? preferRowId : crypto.randomUUID();
+      firstChunk = false;
+      nextRows.push({
+        rowId: rid,
+        columns: buf.map((c) => ({ ...c })),
+      });
+      buf = [];
+    };
+
+    for (const col of row.columns) {
+      if (col.widget?.type === "map") {
+        flushBuf(row.rowId, false);
+        nextRows.push({
+          rowId: crypto.randomUUID(),
+          columns: [{ columnId: crypto.randomUUID(), span: 12, widget: col.widget }],
+        });
+      } else {
+        buf.push(col);
+      }
+    }
+    flushBuf(row.rowId, true);
+  }
+
+  return { ...layout, rows: nextRows };
 }
 
 export function layoutToApiJson(layout: DashboardLayoutModel): Record<string, unknown> {
@@ -145,7 +206,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
       description: d.description ?? "",
       status: d.status,
       isPrimary: d.is_primary,
-      layout: normalizeLayout(d.layout),
+      layout: normalizeLayoutForMapWidgets(normalizeLayout(d.layout)),
       dirty: false,
       drawerOpen: false,
       drawerTarget: null,
@@ -154,13 +215,13 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
 
   setName: (name) => set({ name, dirty: true }),
   setDescription: (description) => set({ description, dirty: true }),
-  setLayout: (layout) => set({ layout, dirty: true }),
+  setLayout: (layout) => set({ layout: normalizeLayoutForMapWidgets(layout), dirty: true }),
   markClean: () => set({ dirty: false }),
   setPreviewPayload: (previewPayload) => set({ previewPayload }),
 
   addRow: () =>
     set((s) => ({
-      layout: {
+      layout: normalizeLayoutForMapWidgets({
         ...s.layout,
         rows: [
           ...s.layout.rows,
@@ -169,13 +230,16 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
             columns: [{ columnId: crypto.randomUUID(), span: 12 }],
           },
         ],
-      },
+      }),
       dirty: true,
     })),
 
   removeRow: (rowId) =>
     set((s) => ({
-      layout: { ...s.layout, rows: s.layout.rows.filter((r) => r.rowId !== rowId) },
+      layout: normalizeLayoutForMapWidgets({
+        ...s.layout,
+        rows: s.layout.rows.filter((r) => r.rowId !== rowId),
+      }),
       dirty: true,
     })),
 
@@ -195,7 +259,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
         }
         return { ...row, columns };
       });
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   addColumn: (rowId) =>
@@ -208,7 +272,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
             }
           : row,
       );
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   removeColumn: (rowId, columnId) =>
@@ -218,7 +282,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
           ? { ...row, columns: row.columns.filter((c) => c.columnId !== columnId) }
           : row,
       );
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   setColumnSpan: (rowId, columnId, span) =>
@@ -227,11 +291,15 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
         row.rowId === rowId
           ? {
               ...row,
-              columns: row.columns.map((c) => (c.columnId === columnId ? { ...c, span } : c)),
+              columns: row.columns.map((c) => {
+                if (c.columnId !== columnId) return c;
+                if (c.widget?.type === "map") return { ...c, span: 12 };
+                return { ...c, span };
+              }),
             }
           : row,
       );
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   moveRow: (fromIndex, toIndex) =>
@@ -239,7 +307,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
       const rows = [...s.layout.rows];
       const [removed] = rows.splice(fromIndex, 1);
       rows.splice(toIndex, 0, removed);
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   placeWidget: (rowId, columnId, widget) =>
@@ -248,11 +316,15 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
         row.rowId === rowId
           ? {
               ...row,
-              columns: row.columns.map((c) => (c.columnId === columnId ? { ...c, widget } : c)),
+              columns: row.columns.map((c) => {
+                if (c.columnId !== columnId) return c;
+                if (widget.type === "map") return { ...c, span: 12, widget };
+                return { ...c, widget };
+              }),
             }
           : row,
       );
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   moveWidget: (fromRow, fromCol, toRow, toCol) =>
@@ -268,7 +340,13 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
       const displaced = toC.widget;
       fromC.widget = displaced;
       toC.widget = moving;
-      return { layout, dirty: true };
+      if (toC.widget?.type === "map") {
+        toC.span = 12;
+      }
+      if (fromC.widget?.type === "map") {
+        fromC.span = 12;
+      }
+      return { layout: normalizeLayoutForMapWidgets(layout), dirty: true };
     }),
 
   removeWidget: (rowId, columnId) =>
@@ -283,7 +361,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
             }
           : row,
       );
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   updateWidget: (rowId, columnId, widget) =>
@@ -292,11 +370,15 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
         row.rowId === rowId
           ? {
               ...row,
-              columns: row.columns.map((c) => (c.columnId === columnId ? { ...c, widget } : c)),
+              columns: row.columns.map((c) => {
+                if (c.columnId !== columnId) return c;
+                if (widget.type === "map") return { ...c, span: 12, widget };
+                return { ...c, widget };
+              }),
             }
           : row,
       );
-      return { layout: { ...s.layout, rows }, dirty: true };
+      return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),
 
   openDrawer: (rowId, columnId) => set({ drawerOpen: true, drawerTarget: { rowId, columnId } }),

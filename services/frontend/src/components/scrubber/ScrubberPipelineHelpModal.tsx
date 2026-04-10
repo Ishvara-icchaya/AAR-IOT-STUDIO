@@ -217,7 +217,9 @@ function TabPanelKpi() {
     <div style={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
       <p style={{ marginTop: 0 }}>
         KPI output is a structured object: <strong>displayFields</strong> (paths → values for dashboard click/detail) and{" "}
-        <strong>metrics</strong> (numeric paths with units and 1h/24h window flags for runtime history — not written in browser preview).
+        <strong>metrics</strong> (numeric paths with units and 1h/24h window flags for runtime history — not written in browser preview). In
+        the studio, each metric&apos;s field is picked from detected <strong>numeric</strong> leaf attributes on the current sample, not typed
+        free-form.
       </p>
       <JsonBlock
         title="Shape (conceptual)"

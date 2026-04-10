@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useState, type CSSProperties, type Dispatch, type SetStateAction } from "react";
 import type { KpiMetricRow, StudioDraftForm } from "@/types/scrubberStudioForm";
 
 const inp: CSSProperties = {
@@ -23,10 +23,31 @@ const td: CSSProperties = {
 };
 const rowChk: CSSProperties = { display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" };
 
+const pathRefBox: CSSProperties = {
+  fontSize: "0.76rem",
+  lineHeight: 1.45,
+  color: "var(--color-text)",
+  background: "color-mix(in oklab, var(--color-surface-elevated) 92%, transparent)",
+  border: "1px solid var(--color-border)",
+  borderRadius: "var(--radius)",
+  padding: "0.5rem 0.65rem",
+  marginBottom: "0.65rem",
+};
+
 function typeLabel(v: unknown): string {
   if (v === null || v === undefined) return "null";
   if (Array.isArray(v)) return "array";
   return typeof v;
+}
+
+/** Leaf paths whose sample looks numeric — suitable for time-series KPI metrics. */
+function isMetricCandidateSample(v: unknown): boolean {
+  if (typeof v === "number" && Number.isFinite(v)) return true;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v.trim());
+    return Number.isFinite(n);
+  }
+  return false;
 }
 
 export function KpiStepEditor(props: {
@@ -34,10 +55,15 @@ export function KpiStepEditor(props: {
   setForm: Dispatch<SetStateAction<StudioDraftForm>>;
   pathSuggestions: string[];
   pathSamples: Record<string, unknown>;
-  datalistId: string;
+  /** Pipeline “select path” (optional) — shown so KPI paths can be read as `parent.child` from raw root. */
+  selectPath?: string;
 }) {
-  const { form, setForm, pathSuggestions, pathSamples, datalistId } = props;
+  const { form, setForm, pathSuggestions, pathSamples, selectPath } = props;
   const [filter, setFilter] = useState("");
+
+  const metricAttributePaths = useMemo(() => {
+    return pathSuggestions.filter((p) => isMetricCandidateSample(pathSamples[p])).sort((a, b) => a.localeCompare(b));
+  }, [pathSuggestions, pathSamples]);
 
   function toggleDisplay(path: string) {
     setForm((f) => {
@@ -59,8 +85,33 @@ export function KpiStepEditor(props: {
   const q = filter.trim().toLowerCase();
   const paths = q ? pathSuggestions.filter((p) => p.toLowerCase().includes(q)) : pathSuggestions;
 
+  const sp = (selectPath ?? "").trim();
+
   return (
     <>
+      <div style={pathRefBox} role="note" aria-label="Dotted path reference">
+        <div style={{ fontWeight: 600, fontSize: "0.8rem", marginBottom: "0.35rem", color: "var(--color-text)" }}>
+          Parent path (reference)
+        </div>
+        <p style={{ margin: "0 0 0.35rem", color: "var(--color-text-muted)" }}>
+          Use <strong>dotted paths</strong> from the <strong>raw JSON root</strong>: each segment is an object key, joined by{" "}
+          <code style={{ fontSize: "0.85em" }}>.</code> Example: <code style={{ fontSize: "0.85em" }}>payload.attribute</code>{" "}
+          → the <code style={{ fontSize: "0.85em" }}>attribute</code> field inside <code style={{ fontSize: "0.85em" }}>payload</code>
+          . Another: <code style={{ fontSize: "0.85em" }}>readings.temp_c</code>.
+        </p>
+        {sp ? (
+          <p style={{ margin: 0, color: "var(--color-text-muted)" }}>
+            <strong>Select path</strong> (pipeline root) is <code style={{ fontSize: "0.85em" }}>{sp}</code> — paths in the lists
+            below are still <strong>full paths from the raw root</strong> (e.g. if your data is under <code style={{ fontSize: "0.85em" }}>payload</code>, use{" "}
+            <code style={{ fontSize: "0.85em" }}>payload.…</code>).
+          </p>
+        ) : (
+          <p style={{ margin: 0, color: "var(--color-text-muted)" }}>
+            If your telemetry is nested (e.g. <code style={{ fontSize: "0.85em" }}>{`{ "payload": { "attribute": 1 } }`}</code>
+            ), the field path is <code style={{ fontSize: "0.85em" }}>payload.attribute</code>.
+          </p>
+        )}
+      </div>
       <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginTop: 0 }}>
         Choose transformed fields for dashboard detail (display), and numeric paths for KPI time-series. Browser preview does not
         write history or Redis; the worker does at runtime.
@@ -122,6 +173,15 @@ export function KpiStepEditor(props: {
       </div>
 
       <div style={{ fontWeight: 600, fontSize: "0.85rem", margin: "0.85rem 0 0.35rem" }}>KPI metrics (time-series)</div>
+      <p style={{ fontSize: "0.76rem", color: "var(--color-text-muted)", margin: "0 0 0.5rem" }}>
+        Choose from <strong>numeric attributes</strong> detected on the current raw/transform sample (same dotted paths as above). Load or
+        refresh raw JSON if the list is empty.
+      </p>
+      {metricAttributePaths.length === 0 ? (
+        <p className="dash-widget__muted" style={{ fontSize: "0.8rem", margin: "0 0 0.65rem" }}>
+          No numeric leaf fields found — metrics require a number (or numeric string) in the sample.
+        </p>
+      ) : null}
       {form.kpiMetrics.map((row, i) => (
         <div
           key={i}
@@ -136,14 +196,28 @@ export function KpiStepEditor(props: {
           }}
         >
           <label style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", gridColumn: "1 / -1" }}>
-            Field path
-            <input
+            Attribute
+            <select
               style={{ ...inp, width: "100%", marginTop: "0.2rem" }}
-              list={datalistId}
               value={row.fieldPath}
               onChange={(e) => setMetricField(i, { fieldPath: e.target.value })}
-              placeholder="dotted path e.g. readings.temp_c"
-            />
+              disabled={metricAttributePaths.length === 0 && !row.fieldPath}
+            >
+              <option value="">— Select attribute —</option>
+              {row.fieldPath && !metricAttributePaths.includes(row.fieldPath) ? (
+                <option value={row.fieldPath}>{row.fieldPath} (saved — not in current sample)</option>
+              ) : null}
+              {metricAttributePaths.map((p) => {
+                const s = pathSamples[p];
+                const hint = s !== undefined ? ` — ${String(s)}` : "";
+                return (
+                  <option key={p} value={p}>
+                    {p}
+                    {hint.length > 48 ? `${hint.slice(0, 45)}…` : hint}
+                  </option>
+                );
+              })}
+            </select>
           </label>
           <label style={{ ...rowChk, fontSize: "0.82rem" }}>
             <input

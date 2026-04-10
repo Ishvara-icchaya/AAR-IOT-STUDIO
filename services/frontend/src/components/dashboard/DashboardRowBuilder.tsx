@@ -11,6 +11,7 @@ export function DashboardRowBuilder({ row, readOnly }: { row: DashboardRowModel;
   const removeRow = useDashboardBuilderStore((s) => s.removeRow);
   const status = useDashboardBuilderStore((s) => s.status);
   const frozen = status === "frozen";
+  const rowHasMap = row.columns.some((c) => c.widget?.type === "map");
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `sort-row:${row.rowId}`,
@@ -41,8 +42,13 @@ export function DashboardRowBuilder({ row, readOnly }: { row: DashboardRowModel;
           <label>
             Row layout
             <select
-              disabled={frozen || readOnly}
+              disabled={frozen || readOnly || rowHasMap}
               defaultValue=""
+              title={
+                rowHasMap
+                  ? "Change row layout is disabled while this row contains a map (map is always full-width)."
+                  : undefined
+              }
               onChange={(e) => {
                 const v = e.target.value as RowPresetKey | "";
                 if (v) applyRowPreset(row.rowId, v);
@@ -60,7 +66,17 @@ export function DashboardRowBuilder({ row, readOnly }: { row: DashboardRowModel;
           </label>
           {!readOnly && !frozen && (
             <>
-              <button type="button" className="dash-btn dash-btn--small" onClick={() => addColumn(row.rowId)}>
+              <button
+                type="button"
+                className="dash-btn dash-btn--small"
+                disabled={rowHasMap}
+                title={
+                  rowHasMap
+                    ? "A map uses the full row; add another row for more widgets."
+                    : undefined
+                }
+                onClick={() => addColumn(row.rowId)}
+              >
                 + Column
               </button>
               <button type="button" className="dash-btn dash-btn--small dash-btn--danger" onClick={() => removeRow(row.rowId)}>

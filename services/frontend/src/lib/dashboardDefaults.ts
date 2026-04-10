@@ -38,7 +38,15 @@ export function createDefaultWidget(type: string): DashboardWidgetModel {
           longitudeField: "gps.lon",
           kpiFields: [] as string[],
         },
-        config: { autoIncludeGpsObjects: true, excludedSourceIds: [] as string[] },
+        config: {
+          autoIncludeGpsObjects: true,
+          excludedSourceIds: [] as string[],
+          autoFitOnFirstLoad: true,
+          autoFitOnRefresh: false,
+          preserveViewport: true,
+          clusterMarkers: true,
+          maxDirectMarkers: 80,
+        },
       };
     case "text":
       return { ...base, config: { body: "Text" }, binding: {} };

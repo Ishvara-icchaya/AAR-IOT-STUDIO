@@ -41,6 +41,44 @@ def _cget(cfg: dict[str, Any], snake: str, camel: str, default: Any = None) -> A
     return default if v is None else v
 
 
+def _validate_map_row_structure(layout: dict[str, Any]) -> list[str]:
+    """Map widgets must sit alone in a row: one column, span 12."""
+    errs: list[str] = []
+    rows = layout.get("rows") or []
+    if not isinstance(rows, list):
+        return errs
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        cols = row.get("columns") or []
+        if not isinstance(cols, list):
+            continue
+        map_widgets: list[str] = []
+        for col in cols:
+            if not isinstance(col, dict):
+                continue
+            w = col.get("widget")
+            if not isinstance(w, dict) or w.get("type") != "map":
+                continue
+            wid = str(w.get("widgetId") or w.get("widget_id") or "?")
+            map_widgets.append(wid)
+            sp = col.get("span", 12)
+            try:
+                spn = int(sp)
+            except (TypeError, ValueError):
+                spn = 0
+            if spn != 12:
+                errs.append(f"map widget {wid}: column span must be 12 (full width), got {sp}")
+        if not map_widgets:
+            continue
+        if len(cols) != 1:
+            errs.append(
+                "row %s: map widget(s) %s must occupy a row with only one column (no side-by-side columns)"
+                % (i, ", ".join(map_widgets))
+            )
+    return errs
+
+
 def validate_layout_for_save(
     *,
     layout: dict[str, Any],
@@ -83,6 +121,7 @@ def validate_layout_for_save(
             errs.append(f"widget {wid} requires source_id")
     if site_id is None and widgets:
         errs.append("site_id is required when dashboard has widgets")
+    errs.extend(_validate_map_row_structure(layout))
     return errs
 
 
