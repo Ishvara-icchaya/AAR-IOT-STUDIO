@@ -5,7 +5,9 @@ export type DashboardWidgetBinding = {
   sourceId?: string;
   fields?: string[];
   metric?: string;
-  chartType?: "line" | "bar" | "area" | "stacked_bar";
+  chartType?: "line" | "bar" | "area" | "stacked_bar" | "histogram";
+  /** Filter points: `1h` | `24h` | `7d` | `all` (server resolves against X timestamps). */
+  chartTimeWindow?: string;
   xField?: string;
   yField?: string;
   latitudeField?: string;

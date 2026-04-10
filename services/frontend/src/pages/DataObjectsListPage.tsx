@@ -2,6 +2,7 @@ import type { CSSProperties, FormEvent } from "react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "@/api/client";
+import { getScrubberDataObject } from "@/api/scrubber";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
 
@@ -64,6 +65,26 @@ function groupRowsByCreatedDate(rows: DataObjectRow[]): DateGroup[] {
   }));
 }
 
+/** One row per (device_id + name), keeping the most recently updated. */
+function aggregateLatestPerNameDevice(rows: DataObjectRow[]): DataObjectRow[] {
+  const map = new Map<string, DataObjectRow>();
+  for (const r of rows) {
+    const k = `${r.device_id}\0${r.name}`;
+    const prev = map.get(k);
+    if (!prev || new Date(r.updated_at).getTime() > new Date(prev.updated_at).getTime()) {
+      map.set(k, r);
+    }
+  }
+  return [...map.values()].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+}
+
+function pickLatestRow(rows: DataObjectRow[]): DataObjectRow | null {
+  if (rows.length === 0) return null;
+  return rows.reduce((best, r) =>
+    new Date(r.updated_at).getTime() > new Date(best.updated_at).getTime() ? r : best,
+  rows[0]);
+}
+
 /** Compiled `data_object` rows produced by the scrubber worker (`GET /scrubber/data-objects`). */
 export function DataObjectsListPage() {
   const [devices, setDevices] = useState<DeviceRow[]>([]);
@@ -72,6 +93,11 @@ export function DataObjectsListPage() {
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /** `all` = every row (grouped by day, as before). `aggregated` = latest row per device + object name. */
+  const [tableView, setTableView] = useState<"all" | "aggregated">("aggregated");
+  const [lastProcessedOpen, setLastProcessedOpen] = useState(false);
+  const [lastDataDetail, setLastDataDetail] = useState<Awaited<ReturnType<typeof getScrubberDataObject>> | null>(null);
+  const [lastDataLoading, setLastDataLoading] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -105,33 +131,40 @@ export function DataObjectsListPage() {
     void load();
   }, [load]);
 
-  const groupedByDate = useMemo(() => groupRowsByCreatedDate(rows), [rows]);
+  const displayRows = useMemo(
+    () => (tableView === "aggregated" ? aggregateLatestPerNameDevice(rows) : rows),
+    [rows, tableView],
+  );
+  const groupedByDate = useMemo(() => groupRowsByCreatedDate(displayRows), [displayRows]);
+  const latestRow = useMemo(() => pickLatestRow(rows), [rows]);
 
   async function onRefresh(e: FormEvent) {
     e.preventDefault();
     await load();
   }
 
+  async function toggleLastProcessed() {
+    if (!latestRow) return;
+    if (lastProcessedOpen) {
+      setLastProcessedOpen(false);
+      setLastDataDetail(null);
+      return;
+    }
+    setLastProcessedOpen(true);
+    setLastDataDetail(null);
+    setLastDataLoading(true);
+    try {
+      const d = await getScrubberDataObject(latestRow.id);
+      setLastDataDetail(d);
+    } catch {
+      setLastDataDetail(null);
+    } finally {
+      setLastDataLoading(false);
+    }
+  }
+
   return (
-    <PageShell title="View Data_Objects">
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        <strong>Not the same as Scrubber Studio preview.</strong> “Online” in Studio and <strong>Compile preview</strong>{" "}
-        run the transform inside the <strong>API</strong> only — they do <strong>not</strong> insert rows here. This
-        table lists rows written by the <strong>worker-scrubber</strong> service after Kafka handoff.
-      </p>
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        Pipeline: new raw archived → Kafka <code>raw.ingest</code> → <strong>worker-ingest</strong> (must emit{" "}
-        <code>scrubber.input</code>, env <code>KAFKA_EMIT_SCRUBBER_INPUT=true</code>) →{" "}
-        <strong>worker-scrubber</strong> → Postgres <code>data_objects</code>. Publish/save mapping in Studio only
-        updates config; the next ingested raw after that triggers a new row. If this list stays empty while ingest works,
-        check both workers are running and <code>worker-ingest</code> logs for <code>scrubber_input_emitted</code> /{" "}
-        <code>worker-scrubber</code> for <code>data_object_insert</code>.
-      </p>
-      <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        To preview transforms against archived raw bytes, use{" "}
-        <Link to="/scrubber/raw-select">Pick raw sample</Link>. Rows below are grouped by <strong>calendar day (UTC)</strong>{" "}
-        of <code>created_at</code> (newest days first).
-      </p>
+    <PageShell title="View Data Objects">
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       <form onSubmit={onRefresh} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
         <label style={lbl}>
@@ -165,6 +198,79 @@ export function DataObjectsListPage() {
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td colSpan={5} style={tableToolbarRow}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+                  <label style={{ ...lbl, margin: 0 }}>
+                    Table contents
+                    <select
+                      value={tableView}
+                      onChange={(e) => setTableView(e.target.value as "all" | "aggregated")}
+                      style={{ ...inp, minWidth: "16rem" }}
+                    >
+                      <option value="aggregated">Latest per data object (device + name)</option>
+                      <option value="all">All data objects (full history)</option>
+                    </select>
+                  </label>
+                  <button type="button" style={btn} disabled={!latestRow || loading} onClick={() => void toggleLastProcessed()}>
+                    {lastProcessedOpen ? "Hide last processed" : "View last processed data"}
+                  </button>
+                  <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", maxWidth: "28rem", lineHeight: 1.4 }}>
+                    Last processed = row with newest <code>updated_at</code> among the current device filter. Opens below.
+                  </span>
+                </div>
+              </td>
+            </tr>
+            {lastProcessedOpen && latestRow ? (
+              <tr>
+                <td colSpan={5} style={lastProcessedPanel}>
+                  <div style={{ marginBottom: "0.65rem" }}>
+                    <strong style={{ fontSize: "0.95rem" }}>Last processed data</strong>
+                    <div style={{ fontSize: "0.82rem", color: "var(--color-text-muted)", marginTop: "0.25rem" }}>
+                      <strong>{latestRow.name}</strong> · <code style={{ fontSize: "0.78rem" }}>{latestRow.id}</code>
+                      <br />
+                      Updated {new Date(latestRow.updated_at).toLocaleString()}
+                    </div>
+                  </div>
+                  {lastDataLoading ? (
+                    <p style={{ color: "var(--color-text-muted)", margin: 0 }}>Loading latest from API…</p>
+                  ) : lastDataDetail ? (
+                    <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                      <div>
+                        <div style={detailHdr}>Payload</div>
+                        <pre style={{ ...pre, maxHeight: "min(50vh, 360px)" }}>{JSON.stringify(lastDataDetail.payload, null, 2)}</pre>
+                      </div>
+                      <div>
+                        <div style={detailHdr}>KPI (kpi_json)</div>
+                        <pre style={{ ...pre, maxHeight: "min(40vh, 280px)" }}>{JSON.stringify(lastDataDetail.kpi_json, null, 2)}</pre>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+                      <div>
+                        <div style={detailHdr}>Payload (list row)</div>
+                        <pre style={{ ...pre, maxHeight: "min(50vh, 360px)" }}>{JSON.stringify(latestRow.payload, null, 2)}</pre>
+                      </div>
+                      <div>
+                        <div style={detailHdr}>KPI (list row)</div>
+                        <pre style={{ ...pre, maxHeight: "min(40vh, 280px)" }}>{JSON.stringify(latestRow.kpi_json, null, 2)}</pre>
+                      </div>
+                    </div>
+                  )}
+                  {(lastDataDetail?.health_status ?? latestRow.health_status) ? (
+                    <p style={{ fontSize: "0.85rem", marginTop: "0.75rem", marginBottom: 0 }}>
+                      <strong>Health</strong>:{" "}
+                      <span style={{ color: healthColor(lastDataDetail?.health_status ?? latestRow.health_status) }}>
+                        {lastDataDetail?.health_status ?? latestRow.health_status}
+                      </span>
+                      {lastDataDetail?.health_message || latestRow.health_message ? (
+                        <span> — {lastDataDetail?.health_message ?? latestRow.health_message}</span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                </td>
+              </tr>
+            ) : null}
             {groupedByDate.map((group) => (
               <Fragment key={group.dateKey}>
                 <tr>
@@ -299,7 +405,7 @@ const btn: CSSProperties = {
   border: "none",
   borderRadius: "var(--radius)",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   fontFamily: "inherit",
   fontWeight: 600,
   cursor: "pointer",
@@ -331,6 +437,20 @@ const dateGroupRow: CSSProperties = {
   fontSize: "0.82rem",
 };
 
+const tableToolbarRow: CSSProperties = {
+  padding: "0.65rem 0.5rem",
+  background: "color-mix(in oklab, var(--color-surface-elevated) 78%, var(--color-bg) 22%)",
+  borderBottom: "1px solid var(--color-border)",
+  verticalAlign: "middle",
+};
+
+const lastProcessedPanel: CSSProperties = {
+  padding: "0.85rem 0.55rem",
+  background: "color-mix(in oklab, var(--color-bg) 88%, var(--color-surface) 12%)",
+  borderBottom: "1px solid var(--color-border)",
+  verticalAlign: "top",
+};
+
 const detailHdr: CSSProperties = { fontWeight: 600, fontSize: "0.8rem", marginBottom: "0.25rem" };
 const pre: CSSProperties = {
   margin: 0,
@@ -341,3 +461,4 @@ const pre: CSSProperties = {
   wordBreak: "break-word",
   fontFamily: "ui-monospace, monospace",
 };
+

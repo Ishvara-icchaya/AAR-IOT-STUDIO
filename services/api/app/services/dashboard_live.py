@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, select
@@ -17,6 +17,8 @@ from app.models.workflow_result_object import WorkflowResultObject
 from app.core.dashboard_runtime import merge_layout_settings
 from app.schemas.dashboard_layout import iter_widgets
 from app.services.dashboard_health import derive_blink_mode, extract_health_fields
+from app.services.map_eligibility import map_eligible_data_object, map_eligible_result_object
+from app.services.map_runtime_service import markers_manual_sources, markers_with_redis_first
 
 
 def _bget(b: dict[str, Any], snake: str, camel: str) -> Any:
@@ -42,6 +44,65 @@ def _get_path(obj: Any, path: str) -> Any:
         else:
             return None
     return cur
+
+
+def _resolve_kpi_metric_value(merged: dict[str, Any], metric: str) -> Any:
+    """Resolve KPI widget metric path.
+
+    The default metric name is ``value``. Many data_object payloads do not have a top-level ``value`` key:
+    scrubber output often uses named fields, and ``kpi_json`` is merged so ``metrics`` / ``displayFields``
+    appear at the top level. When the configured metric is exactly ``value`` and no path matches, we try
+    those structures and then a single top-level numeric scalar.
+    """
+    m = str(metric).strip() or "value"
+    v = _get_path(merged, m)
+    if v is None:
+        v = merged.get(m)
+    if v is not None:
+        return v
+    if m != "value":
+        return None
+    metrics = merged.get("metrics")
+    if isinstance(metrics, dict) and metrics:
+        for meta in metrics.values():
+            if not isinstance(meta, dict):
+                continue
+            if meta.get("value") is not None:
+                return meta.get("value")
+            if meta.get("raw") is not None:
+                return meta.get("raw")
+    # displayFields: path -> value (first non-container)
+    df = merged.get("displayFields")
+    if isinstance(df, dict) and df:
+        for x in df.values():
+            if x is not None and not isinstance(x, (dict, list)):
+                return x
+    skip = frozenset(
+        {
+            "health_status",
+            "health_message",
+            "health_blink",
+            "health_severity",
+            "offline",
+            "displayFields",
+            "metrics",
+            "_kpi",
+        }
+    )
+    for key, val in merged.items():
+        if key in skip or str(key).startswith("_"):
+            continue
+        if isinstance(val, bool):
+            continue
+        if isinstance(val, (int, float)):
+            return val
+        if isinstance(val, str) and val.strip():
+            try:
+                float(val)
+                return val
+            except (TypeError, ValueError):
+                pass
+    return None
 
 
 def _coerce_float(v: Any) -> float | None:
@@ -105,12 +166,79 @@ def _table_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [dict(payload)] if isinstance(payload, dict) else []
 
 
-def _chart_series(payload: dict[str, Any], xf: str, yf: str) -> dict[str, Any]:
+_CHART_TIME_KEYS = ("t", "time", "ts", "timestamp", "created_at", "updated_at", "x", "date")
+_CHART_Y_FALLBACKS = ("value", "raw", "val", "v", "reading", "measurement", "count")
+
+
+def _point_field(p: dict[str, Any], key: str) -> Any:
+    if not key:
+        return None
+    v = _get_path(p, key)
+    if v is not None:
+        return v
+    return p.get(key)
+
+
+def _first_numeric_field_key(sample: dict[str, Any]) -> str | None:
+    skip = frozenset({"health_status", "health_message", "health_blink", "health_severity", "offline"})
+    for k, v in sample.items():
+        ks = str(k)
+        if ks in skip or ks.startswith("_"):
+            continue
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return ks
+        if isinstance(v, str) and v.strip():
+            try:
+                float(v)
+                return ks
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _chart_series_from_points(
+    pts: list[dict[str, Any]], xf: str, yf: str
+) -> tuple[list[Any], list[Any], str, str]:
+    """Build x/y arrays from point dicts; fall back to common time / value keys when configured fields are empty."""
+    xs = [_point_field(p, xf) for p in pts]
+    ys = [_point_field(p, yf) for p in pts]
+    xf_out, yf_out = xf, yf
+
+    if xs and all(v is None for v in xs):
+        for cand in _CHART_TIME_KEYS:
+            if cand == xf:
+                continue
+            trial = [_point_field(p, cand) for p in pts]
+            if trial and not all(v is None for v in trial):
+                xs, xf_out = trial, cand
+                break
+
+    if ys and all(v is None for v in ys):
+        seen: set[str] = set()
+        for cand in (yf, *_CHART_Y_FALLBACKS):
+            ck = str(cand) if cand is not None else ""
+            if ck in seen:
+                continue
+            seen.add(ck)
+            trial = [_point_field(p, cand) for p in pts]
+            if trial and not all(v is None for v in trial):
+                ys, yf_out = trial, cand
+                break
+        if ys and all(v is None for v in ys) and pts:
+            fk = _first_numeric_field_key(pts[0])
+            if fk:
+                ys = [_point_field(p, fk) for p in pts]
+                yf_out = fk
+
+    return xs, ys, xf_out, yf_out
+
+
+def _chart_series(payload: dict[str, Any], xf: str, yf: str) -> tuple[dict[str, Any], str, str]:
     pts = payload.get("points") or payload.get("series")
     if isinstance(pts, list) and pts and isinstance(pts[0], dict):
-        xs = [_get_path(p, xf) if _get_path(p, xf) is not None else p.get(xf) for p in pts]
-        ys = [_get_path(p, yf) if _get_path(p, yf) is not None else p.get(yf) for p in pts]
-        return {"x": xs, "y": ys}
+        plist = [p for p in pts if isinstance(p, dict)]
+        xs, ys, xf_out, yf_out = _chart_series_from_points(plist, xf, yf)
+        return {"x": xs, "y": ys}, xf_out, yf_out
     xv = _get_path(payload, xf)
     yv = _get_path(payload, yf)
     if xv is None:
@@ -118,8 +246,67 @@ def _chart_series(payload: dict[str, Any], xf: str, yf: str) -> dict[str, Any]:
     if yv is None:
         yv = payload.get(yf)
     if isinstance(xv, list) and isinstance(yv, list) and len(xv) == len(yv):
-        return {"x": list(xv), "y": list(yv)}
-    return {"x": [xv], "y": [yv]}
+        return {"x": list(xv), "y": list(yv)}, xf, yf
+    return {"x": [xv], "y": [yv]}, xf, yf
+
+
+def _parse_time_value(v: Any) -> datetime | None:
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    if isinstance(v, (int, float)):
+        ts = float(v)
+        if ts > 1e12:
+            ts /= 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc)
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        try:
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            return datetime.fromisoformat(s)
+        except ValueError:
+            return None
+    return None
+
+
+def _filter_merged_points_by_time(merged: dict[str, Any], xf: str, window: str) -> dict[str, Any]:
+    """Keep only points whose X time is within the window ending at now (trends / worker timeseries)."""
+    w = (window or "").strip().lower()
+    if w in ("", "all", "max", "full"):
+        return merged
+    if w == "1h":
+        delta = timedelta(hours=1)
+    elif w == "24h":
+        delta = timedelta(hours=24)
+    elif w == "7d":
+        delta = timedelta(days=7)
+    else:
+        delta = timedelta(hours=24)
+    pts = merged.get("points") or merged.get("series")
+    if not isinstance(pts, list) or not pts:
+        return merged
+    now = datetime.now(timezone.utc)
+    cutoff = now - delta
+    key = "points" if merged.get("points") is not None else "series"
+    out: list[dict[str, Any]] = []
+    for p in pts:
+        if not isinstance(p, dict):
+            continue
+        tv = _parse_time_value(_point_field(p, xf))
+        if tv is None:
+            out.append(p)
+            continue
+        if tv.tzinfo is None:
+            tv = tv.replace(tzinfo=timezone.utc)
+        if tv >= cutoff:
+            out.append(p)
+    m2 = dict(merged)
+    m2[key] = out
+    return m2
 
 
 def _aggregate_health_site(
@@ -241,6 +428,17 @@ def _map_markers_site(
         payload["_kpi"] = dict(row.kpi_json or {})
         if row.health_status:
             payload["health_status"] = row.health_status
+        if not map_eligible_data_object(
+            lifecycle_status=row.lifecycle_status,
+            payload=payload,
+            kpi_json=dict(row.kpi_json or {}),
+            has_gps=row.has_gps,
+            has_kpi=row.has_kpi,
+            has_health=row.has_health,
+            lat_field=latf,
+            lon_field=lonf,
+        ):
+            continue
         lat, lon = _extract_lat_lon(payload, latf, lonf)
         if lat is None or lon is None:
             continue
@@ -298,6 +496,8 @@ def _map_markers_site(
         payload = dict(row.payload_json or {})
         if row.health_status:
             payload["health_status"] = row.health_status
+        if not map_eligible_result_object(payload=payload, lat_field=latf, lon_field=lonf):
+            continue
         lat, lon = _extract_lat_lon(payload, latf, lonf)
         if lat is None or lon is None:
             continue
@@ -334,6 +534,127 @@ def _map_markers_site(
             }
         )
     return markers
+
+
+def build_map_marker_for_source(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID,
+    source_type: str,
+    source_id: uuid.UUID,
+    latf: str,
+    lonf: str,
+    kpi_fields: list[str],
+    title_field: str | None,
+    health_field: str | None,
+) -> dict[str, Any] | None:
+    """Single marker for manual multiselect (same shape as _map_markers_site rows)."""
+    st = str(source_type).lower()
+    if st == "data_object":
+        row = db.get(DataObject, source_id)
+        if not row or row.customer_id != customer_id or row.site_id != site_id:
+            return None
+        payload = dict(row.payload or {})
+        payload["_kpi"] = dict(row.kpi_json or {})
+        if row.health_status:
+            payload["health_status"] = row.health_status
+        if not map_eligible_data_object(
+            lifecycle_status=row.lifecycle_status,
+            payload=payload,
+            kpi_json=dict(row.kpi_json or {}),
+            has_gps=row.has_gps,
+            has_kpi=row.has_kpi,
+            has_health=row.has_health,
+            lat_field=latf,
+            lon_field=lonf,
+        ):
+            return None
+        lat, lon = _extract_lat_lon(payload, latf, lonf)
+        if lat is None or lon is None:
+            return None
+        device = db.get(Device, row.device_id)
+        device_name = device.name if device else None
+        site = db.get(Site, row.site_id)
+        site_name = site.name if site else None
+        hf_source = payload
+        if health_field and health_field != "health_status":
+            hf_source = {**payload, "health_status": _get_path(payload, health_field)}
+        hf = extract_health_fields(hf_source)
+        if isinstance(hf.get("health_status"), str) is False and row.health_status:
+            hf["health_status"] = row.health_status
+        blink = derive_blink_mode(
+            health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
+            health_blink=hf.get("health_blink") if isinstance(hf.get("health_blink"), bool) else None,
+            health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
+            offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
+        )
+        merged = {**payload, **payload.get("_kpi", {})}
+        kpis = {str(k): _get_path(merged, str(k)) for k in kpi_fields}
+        title = row.name
+        if title_field:
+            tv = _get_path(payload, title_field)
+            if tv is not None:
+                title = str(tv)
+        hmsg = row.health_message or payload.get("health_message")
+        return {
+            "source_type": "data_object",
+            "source_id": str(row.id),
+            "display_name": title,
+            "device_name": device_name,
+            "site_name": site_name,
+            "latitude": lat,
+            "longitude": lon,
+            "kpis": kpis,
+            "health_status": hf.get("health_status") or row.health_status,
+            "health_message": str(hmsg) if hmsg else None,
+            "blink_mode": blink,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+
+    if st == "result_object":
+        row = db.get(WorkflowResultObject, source_id)
+        if not row or row.customer_id != customer_id or row.site_id != site_id:
+            return None
+        payload = dict(row.payload_json or {})
+        if row.health_status:
+            payload["health_status"] = row.health_status
+        if not map_eligible_result_object(payload=payload, lat_field=latf, lon_field=lonf):
+            return None
+        lat, lon = _extract_lat_lon(payload, latf, lonf)
+        if lat is None or lon is None:
+            return None
+        site = db.get(Site, row.site_id)
+        site_name = site.name if site else None
+        hf = extract_health_fields(payload)
+        blink = derive_blink_mode(
+            health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
+            health_blink=hf.get("health_blink") if isinstance(hf.get("health_blink"), bool) else None,
+            health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
+            offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
+        )
+        kpis = {str(k): _get_path(payload, str(k)) for k in kpi_fields}
+        title = row.result_object_name
+        if title_field:
+            tv = _get_path(payload, title_field)
+            if tv is not None:
+                title = str(tv)
+        hmsg = payload.get("health_message")
+        return {
+            "source_type": "result_object",
+            "source_id": str(row.id),
+            "display_name": title,
+            "device_name": None,
+            "site_name": site_name,
+            "latitude": lat,
+            "longitude": lon,
+            "kpis": kpis,
+            "health_status": hf.get("health_status") or row.health_status,
+            "health_message": str(hmsg) if hmsg else None,
+            "blink_mode": blink,
+            "updated_at": row.created_at.isoformat() if row.created_at else None,
+        }
+    return None
 
 
 def resolve_widget_data(
@@ -441,29 +762,70 @@ def resolve_widget_data(
         title_field = str(title_field) if title_field else None
         health_field = binding.get("health_field") or binding.get("healthField")
         health_field = str(health_field) if health_field else None
+        included_raw = config.get("included_sources") or config.get("includedSources")
 
-        if auto and dashboard_site_id:
-            markers = _map_markers_site(
+        if (
+            not auto
+            and dashboard_site_id
+            and isinstance(included_raw, list)
+            and len(included_raw) > 0
+        ):
+            markers = markers_manual_sources(
                 db,
                 customer_id=customer_id,
                 site_id=dashboard_site_id,
-                latf=latf,
-                lonf=lonf,
+                included=included_raw,
+                lat_field=latf,
+                lon_field=lonf,
+                kpi_fields=kpi_fields,
+                title_field=title_field,
+                health_field=health_field,
+                pg_single_marker_fn=build_map_marker_for_source,
+            )
+            data_ms: dict[str, Any] = {
+                "mode": "multi",
+                "latitude_field": latf,
+                "longitude_field": lonf,
+                "markers": markers,
+                "manual_sources": True,
+                "site_id": str(dashboard_site_id),
+            }
+            if len(markers) == 0:
+                data_ms["degraded"] = True
+                data_ms["warning"] = (
+                    "No markers resolved for the selected sources (check eligibility and GPS fields)."
+                )
+            return {
+                "widget_id": wid,
+                "type": wtype,
+                "title": title,
+                "data": data_ms,
+            }
+
+        if auto and dashboard_site_id:
+            markers = markers_with_redis_first(
+                db,
+                customer_id=customer_id,
+                site_id=dashboard_site_id,
+                lat_field=latf,
+                lon_field=lonf,
                 kpi_fields=kpi_fields,
                 excluded=excluded,
                 title_field=title_field,
                 health_field=health_field,
+                pg_markers_fn=_map_markers_site,
             )
             data: dict[str, Any] = {
                 "mode": "multi",
                 "latitude_field": latf,
                 "longitude_field": lonf,
                 "markers": markers,
+                "site_id": str(dashboard_site_id),
             }
             if len(markers) == 0:
                 data["degraded"] = True
                 data["warning"] = (
-                    "No GPS-capable objects for this site with the configured latitude/longitude fields."
+                    "No map-eligible objects for this site (need GPS plus display/KPI/health)."
                 )
             return {
                 "widget_id": wid,
@@ -524,6 +886,7 @@ def resolve_widget_data(
             "health_message": str(hmsg) if hmsg else None,
             "blink_mode": blink,
             "updated_at": updated_at.isoformat() if updated_at else None,
+            "site_id": str(dashboard_site_id) if dashboard_site_id else None,
         }
         if lat is None or lon is None:
             single_data["degraded"] = True
@@ -605,11 +968,15 @@ def resolve_widget_data(
         return out
 
     if wtype == "kpi":
-        metric = _bget(binding, "metric", "metric") or "value"
-        v = _get_path(merged, str(metric))
-        if v is None:
-            v = merged.get(metric)
-        kpi_data: dict[str, Any] = {**base, "value": v, "metric": metric}
+        metric = str(_bget(binding, "metric", "metric") or "value").strip() or "value"
+        v = _resolve_kpi_metric_value(merged, metric)
+        device_name: str | None = None
+        if str(st) == "data_object":
+            kpi_do = db.get(DataObject, sid)
+            if kpi_do:
+                kpi_dev = db.get(Device, kpi_do.device_id)
+                device_name = kpi_dev.name if kpi_dev else None
+        kpi_data: dict[str, Any] = {**base, "value": v, "metric": metric, "device_name": device_name}
         if v is None:
             kpi_data["degraded"] = True
             kpi_data["warning"] = f"Metric {metric!r} could not be resolved from the current source payload."
@@ -660,22 +1027,28 @@ def resolve_widget_data(
         xf = str(_bget(binding, "x_field", "xField") or "t")
         yf = str(_bget(binding, "y_field", "yField") or "value")
         ct = str(_bget(binding, "chart_type", "chartType") or "line")
-        ser = _chart_series(merged, xf, yf)
+        tw = str(_bget(binding, "chart_time_window", "chartTimeWindow") or "24h")
+        work = _filter_merged_points_by_time(merged, xf, tw)
+        ser, xf_res, yf_res = _chart_series(work, xf, yf)
         ys = ser.get("y") if isinstance(ser.get("y"), list) else []
         xs = ser.get("x") if isinstance(ser.get("x"), list) else []
         chart_data: dict[str, Any] = {
             **base,
             "chart_type": ct,
-            "x_field": xf,
-            "y_field": yf,
+            "x_field": xf_res,
+            "y_field": yf_res,
+            "chart_time_window": tw,
             "series": ser,
         }
         if not xs and not ys:
             chart_data["degraded"] = True
             chart_data["warning"] = "No chart series could be built from the source with the configured x/y fields."
-        elif ys and all(x is None for x in ys):
+        elif ys and all(v is None for v in ys):
             chart_data["degraded"] = True
-            chart_data["warning"] = "All Y values are empty for the configured y field."
+            chart_data["warning"] = (
+                "All Y values are empty for the configured y field. "
+                "Pick a Y axis attribute that exists on each point (or use a payload with numeric fields)."
+            )
         return {
             "widget_id": wid,
             "type": wtype,

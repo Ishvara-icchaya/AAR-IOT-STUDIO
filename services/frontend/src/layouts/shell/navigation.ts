@@ -22,7 +22,7 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
     id: "scrubber",
     label: "Scrubber",
     items: [
-      { to: "/scrubber/data-objects", label: "View Data_Objects" },
+      { to: "/scrubber/data-objects", label: "View Data Objects" },
       { to: "/scrubber/stale-ingestion", label: "Mapping without ingestion" },
       { to: "/scrubber/raw-select", label: "Pick raw sample" },
     ],

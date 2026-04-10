@@ -15,6 +15,7 @@ from app.models.published_service_delivery_log import PublishedServiceDeliveryLo
 from app.models.raw_data_object import RawDataObject
 from app.models.result_object_definition import ResultObjectDefinition
 from app.models.site import Site
+from app.models.static_ingestion import StaticIngestion
 from app.models.user import User
 from app.models.user_site import UserSite
 from app.models.workflow import Workflow
@@ -44,6 +45,7 @@ __all__ = [
     "RawDataObject",
     "ResultObjectDefinition",
     "Site",
+    "StaticIngestion",
     "User",
     "UserSite",
     "Workflow",

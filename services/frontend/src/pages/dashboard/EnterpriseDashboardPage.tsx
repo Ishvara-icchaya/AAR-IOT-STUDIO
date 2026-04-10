@@ -4,6 +4,7 @@ import * as dashApi from "@/api/dashboard";
 import type { DashboardLiveDTO } from "@/types/dashboard";
 import { DashboardLiveRenderer } from "@/components/dashboard/DashboardLiveRenderer";
 import { DashboardLiveToolbar } from "@/components/dashboard/DashboardLiveToolbar";
+import { useOpsShellOptional } from "@/contexts/OpsShellContext";
 import { parseLiveRefreshIntervalSec } from "@/lib/dashboardLiveSettings";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
@@ -13,6 +14,7 @@ export function EnterpriseDashboardPage() {
   const [err, setErr] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
   const captureRef = useRef<HTMLDivElement>(null);
+  const ops = useOpsShellOptional();
 
   const load = useCallback(async () => {
     setErr(null);
@@ -30,6 +32,12 @@ export function EnterpriseDashboardPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Reload when the shell context bar Refresh is used (same pattern as workflow / devices). */
+  useEffect(() => {
+    if (!ops || ops.refreshToken === 0) return;
+    void load();
+  }, [ops?.refreshToken, load, ops]);
 
   useEffect(() => {
     if (paused) return;
@@ -57,7 +65,22 @@ export function EnterpriseDashboardPage() {
   const layout = dash?.layout;
 
   return (
-    <PageShell title="Enterprise Dashboard" className="dash-live-page">
+    <PageShell
+      title="Enterprise Dashboard"
+      className="dash-live-page"
+      actions={
+        <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          <Link to="/dashboard/list" className="dash-toolbar-link">
+            All dashboards
+          </Link>
+          {payload?.primary_dashboard_id ? (
+            <Link to={`/dashboard/${String(payload.primary_dashboard_id)}/live`} className="dash-toolbar-link">
+              Open primary live
+            </Link>
+          ) : null}
+        </span>
+      }
+    >
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       {payload && layout != null ? (
         <>

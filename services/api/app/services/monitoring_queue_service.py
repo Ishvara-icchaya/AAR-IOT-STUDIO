@@ -15,9 +15,9 @@ log = logging.getLogger(__name__)
 TOPIC_QUEUE_ROWS: tuple[dict[str, Any], ...] = (
     {"topic": "raw.ingest", "groups": ("worker-ingest",)},
     {"topic": "scrubber.input", "groups": ("worker-scrubber",)},
-    {"topic": "data_object.created", "groups": ("worker-workflow", "worker-publish")},
+    {"topic": "data_object.created", "groups": ("worker-workflow", "worker-publish", "worker-map-aggregator")},
     {"topic": "workflow_object.created", "groups": ("worker-workflow", "worker-publish")},
-    {"topic": "result_object.created", "groups": ("worker-publish",)},
+    {"topic": "result_object.created", "groups": ("worker-publish", "worker-map-aggregator")},
     {"topic": "publish.events", "groups": ()},
     {"topic": "alerts.events", "groups": ()},
 )

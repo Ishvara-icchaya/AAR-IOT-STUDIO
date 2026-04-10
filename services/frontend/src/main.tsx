@@ -5,6 +5,7 @@ import { AuthProvider } from "@/auth/AuthContext";
 import App from "./App";
 import { dbg } from "./lib/debug";
 import "./index.css";
+import "./styles/ops-theme.css";
 
 dbg("main.tsx bootstrap", { api: import.meta.env.VITE_API_BASE_URL, dev: import.meta.env.DEV });
 

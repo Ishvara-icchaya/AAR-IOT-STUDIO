@@ -236,7 +236,7 @@ const btn: CSSProperties = {
   padding: "0.45rem 0.75rem",
   borderRadius: "var(--radius)",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   fontWeight: 600,
 };
 const link: CSSProperties = { color: "var(--color-accent)", fontSize: "0.8rem" };

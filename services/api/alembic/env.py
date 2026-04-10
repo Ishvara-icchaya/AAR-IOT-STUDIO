@@ -26,6 +26,7 @@ from app.models import (  # noqa: F401
     RawDataObject,
     ResultObjectDefinition,
     Site,
+    StaticIngestion,
     User,
     UserSite,
     Workflow,

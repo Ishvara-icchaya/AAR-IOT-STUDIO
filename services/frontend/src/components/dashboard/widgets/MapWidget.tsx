@@ -5,6 +5,7 @@ import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { useDashboardLiveRuntime } from "@/components/dashboard/DashboardLiveContext";
 import { blinkModeClass, healthColorVar } from "@/lib/healthBlink";
 import { OFFLINE_FALLBACK_MAP_STYLE } from "@/lib/dashboardMapStyle";
+import { getMapObjectDetail } from "@/api/dashboard";
 
 type MarkerRec = {
   latitude: number;
@@ -17,6 +18,8 @@ type MarkerRec = {
   health_message?: string;
   blink_mode?: string;
   updated_at?: string;
+  source_type?: string;
+  source_id?: string;
 };
 
 export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
@@ -39,6 +42,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     setStyleNotice(null);
 
     const list: MarkerRec[] = [];
+    const siteId = typeof d.site_id === "string" ? d.site_id : undefined;
     if (mode === "multi" && Array.isArray(d.markers)) {
       for (const m of d.markers as MarkerRec[]) {
         if (typeof m.latitude === "number" && typeof m.longitude === "number") list.push(m);
@@ -90,13 +94,32 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         el.style.cursor = "pointer";
         el.title = String(m.display_name ?? "");
 
-        const popupHtml = popupContent(m);
-        const popup = new maplibregl.Popup({ offset: 12 }).setHTML(popupHtml);
+        const popup = new maplibregl.Popup({ offset: 12 }).setHTML(popupContent(m));
 
         const marker = new maplibregl.Marker({ element: el })
           .setLngLat([m.longitude, m.latitude])
           .setPopup(popup)
           .addTo(map);
+        el.addEventListener("click", () => {
+          if (!siteId || !m.source_type || !m.source_id) return;
+          popup.setHTML('<p class="dash-widget__muted" style="margin:0">Loading…</p>');
+          void (async () => {
+            try {
+              const r = await getMapObjectDetail({
+                siteId,
+                sourceType: String(m.source_type),
+                sourceId: String(m.source_id),
+              });
+              if (r?.detail && typeof r.detail === "object") {
+                popup.setHTML(popupContentFromDetail(m, r.detail as Record<string, unknown>));
+              } else {
+                popup.setHTML(popupContent(m));
+              }
+            } catch {
+              popup.setHTML(popupContent(m));
+            }
+          })();
+        });
         markersRef.current.push(marker);
         bounds.extend([m.longitude, m.latitude]);
       }
@@ -117,7 +140,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       map.remove();
       mapRef.current = null;
     };
-  }, [block.widget_id, mode, JSON.stringify(d.markers), d.latitude, d.longitude, mapStyleUrl]);
+  }, [block.widget_id, mode, JSON.stringify(d.markers), d.latitude, d.longitude, d.site_id, mapStyleUrl]);
 
   if (d.error) {
     return (
@@ -161,4 +184,47 @@ function popupContent(m: MarkerRec): string {
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function popupContentFromDetail(m: MarkerRec, detail: Record<string, unknown>): string {
+  const title = m.display_name || m.device_name || "Object";
+  const h = (detail.health as Record<string, unknown> | undefined) || {};
+  const kl = (detail.kpi_latest as Record<string, unknown> | undefined) || {};
+  const df = (detail.display_fields as Record<string, unknown> | undefined) || {};
+  const win = (detail.kpi_windows_redis as Record<string, unknown> | undefined) || {};
+  const parts: string[] = [];
+  parts.push(`<strong>${escapeHtml(title)}</strong>`);
+  if (m.site_name) parts.push(`<div style="opacity:.8;font-size:12px">${escapeHtml(m.site_name)}</div>`);
+  const hs = (h.health_status as string | undefined) || m.health_status;
+  if (hs) parts.push(`<div>Health: <strong>${escapeHtml(hs)}</strong></div>`);
+  const hm = h.health_message as string | undefined;
+  if (hm) parts.push(`<div style="font-size:12px;opacity:.9">${escapeHtml(hm)}</div>`);
+  if (Object.keys(df).length) {
+    parts.push('<div style="margin-top:6px;font-size:12px"><em>Display</em></div>');
+    for (const [k, v] of Object.entries(df).slice(0, 12)) {
+      parts.push(`<div>${escapeHtml(k)}: ${escapeHtml(String(v ?? "—"))}</div>`);
+    }
+  }
+  if (Object.keys(kl).length) {
+    parts.push('<div style="margin-top:6px;font-size:12px"><em>KPI (latest)</em></div>');
+    for (const [k, v] of Object.entries(kl).slice(0, 12)) {
+      parts.push(`<div><strong>${escapeHtml(k)}</strong>: ${escapeHtml(String(v ?? "—"))}</div>`);
+    }
+  }
+  const w1h = win["1h"] as Record<string, unknown> | undefined;
+  const w24 = win["24h"] as Record<string, unknown> | undefined;
+  if (w1h && Object.keys(w1h).length) {
+    parts.push('<div style="margin-top:6px;font-size:11px;opacity:.9"><em>Redis 1h windows</em></div>');
+    for (const [k, arr] of Object.entries(w1h).slice(0, 6)) {
+      parts.push(`<div style="font-size:11px">${escapeHtml(k)}: ${escapeHtml(JSON.stringify(arr).slice(0, 120))}</div>`);
+    }
+  }
+  if (w24 && Object.keys(w24).length) {
+    parts.push('<div style="margin-top:6px;font-size:11px;opacity:.9"><em>Redis 24h windows</em></div>');
+    for (const [k, arr] of Object.entries(w24).slice(0, 6)) {
+      parts.push(`<div style="font-size:11px">${escapeHtml(k)}: ${escapeHtml(JSON.stringify(arr).slice(0, 120))}</div>`);
+    }
+  }
+  parts.push(`<div style="opacity:.75;font-size:11px;margin-top:6px">Runtime detail API</div>`);
+  return `<div style="min-width:220px;max-width:320px;color:#111">${parts.join("")}</div>`;
 }

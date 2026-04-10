@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch, getToken, setToken } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
+import { LoginHeroGraphic } from "@/components/login/LoginHeroGraphic";
 import { dbg } from "@/lib/debug";
 
 type TokenResponse = { access_token: string; token_type: string };
@@ -38,38 +39,70 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <h1>Sign in</h1>
-        <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-          Default bootstrap: <code>admin@example.com</code> / <code>admin123</code> (change via env)
-        </p>
-        <form onSubmit={onSubmit}>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            required
-          />
-          <label htmlFor="pass">Password</label>
-          <input
-            id="pass"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-          <button type="submit">Sign in</button>
-        </form>
-        {msg && (
-          <p style={{ marginTop: "1rem", color: "#f66", fontSize: "0.9rem" }}>
-            {msg}
+    <div className="login-page login-page--split">
+      <div className="login-page__brand">
+        <div className="login-page__brand-mesh" aria-hidden />
+        <div className="login-page__brand-inner">
+          <div className="login-page__brand-mark">
+            <span className="login-page__brand-icon" aria-hidden>
+              <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="4" y="6" width="10" height="20" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <rect x="18" y="10" width="10" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" opacity="0.85" />
+                <path d="M14 16h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span className="login-page__brand-name">AAR IoT Studio</span>
+          </div>
+          <div className="login-page__hero-wrap">
+            <LoginHeroGraphic />
+          </div>
+          <p className="login-page__tagline">
+            Connect devices, pipelines, and dashboards in one secure workspace.
           </p>
-        )}
+        </div>
+      </div>
+
+      <div className="login-page__form">
+        <div className="login-card login-card--signin">
+          <h1 className="login-card-title">Sign in</h1>
+          <p className="login-card-subtitle">
+            Default bootstrap: <code>admin@example.com</code> / <code>admin123</code> (change via env)
+          </p>
+          <form className="login-form" onSubmit={onSubmit}>
+            <div className="login-field">
+              <label htmlFor="email">Email</label>
+              <div className="login-input-shell">
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                  required
+                  placeholder="you@company.com"
+                />
+              </div>
+            </div>
+            <div className="login-field">
+              <label htmlFor="pass">Password</label>
+              <div className="login-input-shell">
+                <input
+                  id="pass"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+            <button className="login-submit" type="submit">
+              Sign in
+            </button>
+          </form>
+          {msg ? <p className="login-card-error">{msg}</p> : null}
+        </div>
       </div>
     </div>
   );

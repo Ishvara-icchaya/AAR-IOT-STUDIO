@@ -24,6 +24,7 @@ from app.schemas.monitoring import (
 from app.services import ingress_metrics
 from app.services.alert_emit import emit_alert
 from app.services import monitoring_probes
+from app.services.map_runtime_service import internal_aggregator_visibility
 from app.services.monitoring_service import (
     build_ai_monitoring_payload,
     build_overview,
@@ -532,6 +533,7 @@ def monitoring_deep(
         action="deep",
         status="ok",
     )
+    map_agg = internal_aggregator_visibility() if redis_ok else {"stats": {"redis_available": False}}
     return {
         "database_ok": database_ok,
         "error": database_error,
@@ -547,4 +549,5 @@ def monitoring_deep(
         "consumer_lag": lag_report,
         "queue_lag_threshold": int(settings.monitoring_queue_lag_threshold),
         "queue_lag_above_threshold": lag_over,
+        "map_aggregator": map_agg,
     }

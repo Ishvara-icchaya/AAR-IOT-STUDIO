@@ -1,12 +1,16 @@
+import { useEffect, useState } from "react";
 import type { DashboardWidgetModel } from "@/types/dashboardLayout";
+import * as dashApi from "@/api/dashboard";
 
 type Props = {
   widget: DashboardWidgetModel;
   onChange: (next: DashboardWidgetModel) => void;
   disabled?: boolean;
+  /** Dashboard site — required for map eligible multiselect when auto GPS is off. */
+  siteId?: string | null;
 };
 
-export function DashboardBindingEditor({ widget, onChange, disabled }: Props) {
+export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: Props) {
   const b = widget.binding;
   const c = widget.config;
 
@@ -27,6 +31,35 @@ export function DashboardBindingEditor({ widget, onChange, disabled }: Props) {
 
   const needsSource = !["text", "health_summary", "alert_summary", "site_summary"].includes(widget.type);
   const mapAuto = widget.type === "map" && (c.autoIncludeGpsObjects !== false);
+
+  const [eligibleMap, setEligibleMap] = useState<dashApi.MapEligibleItem[]>([]);
+  useEffect(() => {
+    if (widget.type !== "map" || mapAuto || !siteId) {
+      setEligibleMap([]);
+      return;
+    }
+    let cancelled = false;
+    void dashApi
+      .listMapEligibleObjects(siteId)
+      .then((r) => {
+        if (!cancelled && r) setEligibleMap(r.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setEligibleMap([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [widget.type, mapAuto, siteId]);
+
+  function toggleIncluded(item: dashApi.MapEligibleItem) {
+    const raw = (c.includedSources as Array<{ sourceType: string; sourceId: string }>) ?? [];
+    const exists = raw.some((x) => x.sourceType === item.source_type && x.sourceId === item.source_id);
+    const next = exists
+      ? raw.filter((x) => !(x.sourceType === item.source_type && x.sourceId === item.source_id))
+      : [...raw, { sourceType: item.source_type, sourceId: item.source_id }];
+    patchConfig({ includedSources: next });
+  }
 
   return (
     <div className="dash-binding">
@@ -82,6 +115,53 @@ export function DashboardBindingEditor({ widget, onChange, disabled }: Props) {
             </label>
           )}
 
+          {widget.type === "map" && !mapAuto && siteId && (
+            <div className="dash-drawer__label">
+              <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                Map objects (eligible for this site — multiselect)
+              </span>
+              <div
+                style={{
+                  maxHeight: 200,
+                  overflow: "auto",
+                  border: "1px solid var(--border, #ccc)",
+                  borderRadius: "var(--radius)",
+                  padding: "0.5rem",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {eligibleMap.length === 0 ? (
+                  <span className="dash-widget__muted">No eligible objects or loading…</span>
+                ) : (
+                  eligibleMap.map((item) => {
+                    const checked = (
+                      (c.includedSources as Array<{ sourceType: string; sourceId: string }>) ?? []
+                    ).some((x) => x.sourceType === item.source_type && x.sourceId === item.source_id);
+                    return (
+                      <label
+                        key={`${item.source_type}:${item.source_id}`}
+                        style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.25rem" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleIncluded(item)}
+                        />
+                        <span>
+                          {item.name}{" "}
+                          <span className="dash-widget__muted">
+                            ({item.source_type} · {item.source_id.slice(0, 8)}…)
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           {!mapAuto && (
             <p className="dash-widget__muted" style={{ fontSize: "0.8rem" }}>
               Pick a source below. Required when auto GPS is off.
@@ -97,8 +177,13 @@ export function DashboardBindingEditor({ widget, onChange, disabled }: Props) {
             className="dash-drawer__input"
             value={String(b.metric ?? "")}
             disabled={disabled}
+            placeholder='value — or e.g. temperature, metrics.temp.value'
             onChange={(e) => patchBinding({ metric: e.target.value })}
           />
+          <span className="dash-widget__muted" style={{ display: "block", marginTop: "0.35rem", fontSize: "0.8rem" }}>
+            Default <code>value</code> matches a top-level key, then scrubber KPI <code>metrics</code> /{" "}
+            <code>displayFields</code>, then a single numeric field on the payload.
+          </span>
         </label>
       )}
 
@@ -112,45 +197,6 @@ export function DashboardBindingEditor({ widget, onChange, disabled }: Props) {
             onChange={(e) => patchBinding({ fields: parseList(e.target.value) })}
           />
         </label>
-      )}
-
-      {widget.type === "chart" && (
-        <>
-          <label className="dash-drawer__label">
-            Chart type
-            <select
-              className="dash-drawer__input"
-              value={String(b.chartType ?? "line")}
-              disabled={disabled}
-              onChange={(e) =>
-                patchBinding({ chartType: e.target.value as "line" | "bar" | "area" | "stacked_bar" })
-              }
-            >
-              <option value="line">line</option>
-              <option value="bar">bar</option>
-              <option value="area">area</option>
-              <option value="stacked_bar">stacked bar</option>
-            </select>
-          </label>
-          <label className="dash-drawer__label">
-            X field
-            <input
-              className="dash-drawer__input"
-              value={String(b.xField ?? "")}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ xField: e.target.value })}
-            />
-          </label>
-          <label className="dash-drawer__label">
-            Y field
-            <input
-              className="dash-drawer__input"
-              value={String(b.yField ?? "")}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ yField: e.target.value })}
-            />
-          </label>
-        </>
       )}
 
       {(widget.type === "device_tile" || widget.type === "map") && (

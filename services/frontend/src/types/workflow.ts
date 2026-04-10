@@ -4,6 +4,7 @@ export type WorkflowStatus = "draft" | "validated" | "published" | "stopped" | "
 
 export type WorkflowNodeType =
   | "input"
+  | "static"
   | "filter"
   | "formula"
   | "rename"

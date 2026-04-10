@@ -3,6 +3,7 @@ import { useDashboardBuilderStore } from "@/stores/dashboardBuilderStore";
 import type { DashboardWidgetModel } from "@/types/dashboardLayout";
 import { DashboardSourceSelector } from "./DashboardSourceSelector";
 import { DashboardBindingEditor } from "./DashboardBindingEditor";
+import { DashboardChartConfigSection } from "./DashboardChartConfigSection";
 import * as dashApi from "@/api/dashboard";
 import { DashboardWidgetView } from "./DashboardLiveRenderer";
 
@@ -36,6 +37,15 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
   useEffect(() => {
     setDraft(base);
   }, [base, open, target?.rowId, target?.columnId]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeDrawer();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, closeDrawer]);
 
   const draftKey = draft ? JSON.stringify(draft) : "";
 
@@ -85,9 +95,15 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
   if (!open || !target || !draft) return null;
 
   const frozen = status === "frozen";
+  const mapManualWithIncluded =
+    draft.type === "map" &&
+    draft.config.autoIncludeGpsObjects === false &&
+    Array.isArray(draft.config.includedSources) &&
+    (draft.config.includedSources as unknown[]).length > 0;
   const needsSource =
     !["text", "health_summary", "alert_summary", "site_summary"].includes(draft.type) &&
-    !(draft.type === "map" && draft.config.autoIncludeGpsObjects !== false);
+    !(draft.type === "map" && draft.config.autoIncludeGpsObjects !== false) &&
+    !mapManualWithIncluded;
 
   function onSaveWidget() {
     const t = target;
@@ -99,67 +115,141 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
 
   const previewWidget = singlePreview?.widgets?.[0];
 
+  const isChart = draft.type === "chart";
+
   return (
-    <div className="dash-drawer-backdrop" role="presentation" onClick={closeDrawer}>
-      <aside className="dash-drawer" role="dialog" aria-modal onClick={(e) => e.stopPropagation()}>
-        <header className="dash-drawer__head">
-          <h2>Configure widget</h2>
+    <div className="dash-config-modal-backdrop" role="presentation" onClick={closeDrawer}>
+      <div
+        className="dash-config-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dash-config-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="dash-config-modal__head dash-drawer__head">
+          <h2 id="dash-config-modal-title">{isChart ? "Configure chart" : "Configure widget"}</h2>
           <button type="button" className="dash-drawer__close" onClick={closeDrawer} aria-label="Close">
             ×
           </button>
         </header>
-        <div className="dash-drawer__body">
-          <DashboardBindingEditor widget={draft} onChange={setDraft} disabled={frozen} />
+        <div className="dash-config-modal__body dash-drawer__body">
+          {isChart ? (
+            <div className="dash-chart-config-flow">
+              <label className="dash-drawer__label dash-chart-config-flow__row">
+                Title
+                <input
+                  className="dash-drawer__input"
+                  value={draft.title}
+                  disabled={frozen}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                />
+              </label>
 
-          {needsSource && (
-            <label className="dash-drawer__label">
-              Source type
-              <select
-                className="dash-drawer__input"
-                value={(draft.binding.sourceType as string) || "data_object"}
-                disabled={frozen}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    binding: {
-                      ...draft.binding,
-                      sourceType: e.target.value as "data_object" | "result_object",
-                      sourceId: "",
-                    },
-                  })
-                }
-              >
-                <option value="data_object">data_object</option>
-                <option value="result_object">result_object</option>
-              </select>
-            </label>
+              <label className="dash-drawer__label dash-chart-config-flow__row">
+                Source type
+                <select
+                  className="dash-drawer__input"
+                  value={(draft.binding.sourceType as string) || "data_object"}
+                  disabled={frozen}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      binding: {
+                        ...draft.binding,
+                        sourceType: e.target.value as "data_object" | "result_object",
+                        sourceId: "",
+                      },
+                    })
+                  }
+                >
+                  <option value="data_object">data_object</option>
+                  <option value="result_object">result_object</option>
+                </select>
+              </label>
+
+              <div className="dash-chart-config-flow__row">
+                <DashboardSourceSelector
+                  siteId={siteId}
+                  sourceType={(draft.binding.sourceType as "data_object" | "result_object") || "data_object"}
+                  value={String(draft.binding.sourceId ?? "")}
+                  disabled={frozen}
+                  onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
+                />
+              </div>
+
+              <div className="dash-chart-config-flow__row dash-chart-config-flow__row--axes">
+                <DashboardChartConfigSection widget={draft} onChange={setDraft} disabled={frozen} />
+              </div>
+
+              <section className="dash-drawer__preview dash-chart-config-flow__row dash-chart-config-flow__row--preview">
+                <h3>Chart preview</h3>
+                {previewWidget ? (
+                  <DashboardWidgetView block={previewWidget} />
+                ) : (
+                  <p className="dash-widget__muted">Resolve preview…</p>
+                )}
+              </section>
+
+              <details className="dash-drawer__debug">
+                <summary>Debug JSON</summary>
+                <pre>{JSON.stringify(draft, null, 2)}</pre>
+              </details>
+            </div>
+          ) : (
+            <>
+              <DashboardBindingEditor widget={draft} onChange={setDraft} disabled={frozen} siteId={siteId} />
+
+              {needsSource && (
+                <label className="dash-drawer__label">
+                  Source type
+                  <select
+                    className="dash-drawer__input"
+                    value={(draft.binding.sourceType as string) || "data_object"}
+                    disabled={frozen}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        binding: {
+                          ...draft.binding,
+                          sourceType: e.target.value as "data_object" | "result_object",
+                          sourceId: "",
+                        },
+                      })
+                    }
+                  >
+                    <option value="data_object">data_object</option>
+                    <option value="result_object">result_object</option>
+                  </select>
+                </label>
+              )}
+
+              {needsSource && (
+                <DashboardSourceSelector
+                  siteId={siteId}
+                  sourceType={(draft.binding.sourceType as "data_object" | "result_object") || "data_object"}
+                  value={String(draft.binding.sourceId ?? "")}
+                  disabled={frozen}
+                  onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
+                />
+              )}
+
+              <section className="dash-drawer__preview">
+                <h3>Preview</h3>
+                {previewWidget ? (
+                  <DashboardWidgetView block={previewWidget} />
+                ) : (
+                  <p className="dash-widget__muted">Resolve preview…</p>
+                )}
+              </section>
+
+              <details className="dash-drawer__debug">
+                <summary>Debug JSON</summary>
+                <pre>{JSON.stringify(draft, null, 2)}</pre>
+              </details>
+            </>
           )}
-
-          {needsSource && (
-            <DashboardSourceSelector
-              siteId={siteId}
-              sourceType={(draft.binding.sourceType as "data_object" | "result_object") || "data_object"}
-              value={String(draft.binding.sourceId ?? "")}
-              disabled={frozen}
-              onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
-            />
-          )}
-
-          <section className="dash-drawer__preview">
-            <h3>Preview</h3>
-            {previewWidget ? (
-              <DashboardWidgetView block={previewWidget} />
-            ) : (
-              <p className="dash-widget__muted">Resolve preview…</p>
-            )}
-          </section>
-
-          <details className="dash-drawer__debug">
-            <summary>Debug JSON</summary>
-            <pre>{JSON.stringify(draft, null, 2)}</pre>
-          </details>
         </div>
-        <footer className="dash-drawer__foot">
+        <footer className="dash-config-modal__foot dash-drawer__foot">
           {!frozen && (
             <button type="button" className="dash-btn dash-btn--accent" onClick={onSaveWidget}>
               Save widget
@@ -169,7 +259,7 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
             Close
           </button>
         </footer>
-      </aside>
+      </div>
     </div>
   );
 }

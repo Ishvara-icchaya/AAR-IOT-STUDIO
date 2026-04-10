@@ -1,8 +1,17 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  createStaticIngestion,
+  getStaticIngestion,
+  listStaticIngestions,
+  updateStaticIngestion,
+  validateStaticIngestion,
+  type StaticIngestionListItem,
+} from "@/api/staticIngestion";
 import { apiFetch } from "@/api/client";
 import { PageStatus } from "@/components/PageStatus";
+import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
 
 type Row = {
@@ -18,6 +27,10 @@ type Row = {
 
 type ListResp = { items: Row[]; stale_after_hours: number };
 
+type SiteRow = { id: string; name: string };
+
+type Tab = "devices" | "static";
+
 function fmt(iso: string | null): string {
   if (!iso) return "—";
   try {
@@ -28,13 +41,63 @@ function fmt(iso: string | null): string {
   }
 }
 
-/** Devices with a scrubber draft but no raw ingested within the freshness window. */
+/** `datetime-local` value from an ISO timestamp (browser local). */
+function isoToDatetimeLocal(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function defaultSchedule(kind: string): Record<string, unknown> {
+  switch (kind) {
+    case "hourly":
+      return { kind: "hourly", minute: 0 };
+    case "daily":
+      return { kind: "daily", hour: 9, minute: 0 };
+    case "alternate_days":
+      return { kind: "alternate_days", hour: 9, minute: 0 };
+    case "weekly":
+      return { kind: "weekly", days_of_week: [0, 2, 4], hour: 9, minute: 0 };
+    case "monthly":
+      return { kind: "monthly", day_of_month: 1, hour: 9, minute: 0 };
+    case "cron":
+      return { kind: "cron", expression: "0 9 * * *" };
+    default:
+      return { kind: "daily", hour: 9, minute: 0 };
+  }
+}
+
+/** Devices with a scrubber draft but no raw ingested within the freshness window; plus static JSON ingestions. */
 export function ScrubberStaleIngestionPage() {
+  const { siteId: opsSiteId } = useOpsShell();
+  const [tab, setTab] = useState<Tab>("devices");
+
   const [rows, setRows] = useState<Row[]>([]);
   const [hours, setHours] = useState(24);
   const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const [sites, setSites] = useState<SiteRow[]>([]);
+  const [siteId, setSiteId] = useState("");
+  const [staticQ, setStaticQ] = useState("");
+  const [staticRows, setStaticRows] = useState<StaticIngestionListItem[]>([]);
+  const [staticErr, setStaticErr] = useState<string | null>(null);
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [siName, setSiName] = useState("");
+  const [siDesc, setSiDesc] = useState("");
+  const [siEndLocal, setSiEndLocal] = useState("");
+  const [siScheduleKind, setSiScheduleKind] = useState("daily");
+  const [siSchedule, setSiSchedule] = useState<Record<string, unknown>>(() => defaultSchedule("daily"));
+  const [siPayloadText, setSiPayloadText] = useState('{\n  "example": true\n}\n');
+  const [siBusy, setSiBusy] = useState(false);
+  const [siValErrs, setSiValErrs] = useState<string[]>([]);
+  const [siOk, setSiOk] = useState<string | null>(null);
+
+  const loadDevices = useCallback(async () => {
     setErr(null);
     try {
       const qs = new URLSearchParams({
@@ -49,112 +112,715 @@ export function ScrubberStaleIngestionPage() {
     }
   }, [hours]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const loadStatic = useCallback(async () => {
+    if (!siteId) {
+      setStaticRows([]);
+      return;
+    }
+    setStaticErr(null);
+    try {
+      const data = await listStaticIngestions(siteId, { q: staticQ.trim() || undefined });
+      setStaticRows(data?.items ?? []);
+    } catch (e) {
+      setStaticErr(e instanceof Error ? e.message : "Failed to load static ingestions");
+      setStaticRows([]);
+    }
+  }, [siteId, staticQ]);
 
-  async function onRefresh(e: FormEvent) {
-    e.preventDefault();
-    await load();
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await apiFetch<SiteRow[]>("/administration/sites");
+        setSites(data ?? []);
+      } catch {
+        setSites([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (opsSiteId) setSiteId(opsSiteId);
+  }, [opsSiteId]);
+
+  useEffect(() => {
+    void loadDevices();
+  }, [loadDevices]);
+
+  useEffect(() => {
+    if (tab === "static") void loadStatic();
+  }, [tab, loadStatic]);
+
+  async function onRefreshDevices(e?: FormEvent) {
+    e?.preventDefault();
+    await loadDevices();
+  }
+
+  function openCreateModal() {
+    setEditingId(null);
+    setSiName("");
+    setSiDesc("");
+    setSiEndLocal("");
+    setSiScheduleKind("daily");
+    setSiSchedule(defaultSchedule("daily"));
+    setSiPayloadText('{\n  "example": true\n}\n');
+    setSiValErrs([]);
+    setSiOk(null);
+    setModalOpen(true);
+  }
+
+  async function openEditModal(id: string) {
+    setModalLoading(true);
+    setSiValErrs([]);
+    setSiOk(null);
+    setStaticErr(null);
+    try {
+      const row = await getStaticIngestion(id);
+      if (!row) {
+        setStaticErr("Static ingestion not found");
+        return;
+      }
+      setEditingId(row.id);
+      setSiName(row.name);
+      setSiDesc(row.description ?? "");
+      setSiEndLocal(isoToDatetimeLocal(row.end_at));
+      const sk = String((row.schedule_json as { kind?: string })?.kind ?? "daily").toLowerCase();
+      const allowed = new Set(["hourly", "daily", "alternate_days", "weekly", "monthly", "cron"]);
+      const kind = allowed.has(sk) ? sk : "daily";
+      setSiScheduleKind(kind);
+      setSiSchedule(
+        row.schedule_json && typeof row.schedule_json === "object"
+          ? { ...row.schedule_json }
+          : defaultSchedule(kind),
+      );
+      setSiPayloadText(JSON.stringify(row.payload_json ?? {}, null, 2));
+      setModalOpen(true);
+    } catch (e) {
+      setStaticErr(e instanceof Error ? e.message : "Failed to load static ingestion");
+    } finally {
+      setModalLoading(false);
+    }
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditingId(null);
+  }
+
+  function onScheduleKindChange(k: string) {
+    setSiScheduleKind(k);
+    setSiSchedule(defaultSchedule(k));
+  }
+
+  function patchSchedule(patch: Record<string, unknown>) {
+    setSiSchedule((s) => ({ ...s, ...patch }));
+  }
+
+  async function onValidateStatic() {
+    setSiValErrs([]);
+    setSiOk(null);
+    if (!siteId) {
+      setSiValErrs(["Select a site first."]);
+      return;
+    }
+    let payload_json: Record<string, unknown>;
+    try {
+      payload_json = JSON.parse(siPayloadText) as Record<string, unknown>;
+      if (!payload_json || typeof payload_json !== "object" || Array.isArray(payload_json)) {
+        setSiValErrs(["Payload must be a JSON object."]);
+        return;
+      }
+    } catch {
+      setSiValErrs(["Payload JSON has a syntax error."]);
+      return;
+    }
+    const end_at = siEndLocal.trim() ? new Date(siEndLocal).toISOString() : null;
+    setSiBusy(true);
+    try {
+      const r = await validateStaticIngestion({
+        site_id: siteId,
+        name: siName.trim() || "unnamed",
+        description: siDesc.trim() || null,
+        end_at,
+        schedule_json: { ...siSchedule, kind: siScheduleKind },
+        payload_json,
+      });
+      if (r?.valid) setSiOk("Validation passed — you can save.");
+      else setSiValErrs(r?.errors ?? ["Validation failed"]);
+    } catch (e) {
+      setSiValErrs([e instanceof Error ? e.message : "Validate failed"]);
+    } finally {
+      setSiBusy(false);
+    }
+  }
+
+  async function onSaveStatic() {
+    setSiValErrs([]);
+    setSiOk(null);
+    if (!siteId) {
+      setSiValErrs(["Select a site first."]);
+      return;
+    }
+    if (!siName.trim()) {
+      setSiValErrs(["Ingestion name is required."]);
+      return;
+    }
+    let payload_json: Record<string, unknown>;
+    try {
+      payload_json = JSON.parse(siPayloadText) as Record<string, unknown>;
+    } catch {
+      setSiValErrs(["Payload JSON has a syntax error."]);
+      return;
+    }
+    const end_at = siEndLocal.trim() ? new Date(siEndLocal).toISOString() : null;
+    setSiBusy(true);
+    try {
+      const v = await validateStaticIngestion({
+        site_id: siteId,
+        name: siName.trim(),
+        description: siDesc.trim() || null,
+        end_at,
+        schedule_json: { ...siSchedule, kind: siScheduleKind },
+        payload_json,
+      });
+      if (!v?.valid) {
+        setSiValErrs(v?.errors ?? ["Validation failed"]);
+        return;
+      }
+      const schedule_json = { ...siSchedule, kind: siScheduleKind };
+      if (editingId) {
+        await updateStaticIngestion(editingId, {
+          name: siName.trim(),
+          description: siDesc.trim() || null,
+          end_at,
+          schedule_json,
+          payload_json,
+        });
+      } else {
+        await createStaticIngestion({
+          site_id: siteId,
+          name: siName.trim(),
+          description: siDesc.trim() || null,
+          end_at,
+          schedule_json,
+          payload_json,
+        });
+      }
+      closeModal();
+      await loadStatic();
+    } catch (e) {
+      setSiValErrs([e instanceof Error ? e.message : "Save failed"]);
+    } finally {
+      setSiBusy(false);
+    }
+  }
+
+  function onPayloadFile(f: File | null) {
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const t = typeof reader.result === "string" ? reader.result : "";
+      setSiPayloadText(t);
+    };
+    reader.readAsText(f);
   }
 
   return (
-    <PageShell title="Scrubber — mapping without recent ingestion">
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem", maxWidth: "52rem" }}>
-        Lists devices that have a non-empty <code>scrubberStudio</code> draft but no archived raw in the freshness window
-        (default 24 hours). Use this to find mappings that are ready while telemetry is missing or delayed.
-      </p>
-      <p style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
-        <Link to="/scrubber/data-objects">View Data_Objects</Link>
-        {" · "}
-        <Link to="/scrubber/raw-select">Pick raw sample</Link>
-      </p>
-      {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <form onSubmit={onRefresh} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem", alignItems: "flex-end" }}>
-        <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
-          Stale if no raw within (hours)
-          <input
-            type="number"
-            min={0.5}
-            max={8760}
-            step={0.5}
-            value={hours}
-            onChange={(e) => setHours(Number(e.target.value))}
-            style={{
-              padding: "0.45rem",
-              borderRadius: "var(--radius)",
-              border: "1px solid var(--color-border)",
-              background: "var(--color-bg)",
-              color: "var(--color-text)",
-              width: "7rem",
-            }}
-          />
-        </label>
+    <PageShell title="Scrubber — stale mapping & static ingestion">
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
         <button
-          type="submit"
-          style={{
-            padding: "0.45rem 0.85rem",
-            borderRadius: "var(--radius)",
-            border: "none",
-            background: "var(--color-accent)",
-            color: "#fff",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          type="button"
+          onClick={() => setTab("devices")}
+          style={tabBtn(tab === "devices")}
         >
-          Refresh
+          Mapping without ingestion
         </button>
-      </form>
-      <div style={{ overflow: "auto" }}>
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "0.85rem",
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={th}>Device</th>
-              <th style={th}>Site</th>
-              <th style={th}>Draft v</th>
-              <th style={th}>Raw count</th>
-              <th style={th}>Last raw ingest</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.device_id}>
-                <td style={td}>{r.device_name}</td>
-                <td style={td}>{r.site_name}</td>
-                <td style={td}>{r.scrubber_version ?? "—"}</td>
-                <td style={td}>{r.raw_object_count}</td>
-                <td style={td}>{fmt(r.latest_raw_ingested_at)}</td>
-                <td style={td}>
-                  {r.latest_raw_id ? (
-                    <Link
-                      to={`/scrubber/create?rawId=${encodeURIComponent(r.latest_raw_id)}&deviceId=${encodeURIComponent(
-                        r.device_id,
-                      )}&returnTo=${encodeURIComponent("/scrubber/stale-ingestion")}`}
-                      style={{ fontSize: "0.8rem" }}
-                    >
-                      Open scrubber
-                    </Link>
-                  ) : (
-                    <span style={{ color: "var(--color-text-muted)" }}>No raw yet</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length === 0 && !err ? (
-          <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>No devices match (or all have recent raw).</p>
-        ) : null}
+        <button type="button" onClick={() => setTab("static")} style={tabBtn(tab === "static")}>
+          Static JSON ingestion
+        </button>
       </div>
+
+      {tab === "devices" ? (
+        <>
+          <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem", maxWidth: "52rem" }}>
+            Lists devices that have a non-empty <code>scrubberStudio</code> draft but no archived raw in the freshness window
+            (default 24 hours). Use this to find mappings that are ready while telemetry is missing or delayed.
+          </p>
+          <p style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
+            <Link to="/scrubber/data-objects">View Data Objects</Link>
+            {" · "}
+            <Link to="/scrubber/raw-select">Pick raw sample</Link>
+          </p>
+          {err ? <PageStatus variant="error">{err}</PageStatus> : null}
+          <form
+            noValidate
+            onSubmit={onRefreshDevices}
+            style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem", alignItems: "flex-end" }}
+          >
+            <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
+              Stale if no raw within (hours)
+              <input
+                type="number"
+                min={0.5}
+                max={8760}
+                step={0.5}
+                value={Number.isFinite(hours) ? hours : 24}
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  if (!Number.isFinite(n)) return;
+                  setHours(Math.min(8760, Math.max(0.5, n)));
+                }}
+                style={{
+                  padding: "0.45rem",
+                  borderRadius: "var(--radius)",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-bg)",
+                  color: "var(--color-text)",
+                  width: "7rem",
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void onRefreshDevices()}
+              aria-label="Refresh stale mapping list"
+              style={{
+                padding: "0.45rem 0.85rem",
+                borderRadius: "var(--radius)",
+                border: "none",
+                background: "var(--color-accent)",
+                color: "var(--btn-on-accent)",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Refresh
+            </button>
+          </form>
+          <div style={{ overflow: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "0.85rem",
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={th}>Device</th>
+                  <th style={th}>Site</th>
+                  <th style={th}>Draft v</th>
+                  <th style={th}>Raw count</th>
+                  <th style={th}>Last raw ingest</th>
+                  <th style={th}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.device_id}>
+                    <td style={td}>{r.device_name}</td>
+                    <td style={td}>{r.site_name}</td>
+                    <td style={td}>{r.scrubber_version ?? "—"}</td>
+                    <td style={td}>{r.raw_object_count}</td>
+                    <td style={td}>{fmt(r.latest_raw_ingested_at)}</td>
+                    <td style={td}>
+                      {r.latest_raw_id ? (
+                        <Link
+                          to={`/scrubber/create?rawId=${encodeURIComponent(r.latest_raw_id)}&deviceId=${encodeURIComponent(
+                            r.device_id,
+                          )}&returnTo=${encodeURIComponent("/scrubber/stale-ingestion")}`}
+                          style={{ fontSize: "0.8rem" }}
+                        >
+                          Open scrubber
+                        </Link>
+                      ) : (
+                        <span style={{ color: "var(--color-text-muted)" }}>No raw yet</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rows.length === 0 && !err ? (
+              <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>No devices match (or all have recent raw).</p>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <>
+          <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem", maxWidth: "52rem" }}>
+            Store validated JSON payloads with a schedule and end time. These definitions appear in the workflow editor as{" "}
+            <strong>Static</strong> source nodes (per site).
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem", alignItems: "flex-end" }}>
+            <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
+              Site
+              <select
+                value={siteId}
+                onChange={(e) => setSiteId(e.target.value)}
+                style={{
+                  padding: "0.45rem",
+                  minWidth: "12rem",
+                  borderRadius: "var(--radius)",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-bg)",
+                  color: "var(--color-text)",
+                }}
+              >
+                <option value="">— Select site —</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
+              Search name / description
+              <input
+                value={staticQ}
+                onChange={(e) => setStaticQ(e.target.value)}
+                onBlur={() => void loadStatic()}
+                placeholder="Filter…"
+                style={{
+                  padding: "0.45rem",
+                  width: "14rem",
+                  borderRadius: "var(--radius)",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-bg)",
+                  color: "var(--color-text)",
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={!siteId}
+              onClick={() => void loadStatic()}
+              style={{
+                padding: "0.45rem 0.85rem",
+                borderRadius: "var(--radius)",
+                border: "none",
+                background: "var(--color-border)",
+                color: "var(--color-text)",
+                fontWeight: 600,
+                cursor: siteId ? "pointer" : "not-allowed",
+              }}
+            >
+              Search
+            </button>
+            <button
+              type="button"
+              disabled={!siteId}
+              onClick={openCreateModal}
+              style={{
+                padding: "0.45rem 0.85rem",
+                borderRadius: "var(--radius)",
+                border: "none",
+                background: "var(--color-accent)",
+                color: "var(--btn-on-accent)",
+                fontWeight: 600,
+                cursor: siteId ? "pointer" : "not-allowed",
+              }}
+            >
+              Create
+            </button>
+          </div>
+          {staticErr ? <PageStatus variant="error">{staticErr}</PageStatus> : null}
+          <div style={{ overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+              <thead>
+                <tr>
+                  <th style={th}>Name</th>
+                  <th style={th}>Description</th>
+                  <th style={th}>End</th>
+                  <th style={th}>Updated</th>
+                  <th style={th}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staticRows.map((r) => (
+                  <tr key={r.id}>
+                    <td style={td}>{r.name}</td>
+                    <td style={td}>{r.description ?? "—"}</td>
+                    <td style={td}>{fmt(r.end_at)}</td>
+                    <td style={td}>{fmt(r.updated_at)}</td>
+                    <td style={td}>
+                      <button
+                        type="button"
+                        disabled={modalLoading}
+                        onClick={() => void openEditModal(r.id)}
+                        style={{
+                          padding: "0.25rem 0.5rem",
+                          fontSize: "0.8rem",
+                          borderRadius: "var(--radius)",
+                          border: "1px solid var(--color-border)",
+                          background: "var(--color-surface-elevated)",
+                          color: "var(--color-accent)",
+                          fontWeight: 600,
+                          cursor: modalLoading ? "wait" : "pointer",
+                        }}
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {siteId && staticRows.length === 0 && !staticErr ? (
+              <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>No static ingestions yet — create one.</p>
+            ) : null}
+            {!siteId ? (
+              <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>Select a site to list static ingestions.</p>
+            ) : null}
+          </div>
+        </>
+      )}
+
+      {modalOpen ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+          }}
+          onClick={() => !siBusy && closeModal()}
+          onKeyDown={(e) => e.key === "Escape" && !siBusy && closeModal()}
+          role="presentation"
+        >
+          <div
+            style={{
+              background: "var(--color-surface-elevated)",
+              color: "var(--color-text)",
+              borderRadius: "var(--radius)",
+              maxWidth: "min(560px, 100%)",
+              width: "100%",
+              maxHeight: "90vh",
+              overflow: "auto",
+              padding: "1rem",
+              border: "1px solid var(--color-border)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.05rem" }}>
+              {editingId ? "Edit static ingestion" : "New static ingestion"}
+            </h2>
+            <label style={lbl}>
+              Ingestion name
+              <input value={siName} onChange={(e) => setSiName(e.target.value)} style={inp} disabled={siBusy} />
+            </label>
+            <label style={lbl}>
+              Description
+              <textarea value={siDesc} onChange={(e) => setSiDesc(e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} disabled={siBusy} />
+            </label>
+            <label style={lbl}>
+              End date (optional, local)
+              <input
+                type="datetime-local"
+                value={siEndLocal}
+                onChange={(e) => setSiEndLocal(e.target.value)}
+                style={inp}
+                disabled={siBusy}
+              />
+            </label>
+            <label style={lbl}>
+              Schedule
+              <select value={siScheduleKind} onChange={(e) => onScheduleKindChange(e.target.value)} style={inp} disabled={siBusy}>
+                <option value="hourly">Hourly</option>
+                <option value="daily">Every day</option>
+                <option value="alternate_days">Alternate days</option>
+                <option value="weekly">Specific weekdays</option>
+                <option value="monthly">Monthly (day of month)</option>
+                <option value="cron">Cron expression</option>
+              </select>
+            </label>
+            {siScheduleKind === "hourly" ? (
+              <label style={lbl}>
+                Minute offset (0–59)
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={Number(siSchedule.minute ?? 0)}
+                  onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
+                  style={inp}
+                  disabled={siBusy}
+                />
+              </label>
+            ) : null}
+            {(siScheduleKind === "daily" || siScheduleKind === "alternate_days") ? (
+              <>
+                <label style={lbl}>
+                  Hour (0–23)
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={Number(siSchedule.hour ?? 0)}
+                    onChange={(e) => patchSchedule({ hour: Number(e.target.value) })}
+                    style={inp}
+                    disabled={siBusy}
+                  />
+                </label>
+                <label style={lbl}>
+                  Minute (0–59)
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={Number(siSchedule.minute ?? 0)}
+                    onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
+                    style={inp}
+                    disabled={siBusy}
+                  />
+                </label>
+              </>
+            ) : null}
+            {siScheduleKind === "weekly" ? (
+              <>
+                <label style={lbl}>
+                  Hour / minute
+                  <div style={{ display: "flex", gap: "0.35rem" }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={Number(siSchedule.hour ?? 0)}
+                      onChange={(e) => patchSchedule({ hour: Number(e.target.value) })}
+                      style={{ ...inp, flex: 1 }}
+                      disabled={siBusy}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={Number(siSchedule.minute ?? 0)}
+                      onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
+                      style={{ ...inp, flex: 1 }}
+                      disabled={siBusy}
+                    />
+                  </div>
+                </label>
+                <label style={lbl}>
+                  Weekdays (0=Mon … 6=Sun), comma-separated
+                  <input
+                    value={(siSchedule.days_of_week as number[] | undefined)?.join(",") ?? "0,1,2,3,4,5,6"}
+                    onChange={(e) => {
+                      const parts = e.target.value
+                        .split(",")
+                        .map((x) => parseInt(x.trim(), 10))
+                        .filter((n) => !Number.isNaN(n));
+                      patchSchedule({ days_of_week: parts });
+                    }}
+                    style={inp}
+                    disabled={siBusy}
+                  />
+                </label>
+              </>
+            ) : null}
+            {siScheduleKind === "monthly" ? (
+              <>
+                <label style={lbl}>
+                  Day of month (1–31)
+                  <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={Number(siSchedule.day_of_month ?? 1)}
+                    onChange={(e) => patchSchedule({ day_of_month: Number(e.target.value) })}
+                    style={inp}
+                    disabled={siBusy}
+                  />
+                </label>
+                <label style={lbl}>
+                  Hour / minute
+                  <div style={{ display: "flex", gap: "0.35rem" }}>
+                    <input
+                      type="number"
+                      min={0}
+                      max={23}
+                      value={Number(siSchedule.hour ?? 0)}
+                      onChange={(e) => patchSchedule({ hour: Number(e.target.value) })}
+                      style={{ ...inp, flex: 1 }}
+                      disabled={siBusy}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={Number(siSchedule.minute ?? 0)}
+                      onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
+                      style={{ ...inp, flex: 1 }}
+                      disabled={siBusy}
+                    />
+                  </div>
+                </label>
+              </>
+            ) : null}
+            {siScheduleKind === "cron" ? (
+              <label style={lbl}>
+                Cron expression
+                <input
+                  value={String(siSchedule.expression ?? "0 9 * * *")}
+                  onChange={(e) => patchSchedule({ expression: e.target.value })}
+                  style={{ ...inp, fontFamily: "monospace" }}
+                  disabled={siBusy}
+                />
+              </label>
+            ) : null}
+            <label style={lbl}>
+              JSON payload
+              <textarea value={siPayloadText} onChange={(e) => setSiPayloadText(e.target.value)} rows={10} style={{ ...inp, fontFamily: "monospace", fontSize: "0.78rem" }} disabled={siBusy} />
+            </label>
+            <label style={lbl}>
+              Load from file
+              <input type="file" accept="application/json,.json" onChange={(e) => onPayloadFile(e.target.files?.[0] ?? null)} disabled={siBusy} />
+            </label>
+            {siValErrs.length > 0 ? (
+              <PageStatus variant="error">
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  {siValErrs.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                </ul>
+              </PageStatus>
+            ) : null}
+            {siOk ? <PageStatus variant="success">{siOk}</PageStatus> : null}
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
+              <button type="button" style={btnPrimary} disabled={siBusy} onClick={() => void onValidateStatic()}>
+                Validate
+              </button>
+              <button type="button" style={btnPrimary} disabled={siBusy} onClick={() => void onSaveStatic()}>
+                Save
+              </button>
+              <button type="button" style={btnGhost} disabled={siBusy} onClick={closeModal}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </PageShell>
   );
+}
+
+function tabBtn(active: boolean): CSSProperties {
+  return {
+    padding: "0.4rem 0.75rem",
+    borderRadius: "var(--radius)",
+    border: `1px solid var(--color-border)`,
+    background: active ? "var(--color-accent)" : "var(--color-surface-elevated)",
+    color: active ? "#fff" : "var(--color-text)",
+    fontWeight: 600,
+    cursor: "pointer",
+  };
 }
 
 const th: CSSProperties = {
@@ -167,4 +833,30 @@ const td: CSSProperties = {
   padding: "0.45rem 0.5rem",
   borderBottom: "1px solid var(--color-border)",
   verticalAlign: "top",
+};
+const lbl: CSSProperties = { display: "grid", gap: "0.35rem", marginBottom: "0.5rem", fontSize: "0.85rem", color: "var(--color-text-muted)" };
+const inp: CSSProperties = {
+  padding: "0.35rem",
+  borderRadius: "var(--radius)",
+  border: "1px solid var(--color-border)",
+  background: "var(--color-bg)",
+  color: "var(--color-text)",
+};
+const btnPrimary: CSSProperties = {
+  minHeight: "var(--btn-min-height)",
+  padding: "var(--btn-padding-y) var(--btn-padding-x)",
+  fontSize: "var(--btn-font-size)",
+  border: "none",
+  borderRadius: "var(--radius)",
+  background:
+    "linear-gradient(180deg, color-mix(in oklab, var(--color-accent) 90%, #fff 10%), color-mix(in oklab, var(--color-accent) 86%, #000 14%))",
+  color: "var(--btn-on-accent)",
+  fontWeight: 600,
+  cursor: "pointer",
+  boxSizing: "border-box",
+};
+const btnGhost: CSSProperties = {
+  ...btnPrimary,
+  background: "var(--color-border)",
+  color: "var(--color-text)",
 };

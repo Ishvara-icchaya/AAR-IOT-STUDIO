@@ -13,6 +13,7 @@ from typing import Any, Callable
 NODE_TYPES = frozenset(
     {
         "input",
+        "static",
         "filter",
         "formula",
         "rename",
@@ -88,6 +89,20 @@ def topological_order(
     if len(out) != len(node_ids):
         raise WorkflowGraphError("graph cycle or disconnected subgraph")
     return out
+
+
+def run_static(
+    config: dict[str, Any],
+    load_static_ingestion: Callable[[uuid.UUID], dict[str, Any]],
+) -> dict[str, Any]:
+    raw_id = config.get("static_ingestion_id")
+    if not raw_id:
+        raise WorkflowGraphError("static node requires config.static_ingestion_id")
+    try:
+        sid = uuid.UUID(str(raw_id))
+    except ValueError as e:
+        raise WorkflowGraphError("invalid static_ingestion_id") from e
+    return deepcopy(load_static_ingestion(sid))
 
 
 def run_input(
@@ -313,6 +328,7 @@ def execute_graph(
     nodes: list[dict[str, Any]],
     edges: list[dict[str, Any]],
     load_data_object: Callable[[uuid.UUID], dict[str, Any]],
+    load_static_ingestion: Callable[[uuid.UUID], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], str | None]:
     """
     nodes: {id, node_type, config_json}
@@ -349,6 +365,12 @@ def execute_graph(
         try:
             if ntype == "input":
                 out = run_input(cfg, load_data_object)
+            elif ntype == "static":
+                if len(parents) != 0:
+                    raise WorkflowGraphError("static node must not have incoming edges")
+                if load_static_ingestion is None:
+                    raise WorkflowGraphError("static ingestion loader not configured")
+                out = run_static(cfg, load_static_ingestion)
             elif ntype == "filter":
                 if len(parents) != 1:
                     raise WorkflowGraphError("filter requires exactly one parent")

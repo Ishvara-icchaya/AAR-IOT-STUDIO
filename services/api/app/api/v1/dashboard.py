@@ -46,8 +46,10 @@ from app.services.dashboard_validation import (
     validate_sources_exist,
     validate_widgets_for_freeze,
 )
+from app.api.v1 import map_runtime
 
 router = APIRouter()
+router.include_router(map_runtime.router, prefix="/map-runtime", tags=["dashboard-map"])
 log = logging.getLogger(__name__)
 
 

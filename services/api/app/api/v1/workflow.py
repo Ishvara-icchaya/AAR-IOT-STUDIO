@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from copy import deepcopy
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -18,6 +19,7 @@ from app.core.pipeline_log import emit as pipeline_emit
 from app.core.workflow_lifecycle import WF_DRAFT, WF_PUBLISHED, WF_STOPPED, WF_VALIDATED
 from app.db.session import get_db
 from app.models.data_object import DataObject
+from app.models.static_ingestion import StaticIngestion
 from app.models.device import Device
 from app.models.user import User
 from app.models.workflow import Workflow
@@ -327,7 +329,24 @@ def test_workflow(
         except Exception as e:
             raise WorkflowGraphError(str(e)) from e
 
-    outs, results, err = execute_graph(nodes=nodes, edges=edges, load_data_object=load_obj)
+    def load_static(sid: uuid.UUID) -> dict[str, Any]:
+        row = db.get(StaticIngestion, sid)
+        if not row or row.customer_id != user.customer_id:
+            raise WorkflowGraphError("static ingestion not found")
+        if wf.site_id and row.site_id != wf.site_id:
+            raise WorkflowGraphError("static ingestion site mismatch")
+        now = datetime.now(timezone.utc)
+        end = row.end_at
+        if end is not None:
+            if end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+            if end <= now:
+                raise WorkflowGraphError("static ingestion has passed its end date")
+        return dict(row.payload_json or {})
+
+    outs, results, err = execute_graph(
+        nodes=nodes, edges=edges, load_data_object=load_obj, load_static_ingestion=load_static
+    )
     st = "success"
     if err == "filtered_out":
         st = "filtered_out"

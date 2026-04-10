@@ -20,6 +20,7 @@ from app.workflow_persist import (
     insert_execution_completed,
     insert_result_object_row,
     load_data_object_payload,
+    load_static_ingestion_payload,
     load_workflow_graph,
 )
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
@@ -76,7 +77,20 @@ def _process_event(data: dict) -> None:
                 raise WorkflowGraphError("data_object not found or not published")
             return pl
 
-        outs, results, err = execute_graph(nodes=exec_nodes, edges=exec_edges, load_data_object=load_obj)
+        def load_static(sid):
+            pl = load_static_ingestion_payload(
+                static_ingestion_id=str(sid), customer_id=customer_id
+            )
+            if pl is None:
+                raise WorkflowGraphError("static ingestion not found or inactive")
+            return pl
+
+        outs, results, err = execute_graph(
+            nodes=exec_nodes,
+            edges=exec_edges,
+            load_data_object=load_obj,
+            load_static_ingestion=load_static,
+        )
         st = "success"
         if err == "filtered_out":
             st = "filtered_out"

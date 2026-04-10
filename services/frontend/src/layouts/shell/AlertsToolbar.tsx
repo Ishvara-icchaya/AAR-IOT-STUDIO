@@ -37,7 +37,7 @@ export function AlertsToolbar({
                   : alertTone === "info"
                     ? "#1565c0"
                     : "var(--color-accent)",
-            color: "#fff",
+            color: "var(--btn-on-accent)",
             borderRadius: "10px",
             padding: "0.05rem 0.4rem",
             fontSize: "0.72rem",

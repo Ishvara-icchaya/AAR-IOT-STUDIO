@@ -29,7 +29,6 @@ type SiteRow = { id: string; name: string; description: string | null };
 
 type TabId = "answer" | "evidence" | "plan" | "results";
 
-const wrap: CSSProperties = { maxWidth: "1280px", margin: "0 auto", padding: "0.5rem 0" };
 const tabBar: CSSProperties = { display: "flex", gap: "0.35rem", flexWrap: "wrap", marginBottom: "0.75rem" };
 
 export function EnterpriseAiPage() {
@@ -154,8 +153,8 @@ export function EnterpriseAiPage() {
   }
 
   return (
-    <PageShell title="Enterprise AI" style={wrap}>
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", maxWidth: "720px" }}>
+    <PageShell title="Enterprise AI" className="page-shell--use-80">
+      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)" }}>
         Answers are grounded in approved platform datasets only. The LLM never executes SQL or sees raw user instructions
         as code — it only summarizes structured rows already retrieved for your site scope.
       </p>

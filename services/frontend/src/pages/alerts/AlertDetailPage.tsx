@@ -36,7 +36,7 @@ export function AlertDetailPage() {
   }
 
   return (
-    <PageShell title={row?.title ?? "Alert"} style={{ maxWidth: "720px", margin: "0 auto" }}>
+    <PageShell title={row?.title ?? "Alert"} className="page-shell--use-80">
       <p>
         <Link to="/alerts" style={{ color: "var(--color-accent)" }}>
           ← Alerts
@@ -86,7 +86,7 @@ const btn: CSSProperties = {
   borderRadius: "var(--radius)",
   border: "none",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   cursor: "pointer",
   fontWeight: 600,
 };

@@ -72,7 +72,7 @@ export function ScrubberRawSelectPage() {
       </p>
       <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
         Compiled outputs are listed under{" "}
-        <Link to="/scrubber/data-objects">View Data_Objects</Link>.
+        <Link to="/scrubber/data-objects">View Data Objects</Link>.
       </p>
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       <form onSubmit={onRefresh} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
@@ -168,7 +168,7 @@ const btn: CSSProperties = {
   border: "none",
   borderRadius: "var(--radius)",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   fontFamily: "inherit",
   fontWeight: 600,
   cursor: "pointer",

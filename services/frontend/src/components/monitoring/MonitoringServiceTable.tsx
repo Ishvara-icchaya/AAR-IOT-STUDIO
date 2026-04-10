@@ -88,7 +88,7 @@ export function MonitoringServiceTable({
         </select>
       </form>
       <div style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)" }}>
-        <table style={tbl}>
+        <table className="ops-data-table" style={tbl}>
           <thead>
             <tr>
               <th style={th}>Service</th>
@@ -106,7 +106,18 @@ export function MonitoringServiceTable({
           </thead>
           <tbody>
             {filtered.map((r) => (
-              <tr key={r.service_name}>
+              <tr
+                key={r.service_name}
+                onClick={() => onView(r.service_name)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onView(r.service_name);
+                  }
+                }}
+                tabIndex={0}
+                role="row"
+              >
                 <td style={td}>{r.service_name}</td>
                 <td style={td}>
                   <strong style={{ fontWeight: 600 }}>{protocolIngressLabel(r.service_type)}</strong>
@@ -142,7 +153,10 @@ export function MonitoringServiceTable({
                 <td style={td}>
                   <button
                     type="button"
-                    onClick={() => onView(r.service_name)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onView(r.service_name);
+                    }}
                     style={{
                       background: "none",
                       border: "none",

@@ -307,7 +307,7 @@ const btn: CSSProperties = {
   border: "none",
   borderRadius: "var(--radius)",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   fontFamily: "inherit",
   fontWeight: 600,
   cursor: "pointer",

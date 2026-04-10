@@ -434,6 +434,30 @@ services:
       redis:
         condition: service_healthy
 
+  worker-map-aggregator:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.map_object_aggregator"]
+    environment:
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_DATA_OBJECT_CREATED_TOPIC: ${KAFKA_DATA_OBJECT_CREATED_TOPIC:-data_object.created}
+      KAFKA_RESULT_OBJECT_CREATED_TOPIC: ${KAFKA_RESULT_OBJECT_CREATED_TOPIC:-result_object.created}
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      TIMESCALE_DATABASE_URL: ${API_TIMESCALE_URL:-postgresql+psycopg2://aar:aar_dev_change_me@timescaledb:5432/aar_timeseries}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+
   worker-publish:
     build:
       context: ./services/workers

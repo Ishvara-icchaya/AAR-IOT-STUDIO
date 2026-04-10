@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.data_object_lifecycle import DATA_PUBLISHED
 from app.models.data_object import DataObject
 from app.models.result_object_definition import ResultObjectDefinition
+from app.models.static_ingestion import StaticIngestion
 from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode
 from app.services.workflow_graph_run import NODE_TYPES, topological_order
@@ -26,6 +28,29 @@ def validate_data_object_binding(
         return "data_object not found"
     if row.lifecycle_status != DATA_PUBLISHED:
         return "workflow input must reference a published data_object"
+    return None
+
+
+def validate_static_ingestion_binding(
+    db: Session,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID | None,
+    static_ingestion_id: uuid.UUID | None,
+) -> str | None:
+    if static_ingestion_id is None:
+        return "static node requires static_ingestion_id"
+    row = db.get(StaticIngestion, static_ingestion_id)
+    if not row or row.customer_id != customer_id:
+        return "static ingestion not found"
+    if site_id and row.site_id != site_id:
+        return "static ingestion site does not match workflow site"
+    now = datetime.now(timezone.utc)
+    if row.end_at:
+        end = row.end_at
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+        if end <= now:
+            return "static ingestion has passed its end date"
     return None
 
 
@@ -61,9 +86,10 @@ def validate_workflow_graph(
             errors.append(f"node {nid} missing node_name")
 
     inputs = [nid for nid, t in types_by_id.items() if t == "input"]
+    statics = [nid for nid, t in types_by_id.items() if t == "static"]
     terminates = [nid for nid, t in types_by_id.items() if t == "terminate"]
-    if not inputs:
-        errors.append("at least one input node required")
+    if not inputs and not statics:
+        errors.append("at least one input or static node required")
     if not terminates:
         errors.append("at least one terminate node required")
 
@@ -102,6 +128,8 @@ def validate_workflow_graph(
     for nid in node_ids:
         if types_by_id.get(nid) == "input" and preds.get(nid):
             errors.append("input node must not have incoming edges")
+        if types_by_id.get(nid) == "static" and preds.get(nid):
+            errors.append("static node must not have incoming edges")
         if types_by_id.get(nid) == "terminate" and succs.get(nid):
             errors.append("terminate node must not have outgoing edges")
 
@@ -109,21 +137,21 @@ def validate_workflow_graph(
         if types_by_id.get(nid) == "join" and len(preds.get(nid, [])) < 2:
             errors.append(f"join node {nid} requires two incoming edges")
 
-    reachable_from_input: set[uuid.UUID] = set()
-    for inp in inputs:
-        stack = [inp]
-        seen = {inp}
+    reachable_from_sources: set[uuid.UUID] = set()
+    for src in inputs + statics:
+        stack = [src]
+        seen = {src}
         while stack:
             cur = stack.pop()
-            reachable_from_input.add(cur)
+            reachable_from_sources.add(cur)
             for v in succs.get(cur, []):
                 if v not in seen:
                     seen.add(v)
                     stack.append(v)
 
     for nid in node_ids:
-        if nid not in reachable_from_input:
-            errors.append(f"node {nid} not reachable from any input")
+        if nid not in reachable_from_sources:
+            errors.append(f"node {nid} not reachable from any input or static node")
 
     reaches_terminate: set[uuid.UUID] = set()
     for term in terminates:
@@ -196,17 +224,30 @@ def full_validation_errors(db: Session, user_customer_id: uuid.UUID, wf: Workflo
         edges=edges,
     )
     for n in wf.nodes:
-        if n.node_type != "input":
-            continue
-        cfg = n.config_json or {}
-        raw = cfg.get("data_object_id")
-        if raw:
-            try:
-                did = uuid.UUID(str(raw))
-            except ValueError:
-                errs.append("input node has invalid data_object_id")
-                continue
-            m = validate_data_object_binding(db, user_customer_id, did)
-            if m:
-                errs.append(m)
+        if n.node_type == "input":
+            cfg = n.config_json or {}
+            raw = cfg.get("data_object_id")
+            if raw:
+                try:
+                    did = uuid.UUID(str(raw))
+                except ValueError:
+                    errs.append("input node has invalid data_object_id")
+                    continue
+                m = validate_data_object_binding(db, user_customer_id, did)
+                if m:
+                    errs.append(m)
+        elif n.node_type == "static":
+            cfg = n.config_json or {}
+            raw = cfg.get("static_ingestion_id")
+            if not raw:
+                errs.append(f"static node {n.id} requires static_ingestion_id")
+            else:
+                try:
+                    sid = uuid.UUID(str(raw))
+                except ValueError:
+                    errs.append("static node has invalid static_ingestion_id")
+                    continue
+                m = validate_static_ingestion_binding(db, user_customer_id, wf.site_id, sid)
+                if m:
+                    errs.append(m)
     return errs

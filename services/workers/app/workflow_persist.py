@@ -97,6 +97,33 @@ def load_data_object_payload(*, data_object_id: str, customer_id: str) -> dict[s
         conn.close()
 
 
+def load_static_ingestion_payload(
+    *, static_ingestion_id: str, customer_id: str
+) -> dict[str, Any] | None:
+    sql = """
+    SELECT payload_json, end_at
+    FROM static_ingestions
+    WHERE id = %s::uuid AND customer_id = %s::uuid
+    """
+    conn = psycopg2.connect(_db_url())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (static_ingestion_id, customer_id))
+            row = cur.fetchone()
+            if not row:
+                return None
+            payload, end_at = row
+            now = datetime.now(timezone.utc)
+            if end_at is not None:
+                if end_at.tzinfo is None:
+                    end_at = end_at.replace(tzinfo=timezone.utc)
+                if end_at <= now:
+                    return None
+            return dict(payload or {})
+    finally:
+        conn.close()
+
+
 def insert_execution_completed(
     *,
     workflow_id: str,

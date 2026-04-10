@@ -1,0 +1,38 @@
+/**
+ * Operations console — unified dark theme (IoT dashboard token alignment).
+ * Applied with `.shell--ops` on the app shell root.
+ */
+.shell--ops {
+  /* Mirror IoT HSL tokens as surfaces the rest of the app reads via existing vars */
+  --color-bg: hsl(222 47% 5%);
+  --color-surface: hsl(222 40% 8%);
+  --color-surface-elevated: hsl(217 33% 12%);
+  --color-border: hsl(188 35% 22%);
+  --color-text: hsl(210 40% 98%);
+  --color-text-muted: hsl(215 20% 55%);
+  --color-accent: hsl(187 100% 45%);
+  --color-accent-muted: hsl(187 80% 32%);
+  --iot-accent: 187 100% 42%;
+  --radius-lg: 0.75rem;
+  --shadow-soft: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px rgba(0, 212, 255, 0.12), 0 16px 48px rgba(0, 0, 0, 0.42);
+  --bg-grad-a: hsl(222 47% 5%);
+  --bg-grad-b: hsl(222 44% 8%);
+  --bg-grad-c: hsl(220 40% 6%);
+  --btn-on-accent: #031018;
+  --btn-on-accent-muted: #e8faff;
+}
+
+.shell--ops .shell__content {
+  background:
+    radial-gradient(ellipse 900px 480px at 10% 0%, color-mix(in oklab, var(--color-accent) 26%, transparent), transparent 58%),
+    radial-gradient(ellipse 800px 480px at 88% 12%, color-mix(in oklab, var(--color-accent) 14%, transparent), transparent 65%),
+    linear-gradient(165deg, var(--bg-grad-a) 0%, var(--bg-grad-b) 45%, var(--bg-grad-c) 100%);
+  background-attachment: fixed;
+}
+
+.shell--ops .shell__pagebar {
+  border-bottom-color: var(--color-border);
+  background: color-mix(in oklab, var(--color-surface) 75%, transparent);
+  backdrop-filter: blur(8px);
+}

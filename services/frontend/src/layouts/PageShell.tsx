@@ -10,6 +10,7 @@ export function PageShell({
   className,
   style,
   actions,
+  variant = "ops",
 }: {
   title: string;
   children?: ReactNode;
@@ -18,8 +19,10 @@ export function PageShell({
   style?: CSSProperties;
   /** Shown on the same row as the title (e.g. primary CTA, refresh). */
   actions?: ReactNode;
+  /** `ops` = dark glow card (default). `plain` = legacy flat card. */
+  variant?: "ops" | "plain";
 }) {
-  const rootClass = ["page-card", className].filter(Boolean).join(" ");
+  const rootClass = ["page-card", variant === "ops" ? "page-card--ops-glow" : "", className].filter(Boolean).join(" ");
   return (
     <div className={rootClass} style={style}>
       {actions != null ? (
@@ -33,13 +36,13 @@ export function PageShell({
             marginBottom: "0.75rem",
           }}
         >
-          <h1 style={{ margin: 0 }}>{title}</h1>
+          <h1 className="page-card__title">{title}</h1>
           <div className="page-shell__actions" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
             {actions}
           </div>
         </div>
       ) : (
-        <h1>{title}</h1>
+        <h1 className="page-card__title">{title}</h1>
       )}
       {children}
     </div>

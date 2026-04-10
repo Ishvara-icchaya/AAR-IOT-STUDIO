@@ -8,7 +8,9 @@ import {
   type DeviceEndpointObservability,
   type DeviceEndpointRead,
 } from "@/api/deviceEndpoints";
+import { ConfigDrawer } from "@/components/ops/ConfigDrawer";
 import { PageStatus } from "@/components/PageStatus";
+import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
 import {
   buildConfigFromFields,
@@ -200,6 +202,8 @@ export function DeviceManagePage() {
     }
   }, []);
 
+  const { refreshToken } = useOpsShell();
+
   const refresh = useCallback(async (): Promise<DeviceRow[]> => {
     setLoading(true);
     setErr(null);
@@ -229,6 +233,11 @@ export function DeviceManagePage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (refreshToken === 0) return;
+    void refresh();
+  }, [refreshToken, refresh]);
 
   useEffect(() => {
     if (!editingDevice) return;
@@ -427,18 +436,23 @@ export function DeviceManagePage() {
       <div style={stack}>
         {err ? <PageStatus variant="error">{err}</PageStatus> : null}
 
-        {!editingDevice ? (
-          <nav style={breadcrumbNav} aria-label="Manage devices">
-            <span style={breadcrumbCurrent}>All registered devices</span>
-            <span style={breadcrumbMuted}> — table below</span>
-          </nav>
-        ) : null}
+        <nav style={breadcrumbNav} aria-label="Manage devices">
+          <span style={breadcrumbCurrent}>Devices</span>
+          <span style={breadcrumbMuted}> — click a row to configure endpoint</span>
+        </nav>
 
-        {editingDevice && (
-          <section style={{ ...section, padding: "0.85rem 1rem", minWidth: 0 }}>
+        <ConfigDrawer
+          open={!!editingDevice}
+          onClose={cancelEdit}
+          title="Device & endpoint"
+          subtitle={editingDevice?.name}
+          width={880}
+        >
+          {editingDevice ? (
+            <>
             <nav style={breadcrumbNav} aria-label="Manage devices">
               <button type="button" style={breadcrumbBtn} onClick={cancelEdit}>
-                ← All devices (table)
+                ← Back to list
               </button>
               <span style={breadcrumbSep} aria-hidden>
                 /
@@ -1169,15 +1183,14 @@ export function DeviceManagePage() {
                 </div>
               </div>
             </div>
-          </section>
-        )}
+            </>
+          ) : null}
+        </ConfigDrawer>
 
-        {!editingDevice && (
           <section style={section} id="registered-devices-table">
             <h2 style={h2}>Registered devices</h2>
             <p style={muted}>
-              Select <strong>Edit</strong> to change endpoint settings. Use the link above when editing to return to this
-              table.
+              Click a row or use <strong>Edit</strong> to open the endpoint configuration drawer.
             </p>
             <div
               style={{
@@ -1205,7 +1218,7 @@ export function DeviceManagePage() {
               </label>
             </div>
             <div style={tableWrap}>
-              <table style={tbl}>
+              <table className="ops-data-table" style={tbl}>
                 <caption style={tblCaption}>All registered devices — tabular list</caption>
                 <thead>
                   <tr>
@@ -1236,7 +1249,18 @@ export function DeviceManagePage() {
                     </tr>
                   ) : (
                     devices.map((dev) => (
-                      <tr key={dev.id}>
+                      <tr
+                        key={dev.id}
+                        onClick={() => startEdit(dev)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            startEdit(dev);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="row"
+                      >
                         <td style={td}>{dev.name}</td>
                         <td style={td}>
                           <small>{sitesById[dev.site_id] ?? dev.site_id.slice(0, 8) + "…"}</small>
@@ -1255,7 +1279,14 @@ export function DeviceManagePage() {
                         </td>
                         <td style={td}>{dev.is_active ? "Active" : "Inactive"}</td>
                         <td style={td}>
-                          <button type="button" style={editBtn} onClick={() => startEdit(dev)}>
+                          <button
+                            type="button"
+                            style={editBtn}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              startEdit(dev);
+                            }}
+                          >
                             Edit
                           </button>
                         </td>
@@ -1266,7 +1297,6 @@ export function DeviceManagePage() {
               </table>
             </div>
           </section>
-        )}
       </div>
     </PageShell>
   );
@@ -1411,7 +1441,7 @@ const btnSm: CSSProperties = {
   border: "none",
   borderRadius: "var(--radius)",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   fontFamily: "inherit",
   fontWeight: 600,
   cursor: "pointer",

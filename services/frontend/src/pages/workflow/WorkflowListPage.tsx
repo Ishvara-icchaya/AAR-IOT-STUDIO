@@ -4,12 +4,14 @@ import { Link } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import * as wfApi from "@/api/workflow";
 import { PageStatus } from "@/components/PageStatus";
+import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
 import type { WorkflowListItemDTO } from "@/types/workflow";
 
 type SiteRow = { id: string; name: string };
 
 export function WorkflowListPage() {
+  const { siteId: opsSiteId, refreshToken } = useOpsShell();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [siteId, setSiteId] = useState("");
   const [q, setQ] = useState("");
@@ -41,8 +43,17 @@ export function WorkflowListPage() {
   }, []);
 
   useEffect(() => {
+    if (opsSiteId) setSiteId(opsSiteId);
+  }, [opsSiteId]);
+
+  useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (refreshToken === 0) return;
+    void load();
+  }, [refreshToken, load]);
 
   async function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -191,7 +202,7 @@ const btn: CSSProperties = {
   border: "none",
   borderRadius: "var(--radius)",
   background: "var(--color-accent)",
-  color: "#fff",
+  color: "var(--btn-on-accent)",
   fontWeight: 600,
   cursor: "pointer",
   alignSelf: "flex-end",

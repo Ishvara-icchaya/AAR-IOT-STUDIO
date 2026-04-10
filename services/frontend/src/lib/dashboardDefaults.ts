@@ -59,8 +59,9 @@ export function createDefaultWidget(type: string): DashboardWidgetModel {
           sourceType: "data_object",
           sourceId: "",
           chartType: "line",
+          chartTimeWindow: "24h",
           xField: "t",
-          yField: "value",
+          yField: "",
         },
       };
     case "device_tile":

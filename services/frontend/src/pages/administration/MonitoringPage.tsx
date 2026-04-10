@@ -28,6 +28,7 @@ import { MonitoringServiceDetailDrawer } from "@/components/monitoring/Monitorin
 import { MonitoringServiceTable } from "@/components/monitoring/MonitoringServiceTable";
 import { MonitoringStorageTable } from "@/components/monitoring/MonitoringStorageTable";
 import type { MonitoringTabId } from "@/components/monitoring/MonitoringTabs";
+import { MonitoringAlertsStrip } from "@/components/ops/MonitoringAlertsStrip";
 import { MonitoringTabs } from "@/components/monitoring/MonitoringTabs";
 
 const TAB_IDS: MonitoringTabId[] = ["overview", "services", "queues", "resources", "storage", "ai"];
@@ -119,10 +120,11 @@ export function MonitoringPage() {
   return (
     <PageShell
       title="Monitoring"
-      className="monitoring-page--full"
+      className="monitoring-page--full monitoring-page--iot"
       style={{ width: "100%", maxWidth: "none", flex: 1, minHeight: 0 }}
       actions={<MonitoringHeader onRefresh={refreshAll} loading={loading} lastUpdated={lastUpdated} />}
     >
+      <MonitoringAlertsStrip />
       <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
         Operational view of stack health, queues, and workers. Alerts integrate with the unified alerts list.
       </p>

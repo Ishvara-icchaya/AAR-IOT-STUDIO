@@ -27,6 +27,7 @@ class MonitoringSummary(BaseModel):
     scrubber_worker_status: str | None = None
     workflow_worker_status: str | None = None
     publish_worker_status: str | None = None
+    map_aggregator_worker_status: str | None = None
     ai_worker_status: str | None = None
     ingest_worker_status: str | None = None
     mqtt_broker_status: str | None = None

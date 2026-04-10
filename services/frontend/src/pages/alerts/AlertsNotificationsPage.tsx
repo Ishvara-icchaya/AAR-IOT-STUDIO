@@ -73,7 +73,7 @@ export function AlertsNotificationsPage() {
   }, [siteId, ackFilter, severity, category, searchDebounced]);
 
   return (
-    <PageShell title="Alerts" style={{ maxWidth: "1200px", margin: "0 auto" }}>
+    <PageShell title="Alerts" className="page-shell--use-80">
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem", alignItems: "center" }}>
         <label style={lbl}>

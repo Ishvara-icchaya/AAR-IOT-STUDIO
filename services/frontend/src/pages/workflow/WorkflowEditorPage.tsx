@@ -18,14 +18,25 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { getScrubberDataObject } from "@/api/scrubber";
+import { getStaticIngestion, listStaticIngestions } from "@/api/staticIngestion";
 import * as wfApi from "@/api/workflow";
 import type { WorkflowEdgeDTO, WorkflowNodeDTO } from "@/types/workflow";
+import { WorkflowFormulaBuilderPanel } from "@/components/workflow/WorkflowFormulaBuilderPanel";
+import { ConfigDrawer } from "@/components/ops/ConfigDrawer";
 import { PageStatus } from "@/components/PageStatus";
+import type { FormulaBuilderRow } from "@/lib/workflowFormulaCodegen";
+import {
+  defaultFormulaBuilderRows,
+  generatePythonFromRows,
+  validatePythonFormulaShape,
+  WORKFLOW_FORMULA_PYTHON_EXAMPLE,
+} from "@/lib/workflowFormulaCodegen";
 import { useDocumentThemeLight } from "@/hooks/useDocumentThemeLight";
 import { PageShell } from "@/layouts/PageShell";
 
 const PALETTE: { type: string; label: string }[] = [
   { type: "input", label: "Input" },
+  { type: "static", label: "Static" },
   { type: "filter", label: "Filter" },
   { type: "formula", label: "Formula" },
   { type: "rename", label: "Rename" },
@@ -87,7 +98,7 @@ function WfNode({ data, selected }: NodeProps<Node<WfData>>) {
         fontFamily: "inherit",
       }}
     >
-      {data.nodeType !== "input" && <Handle type="target" position={Position.Top} />}
+      {data.nodeType !== "input" && data.nodeType !== "static" && <Handle type="target" position={Position.Top} />}
       <div style={{ color: "var(--color-text-muted)", fontSize: "0.7rem" }}>{data.nodeType}</div>
       <div style={{ fontWeight: 600, color: "var(--color-text)" }}>{data.nodeName}</div>
       {data.nodeType !== "terminate" && <Handle type="source" position={Position.Bottom} />}
@@ -109,14 +120,19 @@ const PROCESSING_NODE_TYPES = new Set([
   "kpi_builder",
 ]);
 
-function upstreamPublishedObjectIds(nodes: Node<WfData>[], edges: Edge[], startNodeId: string): string[] {
+function upstreamSourceIds(
+  nodes: Node<WfData>[],
+  edges: Edge[],
+  startNodeId: string,
+): { dataObjectIds: string[]; staticIngestionIds: string[] } {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const queue: string[] = [];
   for (const e of edges) {
     if (e.target === startNodeId) queue.push(e.source);
   }
   const seen = new Set<string>();
-  const objectIds = new Set<string>();
+  const dataObjectIds = new Set<string>();
+  const staticIngestionIds = new Set<string>();
   while (queue.length > 0) {
     const id = queue.shift()!;
     if (seen.has(id)) continue;
@@ -125,14 +141,19 @@ function upstreamPublishedObjectIds(nodes: Node<WfData>[], edges: Edge[], startN
     if (!n) continue;
     if (n.data.nodeType === "input") {
       const oid = String((n.data.configJson as { data_object_id?: string }).data_object_id ?? "").trim();
-      if (oid) objectIds.add(oid);
+      if (oid) dataObjectIds.add(oid);
+      continue;
+    }
+    if (n.data.nodeType === "static") {
+      const sid = String((n.data.configJson as { static_ingestion_id?: string }).static_ingestion_id ?? "").trim();
+      if (sid) staticIngestionIds.add(sid);
       continue;
     }
     for (const e of edges) {
       if (e.target === id) queue.push(e.source);
     }
   }
-  return [...objectIds];
+  return { dataObjectIds: [...dataObjectIds], staticIngestionIds: [...staticIngestionIds] };
 }
 
 function toFlowNodes(nodes: WorkflowNodeDTO[]): Node<WfData>[] {
@@ -156,6 +177,36 @@ function toFlowEdges(edges: WorkflowEdgeDTO[]): Edge[] {
   }));
 }
 
+function parseFormulaBuilderRows(cfg: Record<string, unknown>): FormulaBuilderRow[] {
+  const raw = cfg.formula_builder_rows;
+  if (!Array.isArray(raw) || raw.length === 0) return defaultFormulaBuilderRows();
+  const out: FormulaBuilderRow[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const op = String(o.op ?? "copy");
+    out.push({
+      id: String(o.id || crypto.randomUUID()),
+      outputKey: String(o.outputKey ?? ""),
+      op: op as FormulaBuilderRow["op"],
+      leftPath: String(o.leftPath ?? ""),
+      rightKind: o.rightKind === "path" ? "path" : "literal",
+      literal: String(o.literal ?? ""),
+      rightPath: String(o.rightPath ?? ""),
+    });
+  }
+  return out.length ? out : defaultFormulaBuilderRows();
+}
+
+function inferFormulaPanel(cfg: Record<string, unknown>): "visual" | "python" | "legacy" {
+  const ex = cfg.formula_panel;
+  if (ex === "visual" || ex === "python" || ex === "legacy") return ex;
+  if (Array.isArray(cfg.formula_builder_rows) && (cfg.formula_builder_rows as unknown[]).length > 0) return "visual";
+  if (String(cfg.mode ?? "") === "python") return "python";
+  if (String(cfg.mode ?? "simple") === "simple" && "set" in cfg) return "legacy";
+  return "visual";
+}
+
 export function WorkflowEditorPage() {
   const themeLight = useDocumentThemeLight();
   const { workflowId } = useParams<{ workflowId: string }>();
@@ -163,6 +214,7 @@ export function WorkflowEditorPage() {
   const [status, setStatus] = useState("");
   const [published, setPublished] = useState(false);
   const [sources, setSources] = useState<{ id: string; name: string }[]>([]);
+  const [staticSources, setStaticSources] = useState<{ id: string; name: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [valErrs, setValErrs] = useState<string[]>([]);
@@ -182,6 +234,9 @@ export function WorkflowEditorPage() {
   const [schemaFields, setSchemaFields] = useState<string[]>([]);
   /** Output of the immediate upstream node (for field lists: formula/filter/etc. should use this, not this node's output). */
   const [upstreamPreview, setUpstreamPreview] = useState<JsonObj | null>(null);
+  const [lastPreviewAt, setLastPreviewAt] = useState<Date | null>(null);
+  const [formulaValidateMsg, setFormulaValidateMsg] = useState<string | null>(null);
+  const [formulaValidateBusy, setFormulaValidateBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!workflowId) return;
@@ -197,6 +252,10 @@ export function WorkflowEditorPage() {
       if (w.site_id) {
         const ds = await wfApi.listPublishedDataSources(w.site_id);
         setSources(ds?.items?.map((x) => ({ id: x.id, name: x.name })) ?? []);
+        const ss = await listStaticIngestions(w.site_id, { active_only: true });
+        setStaticSources(ss?.items?.map((x) => ({ id: x.id, name: x.name })) ?? []);
+      } else {
+        setStaticSources([]);
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Load failed");
@@ -208,6 +267,9 @@ export function WorkflowEditorPage() {
   }, [load]);
 
   const selectedNode = nodes.find((n) => n.id === sel);
+  useEffect(() => {
+    setFormulaValidateMsg(null);
+  }, [sel]);
   useEffect(() => {
     if (!selectedNode) {
       setCfgText("{}");
@@ -228,7 +290,7 @@ export function WorkflowEditorPage() {
       return;
     }
     const nt = node.data.nodeType;
-    const showIncoming = nt === "input" || PROCESSING_NODE_TYPES.has(nt);
+    const showIncoming = nt === "input" || nt === "static" || PROCESSING_NODE_TYPES.has(nt);
     if (!showIncoming) {
       setIncomingJson(null);
       setIncomingCaption("");
@@ -244,28 +306,38 @@ export function WorkflowEditorPage() {
       setIncomingJson(null);
       setIncomingCaption("");
       try {
-        let ids: string[] = [];
+        let dataIds: string[] = [];
+        let staticIds: string[] = [];
         if (nt === "input") {
           const oid = String(
             (sn.data.configJson as { data_object_id?: string }).data_object_id ?? "",
           ).trim();
-          if (oid) ids = [oid];
+          if (oid) dataIds = [oid];
+        } else if (nt === "static") {
+          const sid = String(
+            (sn.data.configJson as { static_ingestion_id?: string }).static_ingestion_id ?? "",
+          ).trim();
+          if (sid) staticIds = [sid];
         } else {
-          ids = upstreamPublishedObjectIds(nodes, edges, sn.id);
+          const up = upstreamSourceIds(nodes, edges, sn.id);
+          dataIds = up.dataObjectIds;
+          staticIds = up.staticIngestionIds;
         }
-        if (ids.length === 0) {
+        if (dataIds.length === 0 && staticIds.length === 0) {
           if (!cancelled) {
             setIncomingCaption(
               nt === "input"
                 ? "Pick a published data object for this Input to preview the JSON that enters the workflow."
-                : "Connect this node to an Input that references a published data object to preview upstream JSON.",
+                : nt === "static"
+                  ? "Choose a static ingestion definition for this node."
+                  : "Connect this node to an Input or Static source to preview upstream JSON.",
             );
           }
           return;
         }
 
         const parts: Record<string, unknown> = {};
-        for (const oid of ids) {
+        for (const oid of dataIds) {
           const row = await getScrubberDataObject(oid);
           if (cancelled) return;
           if (!row) continue;
@@ -275,17 +347,26 @@ export function WorkflowEditorPage() {
             kpi_json: row.kpi_json,
             health_status: row.health_status,
           };
-          parts[ids.length === 1 ? "incoming" : oid] = blob;
+          parts[dataIds.length === 1 && staticIds.length === 0 ? "incoming" : `data_object:${oid}`] = blob;
+        }
+        for (const sid of staticIds) {
+          const row = await getStaticIngestion(sid);
+          if (cancelled) return;
+          if (!row) continue;
+          parts[staticIds.length === 1 && dataIds.length === 0 ? "incoming" : `static:${sid}`] = {
+            name: row.name,
+            payload: row.payload_json,
+          };
         }
         if (cancelled) return;
         if (Object.keys(parts).length === 0) {
-          setIncomingErr("Data object could not be loaded (missing or no access).");
+          setIncomingErr("Upstream payload could not be loaded (missing or no access).");
           return;
         }
         setIncomingCaption(
-          ids.length === 1
-            ? "JSON from the published data object (same shape the workflow engine loads for this path)."
-            : `${ids.length} upstream inputs — each block is one published data object.`,
+          dataIds.length + staticIds.length === 1
+            ? "JSON from the upstream source (same shape the workflow engine loads for this path)."
+            : `${dataIds.length + staticIds.length} upstream sources — each block is one payload.`,
         );
         setIncomingJson(JSON.stringify(parts, null, 2));
       } catch (e) {
@@ -309,13 +390,28 @@ export function WorkflowEditorPage() {
       setUpstreamPreview(null);
       return;
     }
-    const ids = selectedNode.data.nodeType === "input"
-      ? [String((selectedNode.data.configJson as { data_object_id?: string }).data_object_id ?? "")]
-      : upstreamPublishedObjectIds(nodes, edges, selectedNode.id);
-    const dataObjectId = ids.find((x) => x && x.trim()) ?? "";
+    const nt = selectedNode.data.nodeType;
     const wfId = workflowId;
     const nodeId = selectedNode.id;
-    if (!dataObjectId) {
+
+    const up =
+      nt === "input"
+        ? {
+            dataObjectIds: [
+              String((selectedNode.data.configJson as { data_object_id?: string }).data_object_id ?? ""),
+            ],
+            staticIngestionIds: [] as string[],
+          }
+        : upstreamSourceIds(nodes, edges, selectedNode.id);
+    const dataObjectId = up.dataObjectIds.find((x) => x && x.trim()) ?? "";
+    const canPreview =
+      nt === "static"
+        ? Boolean(
+            String((selectedNode.data.configJson as { static_ingestion_id?: string }).static_ingestion_id ?? "").trim(),
+          )
+        : Boolean(dataObjectId) || up.staticIngestionIds.length > 0;
+
+    if (!canPreview) {
       setNodePreview(null);
       setNodePreviewErr(null);
       setNodePreviewStatus("");
@@ -324,19 +420,23 @@ export function WorkflowEditorPage() {
       return;
     }
     let cancelled = false;
-    async function run(did: string, nid: string, wid: string, flowEdges: Edge[]) {
+    async function run(nid: string, wid: string, flowEdges: Edge[]) {
       try {
-        const res = await wfApi.testWorkflow(wid, { data_object_id: did });
+        const testBody = dataObjectId ? { data_object_id: dataObjectId } : {};
+        const res = await wfApi.testWorkflow(wid, testBody);
         if (cancelled) return;
         const out = (res?.node_outputs?.[nid] as JsonObj | undefined) ?? null;
         setNodePreview(out);
         setNodePreviewStatus(String(res?.status ?? ""));
         setNodePreviewErr(res?.error ?? null);
         setSchemaFields(out ? collectFieldPaths(out) : []);
+        if (out) {
+          setLastPreviewAt(new Date());
+        }
         const parentIds = flowEdges.filter((e) => e.target === nid).map((e) => e.source);
         if (parentIds.length === 1) {
-          const up = (res?.node_outputs?.[parentIds[0]] as JsonObj | undefined) ?? null;
-          setUpstreamPreview(up);
+          const upOut = (res?.node_outputs?.[parentIds[0]] as JsonObj | undefined) ?? null;
+          setUpstreamPreview(upOut);
         } else {
           setUpstreamPreview(null);
         }
@@ -350,7 +450,7 @@ export function WorkflowEditorPage() {
         }
       }
     }
-    void run(dataObjectId, nodeId, wfId, edges);
+    void run(nodeId, wfId, edges);
     return () => {
       cancelled = true;
     };
@@ -376,9 +476,11 @@ export function WorkflowEditorPage() {
     const cfg: Record<string, unknown> =
       t === "input"
         ? { data_object_id: sources[0]?.id ?? "" }
-        : t === "terminate"
-          ? { terminate_name: "result_1" }
-          : {};
+        : t === "static"
+          ? { static_ingestion_id: staticSources[0]?.id ?? "" }
+          : t === "terminate"
+            ? { terminate_name: "result_1" }
+            : {};
     setNodes((ns) => [
       ...ns,
       {
@@ -472,13 +574,59 @@ export function WorkflowEditorPage() {
     }
   }
 
+  const validateFormulaPython = useCallback(async () => {
+    setFormulaValidateMsg(null);
+    if (!workflowId || !selectedNode || selectedNode.data.nodeType !== "formula") {
+      setFormulaValidateMsg("Select a formula node.");
+      return;
+    }
+    const cfg = selectedNode.data.configJson ?? {};
+    const panel = inferFormulaPanel(cfg);
+    const code =
+      panel === "legacy"
+        ? ""
+        : panel === "visual"
+          ? generatePythonFromRows(parseFormulaBuilderRows(cfg))
+          : String((cfg as { python_code?: string }).python_code ?? "");
+    if (panel === "legacy") {
+      setFormulaValidateMsg("Literal map mode has no Python to validate — switch to Visual builder or Python mode.");
+      return;
+    }
+    const shape = validatePythonFormulaShape(code);
+    if (!shape.ok) {
+      setFormulaValidateMsg(shape.error ?? "Invalid formula shape.");
+      return;
+    }
+    const ids = upstreamSourceIds(nodes, edges, selectedNode.id).dataObjectIds;
+    const dataObjectId = ids.find((x) => x && x.trim()) ?? "";
+    if (!dataObjectId) {
+      setFormulaValidateMsg("Connect a published data object through an Input. Server test also requires the workflow saved if you changed this node.");
+      return;
+    }
+    setFormulaValidateBusy(true);
+    try {
+      const res = await wfApi.testWorkflow(workflowId, { data_object_id: dataObjectId });
+      if (res?.status === "success" && !res.error) {
+        setFormulaValidateMsg("OK — saved workflow test run succeeded (uses persisted graph).");
+      } else {
+        setFormulaValidateMsg(res?.error ?? `Status: ${res?.status ?? "unknown"}`);
+      }
+    } catch (e) {
+      setFormulaValidateMsg(e instanceof Error ? e.message : "Test failed");
+    } finally {
+      setFormulaValidateBusy(false);
+    }
+  }, [workflowId, selectedNode, nodes, edges]);
+
   if (!workflowId) {
     return <PageShell title="Edit workflow">Missing id.</PageShell>;
   }
 
   const showIncomingPanel =
     selectedNode &&
-    (selectedNode.data.nodeType === "input" || PROCESSING_NODE_TYPES.has(selectedNode.data.nodeType));
+    (selectedNode.data.nodeType === "input" ||
+      selectedNode.data.nodeType === "static" ||
+      PROCESSING_NODE_TYPES.has(selectedNode.data.nodeType));
   const parentNodes = selectedNode ? edges.filter((e) => e.target === selectedNode.id).map((e) => nodes.find((n) => n.id === e.source)).filter(Boolean) as Node<WfData>[] : [];
   const incomingObj = (() => {
     if (!incomingJson) return null;
@@ -504,7 +652,7 @@ export function WorkflowEditorPage() {
   /** Shape passed into the selected node: upstream test output when present, else input-node output / scrubber sample. */
   const payloadShapeForFields = (() => {
     if (!selectedNode) return null;
-    if (selectedNode.data.nodeType === "input") {
+    if (selectedNode.data.nodeType === "input" || selectedNode.data.nodeType === "static") {
       return nodePreview;
     }
     if (upstreamPreview) {
@@ -545,6 +693,11 @@ export function WorkflowEditorPage() {
           {status}
           {published ? " · editing locked" : ""}
         </span>
+        {lastPreviewAt ? (
+          <span className="workflow-editor__preview-ts" style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }} title="Last successful graph preview">
+            Live preview · {lastPreviewAt.toLocaleTimeString()}
+          </span>
+        ) : null}
         <button type="button" style={btn} disabled={published} onClick={() => void save()}>
           Save
         </button>
@@ -607,24 +760,17 @@ export function WorkflowEditorPage() {
             <Controls />
           </ReactFlow>
         </div>
-        <div
-          className="workflow-editor-sidebar workflow-editor__sidebar"
-          style={{
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            padding: "0.5rem",
-            fontSize: "0.85rem",
-            color: "var(--color-text)",
-            minHeight: 0,
-            overflow: "auto",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: "0.5rem", color: "var(--color-text)" }}>Node config</div>
-          {!selectedNode && <span style={{ color: "var(--color-text-muted)" }}>Select a node</span>}
-          {selectedNode && (
-            <>
+      </div>
+      <ConfigDrawer
+        open={!!selectedNode}
+        onClose={() => setSel(null)}
+        title="Node configuration"
+        subtitle={selectedNode ? `${selectedNode.data.nodeName} · ${selectedNode.data.nodeType}` : undefined}
+        width={460}
+      >
+        {!selectedNode && <span style={{ color: "var(--color-text-muted)" }}>Select a node on the canvas</span>}
+        {selectedNode && (
+          <>
               <label style={lbl2}>
                 Display name
                 <input value={nameEdit} onChange={(e) => setNameEdit(e.target.value)} style={inp} disabled={published} />
@@ -639,6 +785,7 @@ export function WorkflowEditorPage() {
                       onChange={(e) => patchSelectedConfig({ data_object_id: e.target.value })}
                       style={inp}
                     >
+                      <option value="">— Select —</option>
                       {sources.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
@@ -649,6 +796,40 @@ export function WorkflowEditorPage() {
                   {availableFields.length > 0 ? (
                     <label style={lbl2}>
                       Available fields
+                      <select style={inp} disabled>
+                        {availableFields.map((f) => (
+                          <option key={f}>{f}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                </>
+              )}
+              {selectedNode.data.nodeType === "static" && (
+                <>
+                  <label style={lbl2}>
+                    Static ingestion
+                    <select
+                      value={String((selectedNode.data.configJson as { static_ingestion_id?: string }).static_ingestion_id ?? "")}
+                      disabled={published}
+                      onChange={(e) => patchSelectedConfig({ static_ingestion_id: e.target.value })}
+                      style={inp}
+                    >
+                      <option value="">— Select —</option>
+                      {staticSources.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
+                    Define payloads under Scrubber → Stale ingestion → Static JSON. The workflow engine loads{" "}
+                    <code style={{ fontSize: "0.7rem" }}>payload_json</code> for this node (no incoming edges).
+                  </p>
+                  {availableFields.length > 0 ? (
+                    <label style={lbl2}>
+                      Payload fields
                       <select style={inp} disabled>
                         {availableFields.map((f) => (
                           <option key={f}>{f}</option>
@@ -789,9 +970,36 @@ export function WorkflowEditorPage() {
                 <>
                   <label style={lbl2}>
                     Mode
-                    <select style={inp} value={String((selectedNode.data.configJson as { mode?: string }).mode ?? "simple")} onChange={(e) => patchSelectedConfig({ mode: e.target.value })} disabled={published}>
-                      <option value="simple">Simple formula builder</option>
-                      <option value="python">Python function mode</option>
+                    <select
+                      style={inp}
+                      value={inferFormulaPanel(selectedNode.data.configJson ?? {})}
+                      onChange={(e) => {
+                        const v = e.target.value as "visual" | "python" | "legacy";
+                        if (v === "legacy") {
+                          patchSelectedConfig({ formula_panel: "legacy", mode: "simple" });
+                        } else if (v === "python") {
+                          patchSelectedConfig({
+                            formula_panel: "python",
+                            mode: "python",
+                            python_code:
+                              String((selectedNode.data.configJson as { python_code?: string }).python_code ?? "").trim() ||
+                              WORKFLOW_FORMULA_PYTHON_EXAMPLE,
+                          });
+                        } else {
+                          const rows = parseFormulaBuilderRows(selectedNode.data.configJson ?? {});
+                          patchSelectedConfig({
+                            formula_panel: "visual",
+                            mode: "python",
+                            formula_builder_rows: rows,
+                            python_code: generatePythonFromRows(rows),
+                          });
+                        }
+                      }}
+                      disabled={published}
+                    >
+                      <option value="visual">Visual formula builder (generates Python)</option>
+                      <option value="python">Python (manual)</option>
+                      <option value="legacy">Legacy literal map (JSON)</option>
                     </select>
                   </label>
                   {parentNodes.length === 0 ? (
@@ -842,37 +1050,103 @@ export function WorkflowEditorPage() {
                         <code style={{ fontSize: "0.7rem" }}>{'"a.b"'}</code>.
                       </li>
                       <li>
-                        <strong>Simple mode:</strong> <code style={{ fontSize: "0.7rem" }}>set</code> merges literal values onto a copy of <code style={{ fontSize: "0.7rem" }}>payload</code> at the top level only; expressions are not evaluated.
+                        <strong>Legacy literal map:</strong> <code style={{ fontSize: "0.7rem" }}>set</code> merges literal values only (no expressions).
                       </li>
                       <li>
-                        <strong>Python mode:</strong> return a dict of new or updated top-level keys; scalar values are written back onto the payload (see server rules).
+                        <strong>Python / visual:</strong> return a dict of new or updated top-level keys.
                       </li>
                     </ul>
                   </details>
-                  {String((selectedNode.data.configJson as { mode?: string }).mode ?? "simple") === "python" ? (
+                  {inferFormulaPanel(selectedNode.data.configJson ?? {}) === "visual" ? (
+                    <WorkflowFormulaBuilderPanel
+                      rows={parseFormulaBuilderRows(selectedNode.data.configJson ?? {})}
+                      availableFields={availableFields}
+                      disabled={published}
+                      onChangeRows={(next) => {
+                        patchSelectedConfig({
+                          formula_builder_rows: next,
+                          mode: "python",
+                          formula_panel: "visual",
+                          python_code: generatePythonFromRows(next),
+                        });
+                      }}
+                      onGeneratedCode={(py) => {
+                        patchSelectedConfig({ python_code: py, mode: "python", formula_panel: "visual" });
+                      }}
+                    />
+                  ) : null}
+                  {inferFormulaPanel(selectedNode.data.configJson ?? {}) === "python" ? (
                     <>
-                      <label style={lbl2}>
-                        Python `transform(payload)` (sandboxed)
-                        <textarea
-                          style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
-                          rows={8}
-                          value={String((selectedNode.data.configJson as { python_code?: string }).python_code ?? "def transform(payload):\n    return {}")}
-                          onChange={(e) => patchSelectedConfig({ python_code: e.target.value })}
-                          disabled={published}
-                        />
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.35rem" }}>
+                        <span style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--color-text)" }}>Python `transform(payload)` (sandboxed)</span>
+                        <details style={{ fontSize: "0.72rem", maxWidth: "100%" }}>
+                          <summary style={{ cursor: "pointer", color: "var(--color-accent)", fontWeight: 600 }}>Example</summary>
+                          <pre
+                            style={{
+                              margin: "0.35rem 0 0",
+                              padding: "0.5rem",
+                              borderRadius: "var(--radius)",
+                              border: "1px solid var(--color-border)",
+                              background: "var(--color-bg)",
+                              fontSize: "0.68rem",
+                              overflow: "auto",
+                              maxHeight: "11rem",
+                              lineHeight: 1.35,
+                            }}
+                          >
+                            {WORKFLOW_FORMULA_PYTHON_EXAMPLE}
+                          </pre>
+                        </details>
+                      </div>
+                      <textarea
+                        style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
+                        rows={10}
+                        value={String((selectedNode.data.configJson as { python_code?: string }).python_code ?? "def transform(payload):\n    return {}")}
+                        onChange={(e) => patchSelectedConfig({ python_code: e.target.value, mode: "python", formula_panel: "python" })}
+                        disabled={published}
+                      />
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center", marginTop: "0.35rem" }}>
+                        <button type="button" style={btnSec} disabled={published || formulaValidateBusy} onClick={() => void validateFormulaPython()}>
+                          {formulaValidateBusy ? "Validating…" : "Validate formula"}
+                        </button>
+                        <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>
+                          Checks <code>def transform(payload)</code>, then runs a server test (saved workflow + published sample).
+                        </span>
+                      </div>
+                      {formulaValidateMsg ? (
+                        <div
+                          className="ops-strip ops-strip--warn"
+                          style={{
+                            marginTop: "0.45rem",
+                            fontSize: "0.78rem",
+                            ...(formulaValidateMsg.startsWith("OK")
+                              ? {
+                                  color: "var(--page-status-success-fg)",
+                                  background: "var(--page-status-success-bg)",
+                                  borderColor: "var(--page-status-success-border)",
+                                }
+                              : {}),
+                          }}
+                        >
+                          {formulaValidateMsg}
+                        </div>
+                      ) : null}
+                      <label style={{ ...lbl2, marginTop: "0.5rem" }}>
+                        Timeout ms
+                        <input style={inp} type="number" value={Number((selectedNode.data.configJson as { timeout_ms?: number }).timeout_ms ?? 300)} onChange={(e) => patchSelectedConfig({ timeout_ms: Number(e.target.value || 300) })} disabled={published} />
                       </label>
-                      <label style={lbl2}>Timeout ms<input style={inp} type="number" value={Number((selectedNode.data.configJson as { timeout_ms?: number }).timeout_ms ?? 300)} onChange={(e) => patchSelectedConfig({ timeout_ms: Number(e.target.value || 300) })} disabled={published} /></label>
                     </>
-                  ) : (
+                  ) : null}
+                  {inferFormulaPanel(selectedNode.data.configJson ?? {}) === "legacy" ? (
                     <label style={lbl2}>
-                      Simple set map (JSON object)
+                      Literal map (JSON object)
                       <textarea
                         style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
                         rows={5}
                         value={JSON.stringify((selectedNode.data.configJson as { set?: JsonObj }).set ?? {}, null, 2)}
                         onChange={(e) => {
                           try {
-                            patchSelectedConfig({ set: JSON.parse(e.target.value) });
+                            patchSelectedConfig({ set: JSON.parse(e.target.value), mode: "simple", formula_panel: "legacy" });
                           } catch {
                             setErr("Simple formula set must be valid JSON object");
                           }
@@ -880,7 +1154,7 @@ export function WorkflowEditorPage() {
                         disabled={published}
                       />
                     </label>
-                  )}
+                  ) : null}
                 </>
               )}
               {selectedNode.data.nodeType === "drop" && (
@@ -918,32 +1192,32 @@ export function WorkflowEditorPage() {
                   {terminateNameDup ? <PageStatus variant="error">Terminate name must be unique in this workflow.</PageStatus> : null}
                 </>
               )}
-              <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap" }}>
                 <button type="button" style={btn} disabled={published} onClick={applySelectionEdits}>
                   Apply node name
                 </button>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.78rem" }}>
-                  <input type="checkbox" checked={advancedMode} onChange={(e) => setAdvancedMode(e.target.checked)} />
-                  Advanced JSON
-                </label>
               </div>
-              {advancedMode ? (
-                <>
-                  <label style={lbl2}>
-                    config_json (debug)
-                    <textarea
-                      value={cfgText}
-                      onChange={(e) => setCfgText(e.target.value)}
-                      disabled={published}
-                      rows={10}
-                      style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
-                    />
-                  </label>
-                  <button type="button" style={btnSec} disabled={published} onClick={applySelectionEdits}>
-                    Apply debug JSON
-                  </button>
-                </>
-              ) : null}
+              <details style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--color-text)" }}>
+                  Expert: edit raw config JSON
+                </summary>
+                <label style={{ ...lbl2, marginTop: "0.5rem" }}>
+                  config_json
+                  <textarea
+                    value={cfgText}
+                    onChange={(e) => {
+                      setCfgText(e.target.value);
+                      setAdvancedMode(true);
+                    }}
+                    disabled={published}
+                    rows={8}
+                    style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
+                  />
+                </label>
+                <button type="button" style={btnSec} disabled={published} onClick={applySelectionEdits}>
+                  Apply JSON
+                </button>
+              </details>
               <div style={{ marginTop: "0.5rem", borderTop: "1px solid var(--color-border)", paddingTop: "0.5rem" }}>
                 <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Node preview & validation</div>
                 {nodePreviewStatus ? <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>Run status: {nodePreviewStatus}</div> : null}
@@ -1008,8 +1282,7 @@ export function WorkflowEditorPage() {
               ) : null}
             </>
           )}
-        </div>
-      </div>
+      </ConfigDrawer>
     </PageShell>
   );
 }
@@ -1022,13 +1295,16 @@ const inp: CSSProperties = {
   color: "var(--color-text)",
 };
 const btn: CSSProperties = {
-  padding: "0.45rem 0.75rem",
+  minHeight: "var(--btn-min-height)",
+  padding: "var(--btn-padding-y) var(--btn-padding-x)",
+  fontSize: "var(--btn-font-size)",
   border: "none",
   borderRadius: "var(--radius)",
-  background: "var(--color-accent)",
-  color: "#fff",
+  background: "linear-gradient(180deg, color-mix(in oklab, var(--color-accent) 90%, #fff 10%), color-mix(in oklab, var(--color-accent) 86%, #000 14%))",
+  color: "var(--btn-on-accent)",
   fontWeight: 600,
   cursor: "pointer",
+  boxSizing: "border-box",
 };
 const btnSec: CSSProperties = { ...btn, background: "var(--color-border)", color: "var(--color-text)" };
 const palBtn: CSSProperties = {

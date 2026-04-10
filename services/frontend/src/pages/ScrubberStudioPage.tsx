@@ -632,6 +632,34 @@ function mappingForPreview(form: StudioDraftForm, version: string): Record<strin
   };
 }
 
+function PayloadKeyValueTable({ obj, maxRows = 96 }: { obj: Record<string, unknown>; maxRows?: number }) {
+  const rows = Object.entries(obj).slice(0, maxRows);
+  return (
+    <div style={{ overflow: "auto", maxHeight: "min(48vh, 420px)" }}>
+      <table className="ops-data-table" style={{ fontSize: "0.78rem" }}>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([k, v]) => (
+            <tr key={k}>
+              <td>
+                <code>{k}</code>
+              </td>
+              <td style={{ wordBreak: "break-word", color: "var(--color-text-muted)" }}>
+                {v !== null && typeof v === "object" ? JSON.stringify(v) : String(v)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function scalarCoerce(val: unknown): unknown {
   if (val === null || typeof val === "boolean" || typeof val === "number" || typeof val === "string") return val;
   if (typeof val === "object") return JSON.stringify(val);
@@ -877,6 +905,7 @@ export function ScrubberStudioPage() {
   const [stepPickerOpen, setStepPickerOpen] = useState(false);
   const [jsonModal, setJsonModal] = useState<{ title: string; body: string } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [resultViewTab, setResultViewTab] = useState<"payload" | "kpi" | "health" | "location">("payload");
   const stepPickerRef = useRef<HTMLDivElement>(null);
   const didStampObjectName = useRef(false);
 
@@ -1514,10 +1543,70 @@ export function ScrubberStudioPage() {
                   }
                   onCopied={() => setOk("Copied JSON to clipboard.")}
                 />
-                <div style={miniHead}>Output payload (live)</div>
-                <pre className="scrubber-pre scrubber-pre--compact">{safeJsonPreview(liveOutput.output_payload, 32000)}</pre>
-                <div style={miniHead}>KPI (kpi_json) — live</div>
-                <pre className="scrubber-pre scrubber-pre--compact">{safeJsonPreview(liveOutput.kpi, 12000)}</pre>
+                <div className="scrubber-result-tabs" role="tablist" aria-label="Live result views">
+                  {(
+                    [
+                      ["payload", "Payload"],
+                      ["kpi", "KPI"],
+                      ["health", "Health"],
+                      ["location", "Location"],
+                    ] as const
+                  ).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={resultViewTab === id}
+                      className={resultViewTab === id ? "scrubber-result-tabs__btn--active" : undefined}
+                      onClick={() => setResultViewTab(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {resultViewTab === "payload" ? (
+                  <>
+                    <div style={miniHead}>Payload (table)</div>
+                    <PayloadKeyValueTable obj={liveOutput.output_payload} />
+                    <div style={{ ...miniHead, marginTop: "0.65rem" }}>Payload (JSON)</div>
+                    <pre className="scrubber-pre scrubber-pre--compact">{safeJsonPreview(liveOutput.output_payload, 32000)}</pre>
+                  </>
+                ) : null}
+                {resultViewTab === "kpi" ? (
+                  <>
+                    <div style={miniHead}>KPI (kpi_json) — live</div>
+                    <PayloadKeyValueTable obj={liveOutput.kpi as Record<string, unknown>} maxRows={64} />
+                    <pre className="scrubber-pre scrubber-pre--compact" style={{ marginTop: "0.5rem" }}>
+                      {safeJsonPreview(liveOutput.kpi, 12000)}
+                    </pre>
+                  </>
+                ) : null}
+                {resultViewTab === "health" ? (
+                  <div style={{ marginTop: "0.35rem" }}>
+                    <pre className="scrubber-pre scrubber-pre--compact">
+                      {safeJsonPreview(
+                        {
+                          health_status: liveOutput.health_status,
+                          health_code: liveOutput.health_code,
+                          health_message: liveOutput.health_message,
+                        },
+                        8000,
+                      )}
+                    </pre>
+                  </div>
+                ) : null}
+                {resultViewTab === "location" ? (
+                  <div style={{ marginTop: "0.35rem" }}>
+                    {isObjectRecord(liveOutput.output_payload?.gps) ? (
+                      <>
+                        <div style={miniHead}>gps.* (from payload)</div>
+                        <PayloadKeyValueTable obj={liveOutput.output_payload.gps as Record<string, unknown>} />
+                      </>
+                    ) : (
+                      <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>No normalized GPS block on live output yet.</p>
+                    )}
+                  </div>
+                ) : null}
               </>
             ) : null}
             {resultPreview && serverExportJson ? (

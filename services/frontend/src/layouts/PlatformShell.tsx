@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { OpsContextBar } from "@/components/ops/OpsContextBar";
+import { OpsShellProvider } from "@/contexts/OpsShellContext";
 import { dbg } from "@/lib/debug";
 import { FooterBar } from "./shell/FooterBar";
 import { HeaderBar } from "./shell/HeaderBar";
@@ -17,21 +19,24 @@ export function PlatformShell() {
 
   return (
     <ShellMessageProvider>
-      <div className="shell shell--app">
-        <HeaderBar />
-        <div className="shell__below-header">
-          <PageMessageBar />
-          <div className="shell__main shell__main--with-footer">
-            <div className="shell__pagebar">
-              <strong className="shell__page-title">{headerTitle}</strong>
+      <OpsShellProvider>
+        <div className="shell shell--app shell--ops">
+          <HeaderBar />
+          <div className="shell__below-header">
+            <PageMessageBar />
+            <div className="shell__main shell__main--with-footer">
+              <div className="shell__pagebar">
+                <strong className="shell__page-title">{headerTitle}</strong>
+              </div>
+              <OpsContextBar />
+              <main className="shell__content">
+                <Outlet />
+              </main>
             </div>
-            <main className="shell__content">
-              <Outlet />
-            </main>
+            <FooterBar />
           </div>
-          <FooterBar />
         </div>
-      </div>
+      </OpsShellProvider>
     </ShellMessageProvider>
   );
 }

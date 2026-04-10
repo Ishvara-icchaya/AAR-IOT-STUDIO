@@ -104,3 +104,34 @@ export async function listDashboardResultObjectSources(siteId: string) {
     `/dashboards/sources/result-objects?site_id=${encodeURIComponent(siteId)}`,
   );
 }
+
+export type MapEligibleItem = {
+  source_type: string;
+  source_id: string;
+  name: string;
+  lifecycle_status: string;
+  updated_at: string | null;
+};
+
+export async function listMapEligibleObjects(siteId: string) {
+  return apiFetch<{ items: MapEligibleItem[] }>(
+    `/dashboards/map-runtime/eligible?site_id=${encodeURIComponent(siteId)}`,
+  );
+}
+
+export async function getMapObjectDetail(params: {
+  siteId: string;
+  sourceType: string;
+  sourceId: string;
+  displayFieldPaths?: string[];
+  kpiKeys?: string[];
+}) {
+  const qs = new URLSearchParams();
+  qs.set("site_id", params.siteId);
+  qs.set("source_type", params.sourceType);
+  qs.set("source_id", params.sourceId);
+  if (params.kpiKeys?.length) params.kpiKeys.forEach((k) => qs.append("kpiKeys", k));
+  if (params.displayFieldPaths?.length)
+    params.displayFieldPaths.forEach((k) => qs.append("displayFieldPaths", k));
+  return apiFetch<{ detail: Record<string, unknown> }>(`/dashboards/map-runtime/detail?${qs.toString()}`);
+}

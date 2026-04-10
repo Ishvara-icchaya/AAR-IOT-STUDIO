@@ -20,6 +20,7 @@ from app.api.v1 import (
     raw_data_objects,
     result_objects,
     scrubber,
+    static_ingestion,
     workflow,
 )
 
@@ -40,6 +41,7 @@ _MOUNT = (
     (device_objects.router, "/device-objects", "device-objects"),
     (data_pulls.router, "/data-pulls", "data-pulls"),
     (scrubber.router, "/scrubber", "scrubber"),
+    (static_ingestion.router, "/static-ingestions", "static-ingestions"),
     (workflow.router, "/workflows", "workflows"),
     (result_objects.router, "/result-objects", "result-objects"),
     (dashboard.router, "/dashboards", "dashboards"),

@@ -22,6 +22,7 @@ DEFAULT_PIPELINE_WORKERS = (
     "worker-scrubber",
     "worker-workflow",
     "worker-publish",
+    "worker-map-aggregator",
     "scheduler",
     "worker-ai",
 )
