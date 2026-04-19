@@ -5,6 +5,7 @@ import {
   DragEndEvent,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -47,6 +48,15 @@ export function DashboardBuilderPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
+  /** Prefer the column under the pointer so widgets land in the intended row (closestCorners alone often snaps to the wrong slot). */
+  function collisionDetection(
+    args: Parameters<typeof pointerWithin>[0],
+  ): ReturnType<typeof pointerWithin> {
+    const inside = pointerWithin(args);
+    if (inside.length > 0) return inside;
+    return closestCorners(args);
+  }
+
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over) return;
@@ -79,7 +89,7 @@ export function DashboardBuilderPage() {
 
   return (
     <div className="dash-builder-page">
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
         <DashboardHeader dashboardId={dashboardId} />
         <div className="dash-builder">
           <DashboardWidgetPalette />

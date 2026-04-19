@@ -6,6 +6,10 @@ export type DeviceEndpointObservability = {
   /** Logical protocol: mqtt | rest | coap | websocket */
   protocol: string;
   details: Record<string, unknown>;
+  /** none | fresh | stale — aligned with device late threshold (REST Pull uses poll/timeout floor). */
+  payload_receipt_status?: string;
+  payload_age_seconds?: number | null;
+  payload_receipt_threshold_seconds?: number | null;
 };
 
 export type DeviceEndpointRead = {

@@ -63,7 +63,12 @@ export async function validateWorkflow(id: string) {
 
 export async function testWorkflow(
   id: string,
-  body: { sample_payload?: Record<string, unknown> | null; data_object_id?: string | null },
+  body: {
+    sample_payload?: Record<string, unknown> | null;
+    data_object_id?: string | null;
+    /** Load newest data_object_details row for input nodes (editor / live samples). */
+    use_latest_observed_payload?: boolean;
+  },
 ) {
   return apiFetch<{
     workflow_id: string;
@@ -83,9 +88,9 @@ export async function stopPublishWorkflow(id: string) {
 }
 
 export async function listPublishedDataSources(siteId: string) {
-  return apiFetch<{ items: Array<{ id: string; name: string; updated_at: string }> }>(
-    `/workflows/data-sources?site_id=${encodeURIComponent(siteId)}`,
-  );
+  return apiFetch<{
+    items: Array<{ id: string; device_id: string; name: string; updated_at: string }>;
+  }>(`/workflows/data-sources?site_id=${encodeURIComponent(siteId)}`);
 }
 
 export async function listExecutions(id: string, limit = 50) {

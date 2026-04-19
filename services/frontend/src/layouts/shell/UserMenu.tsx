@@ -1,7 +1,8 @@
+import { CircleUser } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
 
-export function UserMenu() {
+export function UserMenu({ iconOnly }: { iconOnly?: boolean }) {
   const { me } = useAuth();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -23,23 +24,32 @@ export function UserMenu() {
   }, [open]);
 
   const label = me?.email?.split("@")[0] || me?.email || "User";
+  const tip = me?.email ? `Account — ${me.email}` : "Account menu";
 
   return (
     <div className="shell-dropdown shell-dropdown--toolbar" ref={rootRef}>
       <button
         type="button"
-        className={`shell-toolbar-btn shell-dropdown__trigger${open ? " shell-dropdown__trigger--active" : ""}`}
+        className={`shell-toolbar-btn shell-dropdown__trigger${iconOnly ? " shell-dropdown__trigger--icon" : ""}${open ? " shell-dropdown__trigger--active" : ""}`}
         aria-expanded={open}
         aria-haspopup="true"
+        title={tip}
+        aria-label={tip}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="shell-user-menu__name">{label}</span>
-        {me?.role ? (
-          <span className="shell-user-menu__role" title={me.role}>
-            {me.role}
-          </span>
-        ) : null}
-        <span aria-hidden>▾</span>
+        {iconOnly ? (
+          <CircleUser size={18} strokeWidth={2} aria-hidden />
+        ) : (
+          <>
+            <span className="shell-user-menu__name">{label}</span>
+            {me?.role ? (
+              <span className="shell-user-menu__role" title={me.role}>
+                {me.role}
+              </span>
+            ) : null}
+            <span aria-hidden>▾</span>
+          </>
+        )}
       </button>
       {open ? (
         <div className="shell-dropdown__panel shell-dropdown__panel--toolbar shell-user-menu__panel" role="menu">

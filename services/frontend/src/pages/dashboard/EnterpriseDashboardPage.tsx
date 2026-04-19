@@ -116,7 +116,7 @@ export function EnterpriseDashboardPage() {
           <div ref={captureRef} className="dash-live-capture-root">
             <DashboardLiveRenderer
               layout={layout}
-              widgets={payload.widgets}
+              widgets={Array.isArray(payload.widgets) ? payload.widgets : []}
               renderedAt={payload.rendered_at}
               dashboard={payload.dashboard}
               enterpriseMode

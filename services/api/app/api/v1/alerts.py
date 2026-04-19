@@ -8,11 +8,13 @@ from app.api.deps import get_current_user
 from app.core.pipeline_log import emit as pipeline_emit
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.alert import AlertListResponse, AlertRead, AlertUnacknowledgedSummary
+from app.schemas.alert import AlertAcknowledgeAllResponse, AlertListResponse, AlertRead, AlertUnacknowledgedSummary
 from app.services.alert_service import (
     AlertAccessDenied,
     AlertForbidden,
     acknowledge_alert,
+    acknowledge_all_unacked,
+    alert_to_read,
     list_alerts,
     require_alert,
 )
@@ -72,6 +74,29 @@ def list_alerts_route(
     return out
 
 
+@router.post("/acknowledge-all", response_model=AlertAcknowledgeAllResponse)
+def acknowledge_all_route(
+    site_id: uuid.UUID | None = None,
+    severity: str | None = None,
+    category: str | None = None,
+    search: str | None = None,
+    limit: int = Query(500, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    n = acknowledge_all_unacked(
+        db,
+        user,
+        site_id=site_id,
+        severity=severity,
+        category=category,
+        search=search,
+        limit=limit,
+    )
+    pipeline_emit(log, component="api.alerts", action="acknowledge_all", status="ok", count=n)
+    return AlertAcknowledgeAllResponse(acknowledged_count=n)
+
+
 @router.get("/{alert_id}", response_model=AlertRead)
 def get_alert_route(
     alert_id: uuid.UUID,
@@ -85,7 +110,7 @@ def get_alert_route(
     except AlertForbidden:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     pipeline_emit(log, component="api.alerts", action="get", status="ok", alert_id=str(alert_id))
-    return AlertRead.model_validate(a)
+    return alert_to_read(db, a)
 
 
 @router.post("/{alert_id}/acknowledge", response_model=AlertRead)
@@ -101,4 +126,4 @@ def acknowledge_alert_route(
     except AlertForbidden:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     pipeline_emit(log, component="api.alerts", action="acknowledge", status="ok", alert_id=str(alert_id))
-    return AlertRead.model_validate(a)
+    return alert_to_read(db, a)

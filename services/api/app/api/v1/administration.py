@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.access_control import ensure_site_in_tenant
 from app.api.deps import get_current_user, require_admin
-from app.core.security import hash_password
+from app.core.pipeline_log import emit as pipeline_emit
+from app.core.security import hash_password, verify_password
 from app.db.session import get_db
 from app.models.customer import Customer
 from app.models.site import Site
@@ -20,6 +21,7 @@ from app.schemas.site import SiteCreate, SiteRead
 from app.schemas.user_admin import UserCreate, UserRead
 from app.services.dependency_service import site_delete_dependencies
 from app.services.lifecycle_actions import archive_site, deactivate_site, reactivate_site
+from app.services.tenant_data_clear import clear_operational_data_except_sites
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -28,6 +30,20 @@ log = logging.getLogger(__name__)
 class FullResetBody(BaseModel):
     password: str = Field(..., min_length=1)
     confirmation_phrase: str = Field(..., description='Must equal RESET AAR-IOT-STUDIO')
+
+
+class TenantOperationalDataClearBody(BaseModel):
+    """Re-enter your password and the exact confirmation phrase."""
+
+    password: str = Field(..., min_length=1)
+    confirmation_phrase: str = Field(
+        ...,
+        description="Must match exactly: DELETE ALL DATA EXCEPT SITES",
+    )
+
+
+class TenantOperationalDataClearResponse(BaseModel):
+    deleted_counts: dict[str, int]
 
 
 class CustomerTenantUpdate(BaseModel):
@@ -234,6 +250,40 @@ def patch_customer_name(
     db.commit()
     db.refresh(cust)
     return {"id": str(cust.id), "name": cust.name}
+
+
+@router.post("/clear-operational-data", response_model=TenantOperationalDataClearResponse)
+def post_clear_operational_data(
+    body: TenantOperationalDataClearBody,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove devices, raw/data objects, workflows (including result objects), dashboards, alerts,
+    published services, and static ingestion rows for this tenant. **Sites, users, and customer
+    configuration are kept.** Requires the admin's current password.
+    """
+    expected = "DELETE ALL DATA EXCEPT SITES"
+    if body.confirmation_phrase != expected:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "confirmation_phrase must match exactly (including spaces)",
+        )
+    if not verify_password(body.password, admin.hashed_password):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid password")
+    try:
+        stats = clear_operational_data_except_sites(db, admin.customer_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    pipeline_emit(
+        log,
+        component="api.administration",
+        action="clear_operational_data",
+        status="ok",
+        customer_id=str(admin.customer_id),
+    )
+    return TenantOperationalDataClearResponse(deleted_counts=stats)
 
 
 @router.post("/restore")

@@ -263,6 +263,7 @@ def _process_data_object(r: Any, data: dict[str, Any]) -> None:
     state = {
         "source_type": "data_object",
         "source_id": oid,
+        "device_id": str(row["device_id"]) if row.get("device_id") else None,
         "display_name": row.get("name"),
         "device_name": device_name,
         "site_name": site_name,
@@ -352,15 +353,29 @@ def _process_result_object(r: Any, data: dict[str, Any]) -> None:
     numerics = _numeric_kpi_keys(merged)
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat().replace("+00:00", "Z")
+    ls = row.get("latest_seen_at")
+    cr = row.get("created_at")
+    if ls is not None and hasattr(ls, "isoformat"):
+        ro_ts = ls.isoformat().replace("+00:00", "Z")
+    elif cr is not None and hasattr(cr, "isoformat"):
+        ro_ts = cr.isoformat().replace("+00:00", "Z")
+    else:
+        ro_ts = now_iso
     kpis = {k: _get_path(merged, k) for k in list(numerics.keys())[:16]}
     trend = {}
     if numerics:
         mk = sorted(numerics.keys())[0]
         trend = _trend_summary(mk, [{"t": now_iso, "v": numerics[mk]}])
 
+    dev_from_payload = None
+    if isinstance(payload, dict):
+        raw_d = payload.get("device_id") or payload.get("deviceId")
+        if raw_d:
+            dev_from_payload = str(raw_d).strip() or None
     state = {
         "source_type": "result_object",
         "source_id": oid,
+        "device_id": dev_from_payload,
         "display_name": row.get("result_object_name"),
         "device_name": None,
         "site_name": site_name,
@@ -370,7 +385,7 @@ def _process_result_object(r: Any, data: dict[str, Any]) -> None:
         "health_status": hf.get("health_status") or row.get("health_status"),
         "health_message": payload.get("health_message"),
         "blink_mode": blink,
-        "updated_at": now_iso,
+        "updated_at": ro_ts,
         "kpi_latest": numerics,
         "display_fields": merged.get("displayFields") if isinstance(merged.get("displayFields"), dict) else {},
         "trend": trend,

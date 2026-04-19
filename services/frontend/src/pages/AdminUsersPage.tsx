@@ -104,7 +104,7 @@ export function AdminUsersPage() {
           Create user
         </button>
       </form>
-      <div style={{ overflow: "auto", maxHeight: "min(50dvh, 360px)" }}>
+      <div className="table-scroll-sticky" style={{ overflow: "auto", maxHeight: "min(50dvh, 360px)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
           <thead>
             <tr style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>

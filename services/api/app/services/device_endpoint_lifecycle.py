@@ -34,12 +34,22 @@ def touch_after_archived_success(db: Session, *, device_id: uuid.UUID, protocol_
               OR (LOWER(CAST(:ps AS text)) = 'websocket' AND LOWER(protocol) = 'websocket')
               OR (
                 LOWER(CAST(:ps AS text)) IN ('rest_poll', 'rest', 'upload')
-                AND LOWER(protocol) IN ('http', 'https')
+                AND LOWER(protocol) IN ('http', 'https', 'rest')
               )
             )
             """
         ),
         {"did": str(device_id), "ps": ps},
+    )
+    db.execute(
+        text(
+            """
+            UPDATE devices
+            SET last_seen_at = NOW()
+            WHERE id = CAST(:did AS uuid)
+            """
+        ),
+        {"did": str(device_id)},
     )
 
 
@@ -69,7 +79,7 @@ def record_ingest_failure(
               OR (LOWER(CAST(:ps AS text)) = 'websocket' AND LOWER(protocol) = 'websocket')
               OR (
                 LOWER(CAST(:ps AS text)) IN ('rest_poll', 'rest', 'upload')
-                AND LOWER(protocol) IN ('http', 'https')
+                AND LOWER(protocol) IN ('http', 'https', 'rest')
               )
             )
             """

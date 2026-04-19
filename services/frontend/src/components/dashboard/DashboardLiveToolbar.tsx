@@ -48,16 +48,7 @@ export function DashboardLiveToolbar({
   }, [captureRef, fileBaseName, screenshotBusy]);
 
   return (
-    <div
-      className="dash-live-toolbar"
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "0.5rem",
-        alignItems: "center",
-        marginBottom: "0.75rem",
-      }}
-    >
+    <div className="dash-live-toolbar">
       <button
         type="button"
         className="dash-btn dash-btn--secondary"

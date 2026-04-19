@@ -14,6 +14,7 @@ COPY alembic ./alembic
 COPY alembic_ts ./alembic_ts
 COPY alembic.ini alembic_timescale.ini ./
 COPY scripts/docker-api-entrypoint.sh /docker-api-entrypoint.sh
+COPY scripts/clear_operational_data.py ./scripts/clear_operational_data.py
 RUN chmod +x /docker-api-entrypoint.sh
 
 EXPOSE 8000

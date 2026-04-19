@@ -10,11 +10,12 @@ const barStyle: CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   alignItems: "center",
-  justifyContent: "flex-end",
+  justifyContent: "flex-start",
   gap: "0.65rem 1rem",
   padding: "0.45rem 0.75rem",
-  margin: "0 calc(-1 * var(--space-lg)) var(--space-md)",
-  width: "calc(100% + 2 * var(--space-lg))",
+  margin: "0 0 var(--space-md)",
+  width: "100%",
+  maxWidth: "100%",
   boxSizing: "border-box",
   borderRadius: "var(--radius-lg)",
   border: "1px solid color-mix(in oklab, var(--color-border) 85%, transparent)",
@@ -115,7 +116,7 @@ export function OpsContextBar() {
         type="button"
         style={btn}
         onClick={() => triggerRefresh()}
-        title="Reload data on the current view and other scoped pages"
+        title="Reload the current page (e.g. device activation, connectivity, and status on Manage Devices) using the Site and Range scope above"
         className="ops-context-bar__refresh"
       >
         Refresh

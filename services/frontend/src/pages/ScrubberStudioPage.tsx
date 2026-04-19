@@ -58,6 +58,7 @@ type ScrubberPreviewResp = {
     health_code: string;
     health_message: string;
     scrubber_version?: string | null;
+    health_details?: Record<string, unknown> | null;
   };
   error: string | null;
 };
@@ -68,7 +69,7 @@ const STEPS: { id: PipelineStepId; label: string; hint: string }[] = [
   { id: "scalars", label: "Derived Fields", hint: "Deterministic scalar top-level fields (path or literal only)." },
   { id: "functionBased", label: "Function Based", hint: "Optional Python transform(payload) that returns extra scalar fields." },
   { id: "gps", label: "Location / GPS mapping", hint: "Map payload fields into normalized gps.* coordinates with validation." },
-  { id: "health", label: "Health mapping", hint: "Map upstream status or rule expressions with precedence; normalized to dashboard fields." },
+  { id: "health", label: "Health mapping", hint: "Configure health on the scrubbed output." },
   { id: "kpi", label: "KPI definition", hint: "Display fields for dashboard click + numeric metrics for time-series (1h/24h config)." },
 ];
 
@@ -182,10 +183,15 @@ function defaultStudioForm(): StudioDraftForm {
     healthRulesV2: [
       { name: "example", condition: "", status: "yellow", priority: "50", code: "", message: "" },
     ],
+    healthThresholdsSource: "inline",
+    healthThresholdsReferenceId: "",
+    healthThresholdsInlineJson: `{\n  "reference_name": "example_thresholds",\n  "normal": {},\n  "warning": {},\n  "critical": {}\n}`,
+    healthThresholdsDefinition: null,
     healthDisplayEnabled: true,
     healthStatusKey: "health_status",
     healthCodeKey: "health_code",
     healthMessageKey: "health_message",
+    healthDetailsKey: "health_details",
     healthRawLegacy: null,
     kpiDisplayFields: [],
     kpiMetrics: [],
@@ -242,6 +248,28 @@ function formToActiveDraft(form: StudioDraftForm): Record<string, unknown> {
       source_field: form.healthMapSourceField.trim(),
       mapping,
       message_from: form.healthMapMessageFrom.trim() || undefined,
+    };
+  } else if (form.healthEngineMode === "thresholds") {
+    let definition: Record<string, unknown>;
+    if (
+      form.healthThresholdsSource === "registry" &&
+      form.healthThresholdsDefinition &&
+      Object.keys(form.healthThresholdsDefinition).length > 0
+    ) {
+      definition = { ...form.healthThresholdsDefinition };
+    } else {
+      try {
+        definition = JSON.parse(form.healthThresholdsInlineJson || "{}") as Record<string, unknown>;
+      } catch {
+        definition = { reference_name: "invalid_json", normal: {}, warning: {}, critical: {} };
+      }
+    }
+    health = {
+      mode: "thresholds",
+      definition,
+      ...(form.healthThresholdsReferenceId.trim()
+        ? { reference_id: form.healthThresholdsReferenceId.trim() }
+        : {}),
     };
   } else {
     health = {
@@ -311,6 +339,7 @@ function formToActiveDraft(form: StudioDraftForm): Record<string, unknown> {
       statusKey: form.healthStatusKey.trim() || "health_status",
       codeKey: form.healthCodeKey.trim() || "health_code",
       messageKey: form.healthMessageKey.trim() || "health_message",
+      detailsKey: form.healthDetailsKey.trim() || "health_details",
     },
     kpi,
   };
@@ -397,6 +426,7 @@ function activeDraftToForm(d: Record<string, unknown>): StudioDraftForm {
     if (typeof h.statusKey === "string") f.healthStatusKey = h.statusKey;
     if (typeof h.codeKey === "string") f.healthCodeKey = h.codeKey;
     if (typeof h.messageKey === "string") f.healthMessageKey = h.messageKey;
+    if (typeof h.detailsKey === "string") f.healthDetailsKey = h.detailsKey;
   }
   const h = d.health;
   if (Array.isArray(h)) {
@@ -415,6 +445,19 @@ function activeDraftToForm(d: Record<string, unknown>): StudioDraftForm {
         }));
       }
       if (typeof ho.message_from === "string") f.healthMapMessageFrom = ho.message_from;
+    } else if (mode === "thresholds") {
+      f.healthEngineMode = "thresholds";
+      const def = ho.definition;
+      if (def && typeof def === "object" && !Array.isArray(def)) {
+        f.healthThresholdsDefinition = def as Record<string, unknown>;
+        f.healthThresholdsInlineJson = JSON.stringify(def, null, 2);
+      }
+      if (typeof ho.reference_id === "string" && ho.reference_id.trim()) {
+        f.healthThresholdsReferenceId = ho.reference_id.trim();
+        f.healthThresholdsSource = "registry";
+      } else {
+        f.healthThresholdsSource = "inline";
+      }
     } else if (mode === "rules" || (Array.isArray(ho.rules) && ho.rules.length)) {
       f.healthEngineMode = "rules";
       if (typeof ho.default_status === "string") f.healthRulesDefault = ho.default_status;
@@ -522,12 +565,14 @@ function buildLiveExportJsonString(lo: {
   health_status: string;
   health_code: string;
   health_message: string;
+  health_details: Record<string, unknown>;
 }): string {
   return JSON.stringify(
     {
       health_status: lo.health_status,
       health_code: lo.health_code,
       health_message: lo.health_message,
+      health_details: lo.health_details,
       output_payload: lo.output_payload,
       kpi: lo.kpi,
     },
@@ -543,6 +588,7 @@ function buildServerExportJsonString(p: ScrubberPreviewResp["preview"]): string 
       health_status: p.health_status,
       health_code: p.health_code,
       health_message: p.health_message,
+      health_details: p.health_details ?? undefined,
       output_payload: p.output_payload,
       kpi: p.kpi,
     },
@@ -700,7 +746,7 @@ function applyScalarFieldsToPayload(payload: Record<string, unknown>, fields: un
 function mergeHealthOntoPayload(
   payload: Record<string, unknown>,
   display: unknown,
-  h: { status: string; code: string; message: string },
+  h: { status: string; code: string; message: string; details?: Record<string, unknown> },
 ): void {
   if (!display || typeof display !== "object" || Array.isArray(display)) return;
   const d = display as Record<string, unknown>;
@@ -708,9 +754,11 @@ function mergeHealthOntoPayload(
   const sk = String(d.statusKey ?? "health_status");
   const ck = String(d.codeKey ?? "health_code");
   const mk = String(d.messageKey ?? "health_message");
+  const dk = String(d.detailsKey ?? "health_details");
   payload[sk] = h.status;
   payload[ck] = h.code;
   payload[mk] = h.message;
+  if (h.details !== undefined) payload[dk] = h.details;
 }
 
 function coerceFiniteNumber(v: unknown): number | null {
@@ -836,6 +884,7 @@ function computeLiveScrubberOutput(
   health_status: string;
   health_code: string;
   health_message: string;
+  health_details: Record<string, unknown>;
 } | null {
   if (!rawRoot) return null;
   const active = formToActiveDraft(form);
@@ -869,6 +918,7 @@ function computeLiveScrubberOutput(
     health_status: hFinal.status,
     health_code: hFinal.code,
     health_message: hFinal.message,
+    health_details: health.details,
   };
 }
 
@@ -908,6 +958,8 @@ export function ScrubberStudioPage() {
   const [resultViewTab, setResultViewTab] = useState<"payload" | "kpi" | "health" | "location">("payload");
   const stepPickerRef = useRef<HTMLDivElement>(null);
   const didStampObjectName = useRef(false);
+  /** When URL has deviceId but no rawId, fetch list head and navigate to latest archived raw (previous payload if nothing newer). */
+  const [deviceOnlyBootstrap, setDeviceOnlyBootstrap] = useState<"idle" | "loading" | "no_archived_raw">("idle");
 
   const loadLatestIngestion = useCallback(async () => {
     const did = deviceId || verify?.device_id;
@@ -1001,6 +1053,43 @@ export function ScrubberStudioPage() {
     }
     await loadRawPreview();
   }, [rawId, deviceId, verify?.device_id, loadRawPreview, navigate, safeReturnTo]);
+
+  useEffect(() => {
+    if (rawId) {
+      setDeviceOnlyBootstrap("idle");
+      return;
+    }
+    if (!deviceId) {
+      setDeviceOnlyBootstrap("idle");
+      return;
+    }
+    let cancelled = false;
+    setDeviceOnlyBootstrap("loading");
+    void (async () => {
+      try {
+        const data = await apiFetch<RawListHeadResp>(
+          `/raw-data-objects?device_id=${encodeURIComponent(deviceId)}&limit=1&offset=0`,
+          { cache: "no-store" },
+        );
+        const first = data?.items?.[0];
+        if (cancelled) return;
+        if (first?.id) {
+          const params = new URLSearchParams();
+          params.set("rawId", first.id);
+          params.set("deviceId", deviceId);
+          if (safeReturnTo) params.set("returnTo", safeReturnTo);
+          navigate(`/scrubber/create?${params.toString()}`, { replace: true });
+          return;
+        }
+        setDeviceOnlyBootstrap("no_archived_raw");
+      } catch {
+        if (!cancelled) setDeviceOnlyBootstrap("no_archived_raw");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rawId, deviceId, navigate, safeReturnTo]);
 
   useEffect(() => {
     rawPreviewCacheRef.current = null;
@@ -1203,7 +1292,9 @@ export function ScrubberStudioPage() {
       });
       setVersion(nextV);
       setPublished(true);
-      setOk(`Published scrubber v${nextV} (draft copied to publishedBody).`);
+      setOk(
+        `Published version ${nextV}. Production pipelines now use this mapping; your editor draft is unchanged.`,
+      );
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : "Publish failed");
     }
@@ -1413,11 +1504,21 @@ export function ScrubberStudioPage() {
           <Link to={safeReturnTo}>← Back</Link>
         </p>
       ) : null}
-      {!rawId && (
+      {!rawId && !deviceId && (
         <PageStatus variant="error" className="page-status--tight-top">
           Pass <code>?rawId=…&amp;deviceId=…</code> (use raw picker). deviceId loads existing mapping.
         </PageStatus>
       )}
+      {!rawId && deviceId && (deviceOnlyBootstrap === "loading" || deviceOnlyBootstrap === "idle") ? (
+        <PageStatus variant="success" className="page-status--tight-top">
+          Resolving latest archived raw for this device…
+        </PageStatus>
+      ) : null}
+      {!rawId && deviceId && deviceOnlyBootstrap === "no_archived_raw" ? (
+        <PageStatus variant="warning" className="page-status--tight-top">
+          No archived raw payloads for this device yet. Ingest data first, or pick a raw sample from the device raw page.
+        </PageStatus>
+      ) : null}
       {loadBusy ? <PageStatus variant="success">Loading device mapping…</PageStatus> : null}
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       {ok ? <PageStatus variant="success">{ok}</PageStatus> : null}
@@ -1561,6 +1662,7 @@ export function ScrubberStudioPage() {
                 dropEditorMode,
                 setDropEditorMode,
                 resultLeafPaths,
+                deviceId: deviceId || "",
                 liveGps: isObjectRecord(liveOutput?.output_payload?.gps) ? (liveOutput?.output_payload?.gps as Record<string, unknown>) : null,
               })}
             </div>
@@ -1769,6 +1871,7 @@ function renderStepEditor(
     dropEditorMode: "tabular" | "advanced";
     setDropEditorMode: Dispatch<SetStateAction<"tabular" | "advanced">>;
     resultLeafPaths: string[];
+    deviceId: string;
     liveGps: Record<string, unknown> | null;
   },
 ): ReactNode {
@@ -2102,6 +2205,8 @@ function renderStepEditor(
           })
         }
         datalistId={PATH_HINTS_DATALIST_ID}
+        pathSuggestions={ui.pathSuggestions}
+        deviceId={ui.deviceId}
       />
     );
   }

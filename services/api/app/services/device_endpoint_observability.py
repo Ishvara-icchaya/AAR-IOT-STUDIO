@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.models.device import Device
 from app.models.raw_data_object import RawDataObject
 from app.services import ingress_metrics
+from app.services.device_endpoint_connectivity import _rest_mode
 
 
 def last_raw_ingested_at_iso(db: Session, device_id: UUID) -> str | None:
@@ -178,7 +181,84 @@ def _logical_protocol(protocol: str) -> str:
     return p
 
 
-def build_observability(db: Session, *, device_id: UUID, protocol: str, config: dict[str, Any]) -> dict[str, Any]:
+def _rest_pull_stale_floor_seconds(config: dict[str, Any], polling_interval_column: int) -> int:
+    """Minimum silence before REST Pull is treated as stale (HTTP timeout + poll cadence)."""
+    try:
+        raw_t = config.get("timeout_seconds")
+        if raw_t is None:
+            raw_t = config.get("timeoutSeconds")
+        timeout_s = float(raw_t if raw_t is not None else 30.0)
+    except (TypeError, ValueError):
+        timeout_s = 30.0
+    timeout_s = max(1.0, min(timeout_s, 300.0))
+    try:
+        raw_p = config.get("polling_interval_seconds")
+        if raw_p is None:
+            raw_p = config.get("pollingIntervalSeconds")
+        poll_s = int(raw_p) if raw_p is not None else int(polling_interval_column)
+    except (TypeError, ValueError):
+        poll_s = 60
+    poll_s = max(5, poll_s)
+    return max(int(timeout_s * 3), int(poll_s * 2), 60)
+
+
+def assess_payload_receipt_timeliness(
+    *,
+    last_raw_ingested_at: str | None,
+    late_threshold_seconds: int,
+    logical_protocol: str,
+    config: dict[str, Any],
+    polling_interval_column: int,
+) -> dict[str, Any]:
+    """Classify latest archived raw age vs device late threshold (and REST Pull cadence when applicable)."""
+    late = max(1, int(late_threshold_seconds or 120))
+    logical = (logical_protocol or "").strip().lower()
+    rm = _rest_mode(config) if logical == "rest" else ""
+    if logical == "rest" and rm == "polling":
+        threshold = max(late, _rest_pull_stale_floor_seconds(config, polling_interval_column))
+    else:
+        threshold = late
+
+    if not last_raw_ingested_at or not str(last_raw_ingested_at).strip():
+        return {
+            "status": "none",
+            "age_seconds": None,
+            "threshold_seconds": threshold,
+        }
+    try:
+        raw = str(last_raw_ingested_at).strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds())
+    except ValueError:
+        return {
+            "status": "none",
+            "age_seconds": None,
+            "threshold_seconds": threshold,
+        }
+    age_i = int(age)
+    if age > threshold:
+        return {
+            "status": "stale",
+            "age_seconds": age_i,
+            "threshold_seconds": threshold,
+        }
+    return {
+        "status": "fresh",
+        "age_seconds": age_i,
+        "threshold_seconds": threshold,
+    }
+
+
+def build_observability(
+    db: Session,
+    *,
+    device_id: UUID,
+    protocol: str,
+    config: dict[str, Any],
+    polling_interval_seconds: int = 60,
+) -> dict[str, Any]:
     last_raw = last_raw_ingested_at_iso(db, device_id)
     logical = _logical_protocol(protocol)
     details: dict[str, Any] | None = None
@@ -193,8 +273,21 @@ def build_observability(db: Session, *, device_id: UUID, protocol: str, config: 
     else:
         details = {"note": f"No protocol-specific observability for {protocol!r}."}
 
+    device = db.get(Device, device_id)
+    late_thr = int(getattr(device, "late_threshold_seconds", None) or 120) if device else 120
+    receipt = assess_payload_receipt_timeliness(
+        last_raw_ingested_at=last_raw,
+        late_threshold_seconds=late_thr,
+        logical_protocol=logical,
+        config=config if isinstance(config, dict) else {},
+        polling_interval_column=polling_interval_seconds,
+    )
+
     return {
         "last_raw_ingested_at": last_raw,
         "protocol": logical,
         "details": details or {},
+        "payload_receipt_status": receipt["status"],
+        "payload_age_seconds": receipt["age_seconds"],
+        "payload_receipt_threshold_seconds": receipt["threshold_seconds"],
     }

@@ -140,6 +140,7 @@ export function PublishedServicesListPage() {
         </label>
       </div>
       <div
+        className="table-scroll-sticky"
         style={{
           flex: 1,
           minHeight: 0,

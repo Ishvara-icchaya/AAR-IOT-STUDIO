@@ -57,7 +57,8 @@ export function DashboardHeader({ dashboardId }: Props) {
       await dashApi.freezeDashboard(dashboardId);
       const d = await dashApi.getDashboard(dashboardId);
       useDashboardBuilderStore.getState().resetFromServer(d!);
-      setMsg("Frozen");
+      setMsg("Frozen — opening live…");
+      nav(`/dashboard/${dashboardId}/live`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Freeze failed");
     }
@@ -81,7 +82,8 @@ export function DashboardHeader({ dashboardId }: Props) {
       await dashApi.setPrimaryDashboard(dashboardId);
       const d = await dashApi.getDashboard(dashboardId);
       useDashboardBuilderStore.getState().resetFromServer(d!);
-      setMsg("Set as primary");
+      setMsg("Set as primary — opening live…");
+      nav(`/dashboard/${dashboardId}/live`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Set primary failed");
     }

@@ -1,13 +1,10 @@
+import { Palette } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const THEME_KEY = "aar-theme";
-const FONT_KEY = "aar-font";
 
 const THEMES = ["dark", "light", "ocean", "sunset", "neon"] as const;
 type ThemeName = (typeof THEMES)[number];
-
-const FONTS = ["default", "inter", "source", "serif", "mono"] as const;
-type FontName = (typeof FONTS)[number];
 
 function readTheme(): ThemeName {
   try {
@@ -19,20 +16,18 @@ function readTheme(): ThemeName {
   return "dark";
 }
 
-function readFont(): FontName {
-  try {
-    const v = localStorage.getItem(FONT_KEY);
-    if (FONTS.includes(v as FontName)) return v as FontName;
-  } catch {
-    /* ignore */
-  }
-  return "default";
-}
-
-/** Compact theme + font dropdowns (persisted). */
+/** Color theme selector (persisted). Font family is fixed to app default (see :root --font-family-sans). */
 export function AppearancePickers() {
   const [theme, setTheme] = useState<ThemeName>(() => readTheme());
-  const [font, setFont] = useState<FontName>(() => readFont());
+
+  useEffect(() => {
+    document.documentElement.removeAttribute("data-font");
+    try {
+      localStorage.removeItem("aar-font");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -43,19 +38,10 @@ export function AppearancePickers() {
     }
   }, [theme]);
 
-  useEffect(() => {
-    document.documentElement.dataset.font = font;
-    try {
-      localStorage.setItem(FONT_KEY, font);
-    } catch {
-      /* ignore */
-    }
-  }, [font]);
-
   return (
     <div className="shell-appearance" aria-label="Appearance">
-      <label className="shell-appearance__item">
-        <span className="shell-appearance__label">Theme</span>
+      <label className="shell-appearance__item shell-appearance__item--theme">
+        <Palette size={16} strokeWidth={2} className="shell-appearance__theme-icon" aria-hidden />
         <select
           className="shell-appearance__select"
           value={theme}
@@ -68,22 +54,6 @@ export function AppearancePickers() {
           <option value="ocean">Ocean</option>
           <option value="sunset">Sunset</option>
           <option value="neon">Neon</option>
-        </select>
-      </label>
-      <label className="shell-appearance__item">
-        <span className="shell-appearance__label">Font</span>
-        <select
-          className="shell-appearance__select"
-          value={font}
-          onChange={(e) => setFont(e.target.value as FontName)}
-          title="UI font"
-          aria-label="UI font"
-        >
-          <option value="default">Aptos / system</option>
-          <option value="inter">Inter</option>
-          <option value="source">Source Sans 3</option>
-          <option value="serif">Serif</option>
-          <option value="mono">Monospace</option>
         </select>
       </label>
     </div>

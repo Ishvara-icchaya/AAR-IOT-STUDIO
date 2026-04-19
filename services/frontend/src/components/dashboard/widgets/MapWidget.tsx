@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { type GeoJSONSource, type MapLayerMouseEvent, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { DashboardLiveWidgetDTO, EnterpriseSiteObjectCountsDTO } from "@/types/dashboard";
@@ -349,7 +349,7 @@ function applyViewport(
       } else if (init?.center) {
         map.jumpTo({ center: init.center, zoom: init.zoom ?? 10 });
       } else if (list.length === 1) {
-        map.jumpTo({ center: [list[0].longitude, list[0].latitude], zoom: 12 });
+        map.jumpTo({ center: [list[0].longitude, list[0].latitude], zoom: 13 });
       } else {
         const bounds = new maplibregl.LngLatBounds();
         for (const m of list) bounds.extend([m.longitude, m.latitude]);
@@ -489,6 +489,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   const d = block.data ?? {};
   const [styleNotice, setStyleNotice] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const markerList = useMemo(() => markerListFromData(block.data ?? {}, block.title), [block.data, block.title]);
   const controls = useMemo(() => readControls(block.data ?? {}), [block.data]);
@@ -523,7 +524,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       new maplibregl.NavigationControl({ showCompass: false, visualizePitch: false }),
       "top-right",
     );
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120, unit: "metric" }), "bottom-left");
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 160, unit: "metric" }), "bottom-left");
 
     map.on("error", () => {
       if (styleFallbackUsed) return;
@@ -591,6 +592,33 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     };
   }, [syncKey, mapStyleUrl, block.widget_id]);
 
+  useLayoutEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => map.resize());
+    });
+    return () => cancelAnimationFrame(id);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [expanded]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
   if (d.error) {
     return (
       <div className="dash-widget">
@@ -617,8 +645,8 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               flex: "1 1 auto",
             }
           : {
-              height: 380,
               width: "100%",
+              minHeight: 280,
               borderRadius: "var(--radius)",
               overflow: "hidden",
             }
@@ -626,23 +654,57 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     />
   );
 
+  const shellClass = [
+    "dash-widget",
+    "dash-widget--map",
+    isEnterprise ? "dash-map-widget--enterprise" : "",
+    expanded ? "dash-map-widget--expanded" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className={`dash-widget dash-widget--map${isEnterprise ? " dash-map-widget--enterprise" : ""}`}>
-      <h3 className="dash-widget__title">{block.title}</h3>
-      {styleNotice && (
-        <p className="dash-widget__muted" style={{ fontSize: "0.8rem", marginBottom: "0.35rem" }}>
-          {styleNotice}
-        </p>
-      )}
-      {isEnterprise ? (
-        <div className="dash-map-widget__enterprise-grid">
-          <div className="dash-map-widget__map-col">{mapEl}</div>
-          <EnterpriseSiteCountsPanel />
+    <>
+      {expanded ? (
+        <button
+          type="button"
+          className="dash-map-widget__backdrop"
+          aria-label="Close expanded map"
+          onClick={() => setExpanded(false)}
+        />
+      ) : null}
+      <div
+        className={shellClass}
+        role={expanded ? "dialog" : undefined}
+        aria-modal={expanded ? true : undefined}
+        aria-label={expanded ? block.title : undefined}
+      >
+        <div className="dash-map-widget__head">
+          <h3 className="dash-widget__title">{block.title}</h3>
+          <button
+            type="button"
+            className="dash-map-widget__expand-btn"
+            onClick={() => setExpanded((x) => !x)}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Exit fullscreen" : "Expand map"}
+          </button>
         </div>
-      ) : (
-        mapEl
-      )}
-    </div>
+        {styleNotice && (
+          <p className="dash-widget__muted" style={{ fontSize: "0.8rem", marginBottom: "0.35rem" }}>
+            {styleNotice}
+          </p>
+        )}
+        {isEnterprise ? (
+          <div className="dash-map-widget__enterprise-grid">
+            <div className="dash-map-widget__map-col">{mapEl}</div>
+            <EnterpriseSiteCountsPanel />
+          </div>
+        ) : (
+          <div className="dash-map-widget__single-map-wrap">{mapEl}</div>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -19,6 +19,7 @@ from app.core.pipeline_log import emit as pipeline_emit
 from app.core.workflow_lifecycle import WF_DRAFT, WF_PUBLISHED, WF_STOPPED, WF_VALIDATED
 from app.db.session import get_db
 from app.models.data_object import DataObject
+from app.models.data_object_detail import DataObjectDetail
 from app.models.static_ingestion import StaticIngestion
 from app.models.device import Device
 from app.models.user import User
@@ -42,6 +43,7 @@ from app.schemas.workflow_graph import (
 )
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.dependency_service import workflow_delete_dependencies
+from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.services.lifecycle_actions import archive_workflow, deactivate_workflow, reactivate_workflow
 from app.services.workflow_graph_run import WorkflowGraphError, execute_graph
 from app.services.workflow_ops import duplicate_workflow, load_workflow_eager, replace_workflow_graph
@@ -362,6 +364,7 @@ def test_workflow(
     ]
 
     sample = deepcopy(body.sample_payload) if body.sample_payload is not None else None
+    use_latest_observed = bool(body.use_latest_observed_payload)
 
     def load_obj(did: uuid.UUID) -> dict[str, Any]:
         try:
@@ -372,6 +375,19 @@ def test_workflow(
                 raise WorkflowGraphError("data_object not found")
             if row.lifecycle_status != DATA_PUBLISHED:
                 raise WorkflowGraphError("data_object not published")
+            if use_latest_observed:
+                detail = db.scalars(
+                    select(DataObjectDetail)
+                    .where(DataObjectDetail.data_object_id == did)
+                    .order_by(DataObjectDetail.observed_at.desc())
+                    .limit(1)
+                ).first()
+                if detail is not None:
+                    out = dict(detail.payload_json or {})
+                    out["_kpi"] = dict(detail.kpi_json or {})
+                    if detail.health_status:
+                        out["_health_status"] = detail.health_status
+                    return out
             out = dict(row.payload or {})
             out["_kpi"] = dict(row.kpi_json or {})
             if row.health_status:
@@ -487,7 +503,7 @@ def list_result_objects(
     stmt = (
         select(WorkflowResultObject)
         .where(WorkflowResultObject.workflow_id == workflow_id)
-        .order_by(WorkflowResultObject.created_at.desc())
+        .order_by(order_result_objects_by_recency())
         .limit(limit)
     )
     rows = list(db.scalars(stmt).all())

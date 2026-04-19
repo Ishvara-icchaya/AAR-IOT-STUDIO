@@ -30,7 +30,7 @@ export function monitoringIngressLinks(
         rows.push({
           label: "REST poller",
           service: "rest-poller",
-          hint: "Worker pulls upstream when polling mode is used",
+          hint: "Pull from Upstream — worker polls the configured REST URL on the saved interval",
         });
       }
       return rows;

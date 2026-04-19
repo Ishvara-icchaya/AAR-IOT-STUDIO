@@ -1,8 +1,10 @@
-import type { CSSProperties } from "react";
-import { useCallback, useEffect, useState } from "react";
+import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
   Background,
   Controls,
   MiniMap,
@@ -15,9 +17,12 @@ import {
   type Edge,
   type Node,
   type NodeProps,
+  type OnEdgesChange,
+  type OnNodesChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { getScrubberDataObject } from "@/api/scrubber";
+import { getScrubberDataObject, listDataObjectDetails } from "@/api/scrubber";
+import { listDevices } from "@/api/devices";
 import { getStaticIngestion, listStaticIngestions } from "@/api/staticIngestion";
 import * as wfApi from "@/api/workflow";
 import type { WorkflowEdgeDTO, WorkflowNodeDTO } from "@/types/workflow";
@@ -73,6 +78,45 @@ function parseLooseJson(input: string): unknown {
   }
 }
 
+type PublishedSourceRow = { id: string; name: string; device_id: string };
+
+/** Preview: prefer newest observed detail; fall back to mirrored data object row. */
+async function loadWorkflowInputPreviewBlob(dataObjectId: string): Promise<{
+  name: string;
+  payload: Record<string, unknown>;
+  kpi_json: Record<string, unknown>;
+  health_status: string | null;
+}> {
+  try {
+    const d = await listDataObjectDetails(dataObjectId, { page: 1, page_size: 1 });
+    const first = d?.items?.[0];
+    const pj = first?.payload_json;
+    if (first && pj && typeof pj === "object" && !Array.isArray(pj)) {
+      return {
+        name: "Latest observed sample",
+        payload: pj,
+        kpi_json:
+          first.kpi_json && typeof first.kpi_json === "object" && !Array.isArray(first.kpi_json)
+            ? (first.kpi_json as Record<string, unknown>)
+            : {},
+        health_status: first.health_status ?? null,
+      };
+    }
+  } catch {
+    /* use mirror */
+  }
+  const row = await getScrubberDataObject(dataObjectId);
+  if (!row) {
+    return { name: "Unavailable", payload: {}, kpi_json: {}, health_status: null };
+  }
+  return {
+    name: row.name,
+    payload: row.payload,
+    kpi_json: row.kpi_json ?? {},
+    health_status: row.health_status,
+  };
+}
+
 function collectFieldPaths(v: unknown, prefix = "", out?: Set<string>): string[] {
   const acc = out ?? new Set<string>();
   if (!v || typeof v !== "object" || Array.isArray(v)) return [...acc];
@@ -88,19 +132,19 @@ function WfNode({ data, selected }: NodeProps<Node<WfData>>) {
   return (
     <div
       style={{
-        padding: "8px 12px",
-        borderRadius: 8,
+        padding: "3px 5px",
+        borderRadius: 6,
         border: selected ? "2px solid var(--color-accent)" : "1px solid var(--color-border)",
         background: "var(--color-surface-elevated)",
         color: "var(--color-text)",
-        minWidth: 128,
-        fontSize: "0.8rem",
+        minWidth: 52,
+        fontSize: "0.72rem",
         fontFamily: "inherit",
       }}
     >
       {data.nodeType !== "input" && data.nodeType !== "static" && <Handle type="target" position={Position.Top} />}
-      <div style={{ color: "var(--color-text-muted)", fontSize: "0.7rem" }}>{data.nodeType}</div>
-      <div style={{ fontWeight: 600, color: "var(--color-text)" }}>{data.nodeName}</div>
+      <div style={{ color: "var(--color-text-muted)", fontSize: "0.62rem" }}>{data.nodeType}</div>
+      <div style={{ fontWeight: 600, color: "var(--color-text)", fontSize: "0.72rem" }}>{data.nodeName}</div>
       {data.nodeType !== "terminate" && <Handle type="source" position={Position.Bottom} />}
     </div>
   );
@@ -207,13 +251,114 @@ function inferFormulaPanel(cfg: Record<string, unknown>): "visual" | "python" | 
   return "visual";
 }
 
+type WorkflowFlowCanvasProps = {
+  published: boolean;
+  publishedSources: PublishedSourceRow[];
+  staticSources: { id: string; name: string }[];
+  setNodes: Dispatch<SetStateAction<Node<WfData>[]>>;
+  themeLight: boolean;
+  nodes: Node<WfData>[];
+  edges: Edge[];
+  onNodesChange: OnNodesChange<Node<WfData>>;
+  onEdgesChange: OnEdgesChange<Edge>;
+  onConnect: (c: Connection) => void;
+  setSel: (id: string | null) => void;
+};
+
+function WorkflowFlowCanvas({
+  published,
+  publishedSources,
+  staticSources,
+  setNodes,
+  themeLight,
+  nodes,
+  edges,
+  onNodesChange,
+  onEdgesChange,
+  onConnect,
+  setSel,
+}: WorkflowFlowCanvasProps) {
+  const { screenToFlowPosition } = useReactFlow();
+
+  function addNode(t: string) {
+    const id = crypto.randomUUID();
+    const cfg: Record<string, unknown> =
+      t === "input"
+        ? { data_object_id: publishedSources[0]?.id ?? "" }
+        : t === "static"
+          ? { static_ingestion_id: staticSources[0]?.id ?? "" }
+          : t === "terminate"
+            ? { terminate_name: "result_1" }
+            : {};
+    let position = { x: 120, y: 120 };
+    const wrap = document.querySelector(".workflow-editor__canvas-wrap");
+    if (wrap) {
+      const r = wrap.getBoundingClientRect();
+      const p = screenToFlowPosition({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+      position = { x: p.x - 26, y: p.y - 22 };
+    }
+    setNodes((ns) => [
+      ...ns,
+      {
+        id,
+        type: "wf",
+        position,
+        data: { nodeType: t, nodeName: `${t} ${ns.length + 1}`, configJson: cfg },
+      },
+    ]);
+  }
+
+  return (
+    <div className="workflow-editor__grid">
+      <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", padding: "0.5rem", overflow: "auto" }}>
+        <div className="workflow-palette-heading" style={{ fontWeight: 600, marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+          Palette
+        </div>
+        {PALETTE.map((p) => (
+          <button
+            key={p.type}
+            type="button"
+            className="workflow-palette-btn"
+            disabled={published}
+            onClick={() => addNode(p.type)}
+            style={palBtn}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="workflow-editor__canvas-wrap">
+        <ReactFlow
+          colorMode={themeLight ? "light" : "dark"}
+          style={{ width: "100%", height: "100%" }}
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={published ? undefined : onConnect}
+          onNodeClick={(_, n) => setSel(n.id)}
+          onPaneClick={() => setSel(null)}
+          nodeTypes={nodeTypes}
+          fitView
+          proOptions={{ hideAttribution: true }}
+        >
+          <Background />
+          <MiniMap />
+          <Controls />
+        </ReactFlow>
+      </div>
+    </div>
+  );
+}
+
 export function WorkflowEditorPage() {
   const themeLight = useDocumentThemeLight();
   const { workflowId } = useParams<{ workflowId: string }>();
   const [name, setName] = useState("");
   const [status, setStatus] = useState("");
   const [published, setPublished] = useState(false);
-  const [sources, setSources] = useState<{ id: string; name: string }[]>([]);
+  const [publishedSources, setPublishedSources] = useState<PublishedSourceRow[]>([]);
+  const [deviceNameById, setDeviceNameById] = useState<Map<string, string>>(() => new Map());
   const [staticSources, setStaticSources] = useState<{ id: string; name: string }[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -229,14 +374,26 @@ export function WorkflowEditorPage() {
   const [incomingErr, setIncomingErr] = useState<string | null>(null);
   const [advancedMode, setAdvancedMode] = useState(false);
   const [nodePreview, setNodePreview] = useState<JsonObj | null>(null);
-  const [nodePreviewErr, setNodePreviewErr] = useState<string | null>(null);
-  const [nodePreviewStatus, setNodePreviewStatus] = useState<string>("");
-  const [schemaFields, setSchemaFields] = useState<string[]>([]);
   /** Output of the immediate upstream node (for field lists: formula/filter/etc. should use this, not this node's output). */
   const [upstreamPreview, setUpstreamPreview] = useState<JsonObj | null>(null);
-  const [lastPreviewAt, setLastPreviewAt] = useState<Date | null>(null);
   const [formulaValidateMsg, setFormulaValidateMsg] = useState<string | null>(null);
   const [formulaValidateBusy, setFormulaValidateBusy] = useState(false);
+
+  /** One row per device (published data objects are listed newest-first; first per device wins). */
+  const inputDeviceOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { deviceId: string; dataObjectId: string; label: string }[] = [];
+    for (const r of publishedSources) {
+      if (seen.has(r.device_id)) continue;
+      seen.add(r.device_id);
+      out.push({
+        deviceId: r.device_id,
+        dataObjectId: r.id,
+        label: deviceNameById.get(r.device_id) ?? `Device ${r.device_id.slice(0, 8)}…`,
+      });
+    }
+    return out;
+  }, [publishedSources, deviceNameById]);
 
   const load = useCallback(async () => {
     if (!workflowId) return;
@@ -250,11 +407,19 @@ export function WorkflowEditorPage() {
       setNodes(toFlowNodes(w.nodes));
       setEdges(toFlowEdges(w.edges));
       if (w.site_id) {
-        const ds = await wfApi.listPublishedDataSources(w.site_id);
-        setSources(ds?.items?.map((x) => ({ id: x.id, name: x.name })) ?? []);
-        const ss = await listStaticIngestions(w.site_id, { active_only: true });
+        const [ds, ss, devs] = await Promise.all([
+          wfApi.listPublishedDataSources(w.site_id),
+          listStaticIngestions(w.site_id, { active_only: true }),
+          listDevices({ site_id: w.site_id }),
+        ]);
+        setPublishedSources(
+          ds?.items?.map((x) => ({ id: x.id, name: x.name, device_id: x.device_id })) ?? [],
+        );
+        setDeviceNameById(new Map(devs.map((d) => [d.id, d.name])));
         setStaticSources(ss?.items?.map((x) => ({ id: x.id, name: x.name })) ?? []);
       } else {
+        setPublishedSources([]);
+        setDeviceNameById(new Map());
         setStaticSources([]);
       }
     } catch (e) {
@@ -327,7 +492,7 @@ export function WorkflowEditorPage() {
           if (!cancelled) {
             setIncomingCaption(
               nt === "input"
-                ? "Pick a published data object for this Input to preview the JSON that enters the workflow."
+                ? "Choose a device for this Input. Preview uses the latest observed payload, or the published mirror if no samples exist yet."
                 : nt === "static"
                   ? "Choose a static ingestion definition for this node."
                   : "Connect this node to an Input or Static source to preview upstream JSON.",
@@ -338,7 +503,7 @@ export function WorkflowEditorPage() {
 
         const parts: Record<string, unknown> = {};
         for (const oid of dataIds) {
-          const row = await getScrubberDataObject(oid);
+          const row = await loadWorkflowInputPreviewBlob(oid);
           if (cancelled) return;
           if (!row) continue;
           const blob = {
@@ -365,7 +530,7 @@ export function WorkflowEditorPage() {
         }
         setIncomingCaption(
           dataIds.length + staticIds.length === 1
-            ? "JSON from the upstream source (same shape the workflow engine loads for this path)."
+            ? "JSON from the upstream source (Input uses latest observed payload when available)."
             : `${dataIds.length + staticIds.length} upstream sources — each block is one payload.`,
         );
         setIncomingJson(JSON.stringify(parts, null, 2));
@@ -384,9 +549,6 @@ export function WorkflowEditorPage() {
   useEffect(() => {
     if (!workflowId || !selectedNode) {
       setNodePreview(null);
-      setNodePreviewErr(null);
-      setNodePreviewStatus("");
-      setSchemaFields([]);
       setUpstreamPreview(null);
       return;
     }
@@ -413,26 +575,19 @@ export function WorkflowEditorPage() {
 
     if (!canPreview) {
       setNodePreview(null);
-      setNodePreviewErr(null);
-      setNodePreviewStatus("");
-      setSchemaFields([]);
       setUpstreamPreview(null);
       return;
     }
     let cancelled = false;
     async function run(nid: string, wid: string, flowEdges: Edge[]) {
       try {
-        const testBody = dataObjectId ? { data_object_id: dataObjectId } : {};
+        const testBody = dataObjectId
+          ? { data_object_id: dataObjectId, use_latest_observed_payload: true }
+          : {};
         const res = await wfApi.testWorkflow(wid, testBody);
         if (cancelled) return;
         const out = (res?.node_outputs?.[nid] as JsonObj | undefined) ?? null;
         setNodePreview(out);
-        setNodePreviewStatus(String(res?.status ?? ""));
-        setNodePreviewErr(res?.error ?? null);
-        setSchemaFields(out ? collectFieldPaths(out) : []);
-        if (out) {
-          setLastPreviewAt(new Date());
-        }
         const parentIds = flowEdges.filter((e) => e.target === nid).map((e) => e.source);
         if (parentIds.length === 1) {
           const upOut = (res?.node_outputs?.[parentIds[0]] as JsonObj | undefined) ?? null;
@@ -444,9 +599,6 @@ export function WorkflowEditorPage() {
         if (!cancelled) {
           setNodePreview(null);
           setUpstreamPreview(null);
-          setNodePreviewStatus("");
-          setSchemaFields([]);
-          setNodePreviewErr(e instanceof Error ? e.message : "Preview failed");
         }
       }
     }
@@ -470,27 +622,6 @@ export function WorkflowEditorPage() {
     },
     [setEdges],
   );
-
-  function addNode(t: string) {
-    const id = crypto.randomUUID();
-    const cfg: Record<string, unknown> =
-      t === "input"
-        ? { data_object_id: sources[0]?.id ?? "" }
-        : t === "static"
-          ? { static_ingestion_id: staticSources[0]?.id ?? "" }
-          : t === "terminate"
-            ? { terminate_name: "result_1" }
-            : {};
-    setNodes((ns) => [
-      ...ns,
-      {
-        id,
-        type: "wf",
-        position: { x: 80 + ns.length * 24, y: 80 + ns.length * 18 },
-        data: { nodeType: t, nodeName: `${t} ${ns.length + 1}`, configJson: cfg },
-      },
-    ]);
-  }
 
   function patchSelectedConfig(patch: Record<string, unknown>) {
     if (!sel) return;
@@ -600,12 +731,17 @@ export function WorkflowEditorPage() {
     const ids = upstreamSourceIds(nodes, edges, selectedNode.id).dataObjectIds;
     const dataObjectId = ids.find((x) => x && x.trim()) ?? "";
     if (!dataObjectId) {
-      setFormulaValidateMsg("Connect a published data object through an Input. Server test also requires the workflow saved if you changed this node.");
+      setFormulaValidateMsg(
+        "Connect an Input node and choose a device. Saving the workflow is required before the server test sees graph changes.",
+      );
       return;
     }
     setFormulaValidateBusy(true);
     try {
-      const res = await wfApi.testWorkflow(workflowId, { data_object_id: dataObjectId });
+      const res = await wfApi.testWorkflow(workflowId, {
+        data_object_id: dataObjectId,
+        use_latest_observed_payload: true,
+      });
       if (res?.status === "success" && !res.error) {
         setFormulaValidateMsg("OK — saved workflow test run succeeded (uses persisted graph).");
       } else {
@@ -693,11 +829,6 @@ export function WorkflowEditorPage() {
           {status}
           {published ? " · editing locked" : ""}
         </span>
-        {lastPreviewAt ? (
-          <span className="workflow-editor__preview-ts" style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }} title="Last successful graph preview">
-            Live preview · {lastPreviewAt.toLocaleTimeString()}
-          </span>
-        ) : null}
         <button type="button" style={btn} disabled={published} onClick={() => void save()}>
           Save
         </button>
@@ -722,45 +853,21 @@ export function WorkflowEditorPage() {
           </ul>
         </PageStatus>
       ) : null}
-      <div className="workflow-editor__grid">
-        <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", padding: "0.5rem", overflow: "auto" }}>
-          <div className="workflow-palette-heading" style={{ fontWeight: 600, marginBottom: "0.5rem", fontSize: "0.85rem" }}>
-            Palette
-          </div>
-          {PALETTE.map((p) => (
-            <button
-              key={p.type}
-              type="button"
-              className="workflow-palette-btn"
-              disabled={published}
-              onClick={() => addNode(p.type)}
-              style={palBtn}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="workflow-editor__canvas-wrap">
-          <ReactFlow
-            colorMode={themeLight ? "light" : "dark"}
-            style={{ width: "100%", height: "100%" }}
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={published ? undefined : onConnect}
-            onNodeClick={(_, n) => setSel(n.id)}
-            onPaneClick={() => setSel(null)}
-            nodeTypes={nodeTypes}
-            fitView
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background />
-            <MiniMap />
-            <Controls />
-          </ReactFlow>
-        </div>
-      </div>
+      <ReactFlowProvider>
+        <WorkflowFlowCanvas
+          published={published}
+          publishedSources={publishedSources}
+          staticSources={staticSources}
+          setNodes={setNodes}
+          themeLight={themeLight}
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          setSel={setSel}
+        />
+      </ReactFlowProvider>
       <ConfigDrawer
         open={!!selectedNode}
         onClose={() => setSel(null)}
@@ -778,7 +885,7 @@ export function WorkflowEditorPage() {
               {selectedNode.data.nodeType === "input" && (
                 <>
                   <label style={lbl2}>
-                    Published data object
+                    Device
                     <select
                       value={String((selectedNode.data.configJson as { data_object_id?: string }).data_object_id ?? "")}
                       disabled={published}
@@ -786,13 +893,26 @@ export function WorkflowEditorPage() {
                       style={inp}
                     >
                       <option value="">— Select —</option>
-                      {sources.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
+                      {inputDeviceOptions.map((o) => (
+                        <option key={o.deviceId} value={o.dataObjectId}>
+                          {o.label}
                         </option>
                       ))}
+                      {(() => {
+                        const cur = String(
+                          (selectedNode.data.configJson as { data_object_id?: string }).data_object_id ?? "",
+                        );
+                        const known = inputDeviceOptions.some((o) => o.dataObjectId === cur);
+                        return cur && !known ? (
+                          <option value={cur}>Saved binding (not in current site list)</option>
+                        ) : null;
+                      })()}
                     </select>
                   </label>
+                  <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
+                    Binds the published data object for that device. Incoming preview and test runs use the latest observed
+                    payload when samples exist.
+                  </p>
                   {availableFields.length > 0 ? (
                     <label style={lbl2}>
                       Available fields
@@ -1025,7 +1145,7 @@ export function WorkflowEditorPage() {
                   >
                     {availableFields.length === 0 ? (
                       <span style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
-                        Connect a published data object through an Input and save, then use Test run or the incoming preview below. Fields appear after a successful workflow test.
+                        Choose a device on an Input node and save the workflow, then use Test run or the incoming preview below. Fields appear after a successful workflow test.
                       </span>
                     ) : (
                       availableFields.map((f) => (
@@ -1041,7 +1161,7 @@ export function WorkflowEditorPage() {
                     </summary>
                     <ul style={{ margin: "0.35rem 0 0", paddingLeft: "1.1rem" }}>
                       <li>
-                        The runner calls <code style={{ fontSize: "0.7rem" }}>transform(payload)</code> with one dict copied from the upstream node. Top-level keys usually come from the published object; the test loader also adds{" "}
+                        The runner calls <code style={{ fontSize: "0.7rem" }}>transform(payload)</code> with one dict copied from the upstream node. Top-level keys usually come from the device&apos;s latest observed sample (or the published mirror); the test loader also adds{" "}
                         <code style={{ fontSize: "0.7rem" }}>_kpi</code> and <code style={{ fontSize: "0.7rem" }}>_health_status</code> when present.
                       </li>
                       <li>
@@ -1218,21 +1338,6 @@ export function WorkflowEditorPage() {
                   Apply JSON
                 </button>
               </details>
-              <div style={{ marginTop: "0.5rem", borderTop: "1px solid var(--color-border)", paddingTop: "0.5rem" }}>
-                <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Node preview & validation</div>
-                {nodePreviewStatus ? <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)" }}>Run status: {nodePreviewStatus}</div> : null}
-                {nodePreviewErr ? <div style={{ fontSize: "0.75rem", color: "var(--page-status-error-fg)" }}>{nodePreviewErr}</div> : null}
-                {schemaFields.length > 0 ? (
-                  <div style={{ fontSize: "0.75rem", color: "var(--color-text-muted)", marginBottom: "0.25rem" }}>
-                    Schema fields: {schemaFields.slice(0, 12).join(", ")}{schemaFields.length > 12 ? "…" : ""}
-                  </div>
-                ) : null}
-                {nodePreview ? (
-                  <pre style={{ margin: 0, maxHeight: 160, overflow: "auto", ...inp, fontFamily: "monospace", fontSize: "0.7rem" }}>
-                    {JSON.stringify(nodePreview, null, 2)}
-                  </pre>
-                ) : null}
-              </div>
               {showIncomingPanel ? (
                 <div
                   style={{

@@ -5,8 +5,9 @@
 #   ./run.sh debug api     — infra + api + frontend only
 #   ./run.sh debug workers — infra + api + all workers + scheduler (no frontend)
 #   ./run.sh debug ai      — infra + api + frontend + worker-ai + scheduler
-#   ./run.sh debug ingest  — infra + api + worker-ingest + worker-scrubber (raw.ingest → data_objects)
+#   ./run.sh debug ingest  — infra + api + worker-rest-poller + worker-ingest + worker-scrubber
 #   ./run.sh up | all      — same: full default stack (compose up -d), INFO logging; optional profiles via COMPOSE_PROFILES
+#   ./run.sh rest-poller   — rebuild + start worker-rest-poller; follow logs (outbound HTTP polling for Manage Devices REST)
 #   ./run.sh down          — stop compose and free published host ports (see free_stack_host_ports)
 
 set -euo pipefail
@@ -122,8 +123,12 @@ cmd_debug() {
   echo "[run.sh] docker compose up — logs attached; Ctrl+C stops containers."
   echo "[run.sh] Tip: in another terminal, tail MQTT bridge with the same compose files (no --profile needed):"
   echo "       docker compose -f docker-compose.yml -f docker-compose.debug.yml logs -f worker-mqtt-bridge"
+  echo "[run.sh] Tip: outbound REST polling (device_endpoints rest_mode=polling):"
+  echo "       docker compose -f docker-compose.yml -f docker-compose.debug.yml logs -f worker-rest-poller"
   case "$mode" in
     all)
+      echo "[run.sh] Starting worker-rest-poller (outbound REST polling) with stack..."
+      "${COMPOSE_DEBUG[@]}" up -d worker-rest-poller
       "${COMPOSE_DEBUG[@]}" up
       ;;
     api)
@@ -136,6 +141,8 @@ cmd_debug() {
         api \
         mosquitto \
         worker-mqtt-bridge \
+        worker-rest-poller \
+        worker-device-liveness \
         worker-ingest \
         worker-scrubber \
         worker-workflow \
@@ -147,7 +154,7 @@ cmd_debug() {
       "${COMPOSE_DEBUG[@]}" up api frontend worker-ai scheduler
       ;;
     ingest)
-      "${COMPOSE_DEBUG[@]}" up api worker-ingest worker-scrubber
+      "${COMPOSE_DEBUG[@]}" up api worker-rest-poller worker-device-liveness worker-ingest worker-scrubber
       ;;
     *)
       echo "[run.sh] Unknown debug mode: $mode" >&2
@@ -173,12 +180,21 @@ cmd_up() {
     echo "[run.sh] COMPOSE_PROFILES=${COMPOSE_PROFILES} (ingress / llm extras)"
   fi
   "${COMPOSE_BASE[@]}" up -d
+  "${COMPOSE_BASE[@]}" up -d worker-rest-poller
   echo "[run.sh] UI:  http://localhost:5173"
   echo "[run.sh] API: http://localhost:8000  (OpenAPI: /docs)"
+  echo "[run.sh] Tip: REST outbound polling logs — ./run.sh rest-poller   or   docker compose logs -f worker-rest-poller"
 }
 
 cmd_down() {
   shutdown_all
+}
+
+cmd_rest_poller() {
+  echo "[run.sh] Rebuild and start worker-rest-poller (polls device_endpoints with rest_mode=polling)..."
+  "${COMPOSE_BASE[@]}" up -d --build worker-rest-poller
+  echo "[run.sh] Following logs (Ctrl+C stops tail only; container keeps running)..."
+  "${COMPOSE_BASE[@]}" logs -f worker-rest-poller
 }
 
 usage() {
@@ -196,16 +212,20 @@ Usage: ./run.sh <command> [args]
 
   debug ai        Infra + api + frontend + worker-ai + scheduler.
 
-  debug ingest    Infra + api + worker-ingest + worker-scrubber (Kafka handoff → Postgres data_objects).
+  debug ingest    Infra + api + worker-rest-poller + worker-ingest + worker-scrubber
+                  (REST polling → raw.ingest → data_objects).
 
   up | all        Same: stop everything, compile frontend (unless SKIP_FRONTEND_BUILD=1), rebuild,
                   docker compose up -d — full default stack (api, frontend, workers, infra, etc.).
-                  Alias `all` is for convenience. Optional: COMPOSE_PROFILES=ingress,llm to add CoAP/WebSocket/REST
-                  ingress workers and Ollama (see docker-compose.yml profiles).
+                  Alias `all` is for convenience. Optional: COMPOSE_PROFILES=ingress,llm to add CoAP/WebSocket
+                  ingress workers (REST poller is in the default stack) and Ollama (see docker-compose.yml profiles).
 
   down            Stop compose stacks, then kill listeners on published stack ports (API 8000,
                   Vite 5173, Kafka 9092, MinIO 9000/9001, Postgres 5433/5434, Redis 16379, MQTT host port
                   18883 (or MQTT_BROKER_PUBLISH_PORT from .env). Set RUN_SH_KILL_PORTS for extras.
+
+  rest-poller     docker compose up -d --build worker-rest-poller, then logs -f worker-rest-poller
+                  (Manage Devices → HTTP/REST → Outbound polling).
 
 Logging rules:
   Passwords, tokens, secrets, and full connection strings are never logged by app code (masked URLs only).
@@ -222,6 +242,7 @@ case "${1:-}" in
     ;;
   up|all) cmd_up ;;
   down) cmd_down ;;
+  rest-poller) cmd_rest_poller ;;
   -h|--help|help) usage ;;
   *)
     usage

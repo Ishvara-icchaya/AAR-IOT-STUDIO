@@ -103,6 +103,7 @@ class DataObjectSourceRef(BaseModel):
     site_id: uuid.UUID
     name: str
     lifecycle_status: str
+    latest_seen_at: datetime | None = None
 
 
 class ResultObjectSourceRef(BaseModel):
@@ -110,6 +111,7 @@ class ResultObjectSourceRef(BaseModel):
     workflow_id: uuid.UUID
     result_object_name: str
     site_id: uuid.UUID
+    latest_seen_at: datetime | None = None
 
 
 class PublishedServiceSourcesDataObjectsResponse(BaseModel):

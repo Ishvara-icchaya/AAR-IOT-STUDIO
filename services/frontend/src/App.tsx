@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { UnifiedAlertsModal } from "./components/alerts/UnifiedAlertsModal";
+import { AlertsModalProvider } from "./contexts/AlertsModalContext";
 import { PlatformShell } from "./layouts/PlatformShell";
 import { dbg } from "./lib/debug";
 import { AdminSitesPage } from "./pages/AdminSitesPage";
@@ -13,6 +15,7 @@ import { DataObjectsListPage } from "./pages/DataObjectsListPage";
 import { ScrubberStaleIngestionPage } from "./pages/ScrubberStaleIngestionPage";
 import { ScrubberRawSelectPage } from "./pages/ScrubberRawSelectPage";
 import { RestorePage } from "./pages/RestorePage";
+import { AdminClearOperationalDataPage } from "./pages/AdminClearOperationalDataPage";
 import { WorkflowCreatePage } from "./pages/workflow/WorkflowCreatePage";
 import { WorkflowEditorPage } from "./pages/workflow/WorkflowEditorPage";
 import { WorkflowListPage } from "./pages/workflow/WorkflowListPage";
@@ -52,9 +55,10 @@ function NavigationLogger() {
 
 export default function App() {
   return (
-    <>
-      <NavigationLogger />
-      <Routes>
+    <AlertsModalProvider>
+      <>
+        <NavigationLogger />
+        <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/onboarding/change-password" element={<OnboardingChangePasswordPage />} />
@@ -84,6 +88,7 @@ export default function App() {
                 <Route path="/administration/users" element={<AdminUsersPage />} />
                 <Route path="/administration/sites" element={<AdminSitesPage />} />
                 <Route path="/administration/restore" element={<RestorePage />} />
+                <Route path="/administration/clear-data" element={<AdminClearOperationalDataPage />} />
                 <Route path="/administration/llm-config" element={<LlmConfigPage />} />
                 <Route path="/administration/ports" element={<PortsConfigPage />} />
               </Route>
@@ -113,7 +118,9 @@ export default function App() {
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/enterprise-dashboard" replace />} />
-      </Routes>
-    </>
+        </Routes>
+        <UnifiedAlertsModal />
+      </>
+    </AlertsModalProvider>
   );
 }

@@ -1,12 +1,12 @@
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties } from "react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
-import { getScrubberDataObject } from "@/api/scrubber";
+import type { DataObjectDetailListDTO } from "@/api/scrubber";
+import { listDataObjectDetails } from "@/api/scrubber";
+import { listDevices, type DeviceRead } from "@/api/devices";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
-
-type DeviceRow = { id: string; name: string; site_id: string };
 
 type DataObjectRow = {
   id: string;
@@ -23,6 +23,8 @@ type DataObjectRow = {
   error_message: string | null;
   created_at: string;
   updated_at: string;
+  latest_detail_id?: string | null;
+  latest_seen_at?: string | null;
 };
 
 type ListResp = { items: DataObjectRow[] };
@@ -35,76 +37,123 @@ function healthColor(status: string | null): string {
   return "var(--color-text-muted)";
 }
 
-/** ISO timestamp → YYYY-MM-DD (UTC) for grouping. */
-function dateKeyUtc(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "unknown";
-  return d.toISOString().slice(0, 10);
+function deviceHasArchivedPayload(d: DeviceRead): boolean {
+  return Boolean(d.endpoint?.first_payload_at);
 }
 
-function formatDateGroupHeading(dateKey: string): string {
-  if (dateKey === "unknown") return "Unknown date";
-  const d = new Date(`${dateKey}T12:00:00.000Z`);
-  return d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-}
+/** Paginated sample of observed history when a row is expanded. */
+function DataObjectObservedHistory({ dataObjectId }: { dataObjectId: string }) {
+  const [data, setData] = useState<DataObjectDetailListDTO | null>(null);
+  const [histErr, setHistErr] = useState<string | null>(null);
 
-type DateGroup = { dateKey: string; heading: string; items: DataObjectRow[] };
+  useEffect(() => {
+    let cancelled = false;
+    setHistErr(null);
+    void (async () => {
+      try {
+        const d = await listDataObjectDetails(dataObjectId, { page: 1, page_size: 25 });
+        if (!cancelled) setData(d);
+      } catch (e) {
+        if (!cancelled) setHistErr(e instanceof Error ? e.message : "Failed to load history");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dataObjectId]);
 
-function groupRowsByCreatedDate(rows: DataObjectRow[]): DateGroup[] {
-  const map = new Map<string, DataObjectRow[]>();
-  for (const r of rows) {
-    const k = dateKeyUtc(r.created_at);
-    if (!map.has(k)) map.set(k, []);
-    map.get(k)!.push(r);
+  if (histErr) {
+    return <p style={{ color: "#c62828", fontSize: "0.8rem" }}>{histErr}</p>;
   }
-  const keys = [...map.keys()].sort((a, b) => b.localeCompare(a));
-  return keys.map((dateKey) => ({
-    dateKey,
-    heading: formatDateGroupHeading(dateKey),
-    items: map.get(dateKey)!,
-  }));
-}
-
-/** One row per (device_id + name), keeping the most recently updated. */
-function aggregateLatestPerNameDevice(rows: DataObjectRow[]): DataObjectRow[] {
-  const map = new Map<string, DataObjectRow>();
-  for (const r of rows) {
-    const k = `${r.device_id}\0${r.name}`;
-    const prev = map.get(k);
-    if (!prev || new Date(r.updated_at).getTime() > new Date(prev.updated_at).getTime()) {
-      map.set(k, r);
-    }
+  if (!data) {
+    return <p style={{ color: "var(--color-text-muted)", fontSize: "0.8rem" }}>Loading observed history…</p>;
   }
-  return [...map.values()].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  if (data.total === 0) {
+    return <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>No detail rows yet.</p>;
+  }
+  return (
+    <div style={{ marginTop: "0.75rem" }}>
+      <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: "0.35rem" }}>
+        Observed history ({data.total} sample{data.total === 1 ? "" : "s"}) — page {data.page}
+      </div>
+      <table style={{ width: "100%", fontSize: "0.75rem", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>Observed</th>
+            <th style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>Health</th>
+            <th style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>detail id</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.items.map((it) => (
+            <tr key={it.id}>
+              <td style={{ borderBottom: "1px solid var(--color-border)", padding: "0.25rem 0" }}>
+                {new Date(it.observed_at).toLocaleString()}
+              </td>
+              <td style={{ borderBottom: "1px solid var(--color-border)", padding: "0.25rem 0" }}>
+                {it.health_status ?? "—"}
+              </td>
+              <td style={{ borderBottom: "1px solid var(--color-border)", padding: "0.25rem 0" }}>
+                <code style={{ fontSize: "0.68rem" }}>{it.id}</code>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
-function pickLatestRow(rows: DataObjectRow[]): DataObjectRow | null {
-  if (rows.length === 0) return null;
-  return rows.reduce((best, r) =>
-    new Date(r.updated_at).getTime() > new Date(best.updated_at).getTime() ? r : best,
-  rows[0]);
-}
-
-/** Compiled `data_object` rows produced by the scrubber worker (`GET /scrubber/data-objects`). */
+/** Data objects listed by registered device; scrubber actions require archived payload on the device endpoint. */
 export function DataObjectsListPage() {
-  const [devices, setDevices] = useState<DeviceRow[]>([]);
-  const [deviceId, setDeviceId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [devices, setDevices] = useState<DeviceRead[]>([]);
+  const [deviceFilter, setDeviceFilter] = useState("");
   const [rows, setRows] = useState<DataObjectRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  /** `all` = every row (grouped by day, as before). `aggregated` = latest row per device + object name. */
-  const [tableView, setTableView] = useState<"all" | "aggregated">("aggregated");
-  const [lastProcessedOpen, setLastProcessedOpen] = useState(false);
-  const [lastDataDetail, setLastDataDetail] = useState<Awaited<ReturnType<typeof getScrubberDataObject>> | null>(null);
-  const [lastDataLoading, setLastDataLoading] = useState(false);
+  const [devicesLoading, setDevicesLoading] = useState(true);
+
+  useEffect(() => {
+    setDeviceFilter(searchParams.get("device")?.trim() ?? "");
+  }, [searchParams]);
+
+  const setDeviceFilterAndUrl = useCallback(
+    (id: string) => {
+      setDeviceFilter(id);
+      const next = new URLSearchParams(searchParams);
+      if (id) next.set("device", id);
+      else next.delete("device");
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setDevicesLoading(true);
+    void (async () => {
+      try {
+        const list = await listDevices();
+        if (!cancelled) setDevices(list);
+      } catch (e) {
+        if (!cancelled) setErr(e instanceof Error ? e.message : "Failed to load devices");
+      } finally {
+        if (!cancelled) setDevicesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     setErr(null);
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ limit: "100" });
-      if (deviceId) qs.set("device_id", deviceId);
+      const qs = new URLSearchParams({ limit: "200" });
+      if (deviceFilter) qs.set("device_id", deviceFilter);
       const data = await apiFetch<ListResp>(`/scrubber/data-objects?${qs.toString()}`, {
         cache: "no-store",
       });
@@ -114,67 +163,44 @@ export function DataObjectsListPage() {
     } finally {
       setLoading(false);
     }
-  }, [deviceId]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const d = await apiFetch<{ items: DeviceRow[] }>("/devices");
-        setDevices(d?.items ?? []);
-      } catch (e) {
-        setErr(e instanceof Error ? e.message : "Failed devices");
-      }
-    })();
-  }, []);
+  }, [deviceFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const displayRows = useMemo(
-    () => (tableView === "aggregated" ? aggregateLatestPerNameDevice(rows) : rows),
-    [rows, tableView],
-  );
-  const groupedByDate = useMemo(() => groupRowsByCreatedDate(displayRows), [displayRows]);
-  const latestRow = useMemo(() => pickLatestRow(rows), [rows]);
+  const devicesInScope = useMemo(() => {
+    const sorted = [...devices].sort((a, b) => a.name.localeCompare(b.name));
+    if (!deviceFilter) return sorted;
+    return sorted.filter((d) => d.id === deviceFilter);
+  }, [devices, deviceFilter]);
 
-  async function onRefresh(e: FormEvent) {
-    e.preventDefault();
-    await load();
-  }
-
-  async function toggleLastProcessed() {
-    if (!latestRow) return;
-    if (lastProcessedOpen) {
-      setLastProcessedOpen(false);
-      setLastDataDetail(null);
-      return;
+  const objectsByDevice = useMemo(() => {
+    const m = new Map<string, DataObjectRow[]>();
+    for (const r of rows) {
+      const list = m.get(r.device_id) ?? [];
+      list.push(r);
+      m.set(r.device_id, list);
     }
-    setLastProcessedOpen(true);
-    setLastDataDetail(null);
-    setLastDataLoading(true);
-    try {
-      const d = await getScrubberDataObject(latestRow.id);
-      setLastDataDetail(d);
-    } catch {
-      setLastDataDetail(null);
-    } finally {
-      setLastDataLoading(false);
+    for (const [, list] of m) {
+      list.sort((a, b) => a.name.localeCompare(b.name));
     }
-  }
+    return m;
+  }, [rows]);
 
   return (
     <PageShell title="View Data Objects">
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <form onSubmit={onRefresh} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem", alignItems: "flex-end" }}>
         <label style={lbl}>
-          Filter by device
+          Device
           <select
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
+            value={deviceFilter}
+            onChange={(e) => setDeviceFilterAndUrl(e.target.value)}
             style={{ ...inp, minWidth: "240px" }}
+            disabled={devicesLoading}
           >
-            <option value="">All devices</option>
+            <option value="">All registered devices</option>
             {devices.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name}
@@ -182,15 +208,17 @@ export function DataObjectsListPage() {
             ))}
           </select>
         </label>
-        <button type="submit" style={btn} disabled={loading}>
+        <button type="button" style={btn} disabled={loading} onClick={() => void load()}>
           {loading ? "Loading…" : "Refresh"}
         </button>
-      </form>
-      <div style={{ overflow: "auto" }}>
+      </div>
+      <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
         <table style={tbl}>
           <thead>
             <tr>
-              <th style={th}>Name</th>
+              <th style={th}>Device</th>
+              <th style={th}>Archived payload</th>
+              <th style={th}>Data object</th>
               <th style={th}>Lifecycle</th>
               <th style={th}>Health</th>
               <th style={th}>Updated</th>
@@ -198,186 +226,143 @@ export function DataObjectsListPage() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={5} style={tableToolbarRow}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
-                  <label style={{ ...lbl, margin: 0 }}>
-                    Table contents
-                    <select
-                      value={tableView}
-                      onChange={(e) => setTableView(e.target.value as "all" | "aggregated")}
-                      style={{ ...inp, minWidth: "16rem" }}
-                    >
-                      <option value="aggregated">Latest per data object (device + name)</option>
-                      <option value="all">All data objects (full history)</option>
-                    </select>
-                  </label>
-                  <button type="button" style={btn} disabled={!latestRow || loading} onClick={() => void toggleLastProcessed()}>
-                    {lastProcessedOpen ? "Hide last processed" : "View last processed data"}
-                  </button>
-                  <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", maxWidth: "28rem", lineHeight: 1.4 }}>
-                    Last processed = row with newest <code>updated_at</code> among the current device filter. Opens below.
-                  </span>
-                </div>
-              </td>
-            </tr>
-            {lastProcessedOpen && latestRow ? (
-              <tr>
-                <td colSpan={5} style={lastProcessedPanel}>
-                  <div style={{ marginBottom: "0.65rem" }}>
-                    <strong style={{ fontSize: "0.95rem" }}>Last processed data</strong>
-                    <div style={{ fontSize: "0.82rem", color: "var(--color-text-muted)", marginTop: "0.25rem" }}>
-                      <strong>{latestRow.name}</strong> · <code style={{ fontSize: "0.78rem" }}>{latestRow.id}</code>
-                      <br />
-                      Updated {new Date(latestRow.updated_at).toLocaleString()}
-                    </div>
-                  </div>
-                  {lastDataLoading ? (
-                    <p style={{ color: "var(--color-text-muted)", margin: 0 }}>Loading latest from API…</p>
-                  ) : lastDataDetail ? (
-                    <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                      <div>
-                        <div style={detailHdr}>Payload</div>
-                        <pre style={{ ...pre, maxHeight: "min(50vh, 360px)" }}>{JSON.stringify(lastDataDetail.payload, null, 2)}</pre>
-                      </div>
-                      <div>
-                        <div style={detailHdr}>KPI (kpi_json)</div>
-                        <pre style={{ ...pre, maxHeight: "min(40vh, 280px)" }}>{JSON.stringify(lastDataDetail.kpi_json, null, 2)}</pre>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                      <div>
-                        <div style={detailHdr}>Payload (list row)</div>
-                        <pre style={{ ...pre, maxHeight: "min(50vh, 360px)" }}>{JSON.stringify(latestRow.payload, null, 2)}</pre>
-                      </div>
-                      <div>
-                        <div style={detailHdr}>KPI (list row)</div>
-                        <pre style={{ ...pre, maxHeight: "min(40vh, 280px)" }}>{JSON.stringify(latestRow.kpi_json, null, 2)}</pre>
-                      </div>
-                    </div>
-                  )}
-                  {(lastDataDetail?.health_status ?? latestRow.health_status) ? (
-                    <p style={{ fontSize: "0.85rem", marginTop: "0.75rem", marginBottom: 0 }}>
-                      <strong>Health</strong>:{" "}
-                      <span style={{ color: healthColor(lastDataDetail?.health_status ?? latestRow.health_status) }}>
-                        {lastDataDetail?.health_status ?? latestRow.health_status}
+            {devicesInScope.map((d) => {
+              const objs = objectsByDevice.get(d.id) ?? [];
+              const scrubberEnabled = deviceHasArchivedPayload(d);
+              if (objs.length === 0) {
+                return (
+                  <tr key={d.id}>
+                    <td style={td}>
+                      <strong>{d.name}</strong>
+                    </td>
+                    <td style={td}>{scrubberEnabled ? "Yes" : "No"}</td>
+                    <td style={{ ...td, color: "var(--color-text-muted)" }} colSpan={4}>
+                      No data objects for this device yet.
+                    </td>
+                    <td style={td}>
+                      <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
+                        {scrubberEnabled ? "—" : "Scrubber unlocks after the first payload is archived."}
                       </span>
-                      {lastDataDetail?.health_message || latestRow.health_message ? (
-                        <span> — {lastDataDetail?.health_message ?? latestRow.health_message}</span>
-                      ) : null}
-                    </p>
-                  ) : null}
-                </td>
-              </tr>
-            ) : null}
-            {groupedByDate.map((group) => (
-              <Fragment key={group.dateKey}>
-                <tr>
-                  <td colSpan={5} style={dateGroupRow}>
-                    <span style={{ fontWeight: 700, color: "var(--color-text)" }}>{group.heading}</span>
-                    <span style={{ marginLeft: "0.5rem", color: "var(--color-text-muted)", fontWeight: 500 }}>
-                      ({group.items.length} {group.items.length === 1 ? "object" : "objects"})
-                    </span>
-                  </td>
-                </tr>
-                {group.items.map((r) => (
-                  <Fragment key={r.id}>
-                    <tr>
-                      <td style={td}>
-                        <strong>{r.name}</strong>
-                        {r.error_message ? (
-                          <div style={{ fontSize: "0.75rem", color: "#c62828", marginTop: "0.2rem" }}>{r.error_message}</div>
-                        ) : null}
-                      </td>
-                      <td style={td}>
-                        <code>{r.lifecycle_status}</code>
-                      </td>
-                      <td style={{ ...td, color: healthColor(r.health_status), fontWeight: 600 }}>
-                        {r.health_status ?? "—"}
-                        {r.health_code ? (
-                          <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--color-text-muted)" }}>
-                            {r.health_code}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td style={td}>
-                        <div>{new Date(r.updated_at).toLocaleString()}</div>
-                        <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
-                          created {new Date(r.created_at).toLocaleString()}
-                        </div>
-                      </td>
-                      <td style={td}>
-                        {r.raw_data_object_id ? (
-                          <Link
-                            to={`/scrubber/create?rawId=${encodeURIComponent(
-                              r.raw_data_object_id,
-                            )}&deviceId=${encodeURIComponent(r.device_id)}&returnTo=${encodeURIComponent(
-                              "/scrubber/data-objects",
-                            )}`}
-                            style={{ marginRight: "0.5rem" }}
-                          >
-                            Edit scrubber
-                          </Link>
-                        ) : (
-                          <span style={{ color: "var(--color-text-muted)", marginRight: "0.5rem" }}>No raw source</span>
-                        )}
-                        <button
-                          type="button"
-                          style={linkBtn}
-                          onClick={() => setExpanded((x) => (x === r.id ? null : r.id))}
-                        >
-                          {expanded === r.id ? "Hide" : "Details"}
-                        </button>
-                      </td>
-                    </tr>
-                    {expanded === r.id ? (
-                      <tr key={`${r.id}-detail`}>
-                        <td colSpan={5} style={{ ...td, background: "var(--color-bg)", verticalAlign: "top" }}>
-                          <div style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }}>
-                            <div>
-                              <strong>data_object_id</strong>: <code>{r.id}</code>
-                            </div>
-                            <div>
-                              <strong>device_id</strong>: <code>{r.device_id}</code>
-                            </div>
-                            {r.raw_data_object_id ? (
-                              <div>
-                                <strong>raw_data_object_id</strong>: <code>{r.raw_data_object_id}</code>
-                              </div>
-                            ) : null}
-                            {r.scrubber_version ? (
-                              <div>
-                                <strong>scrubber_version</strong>: <code>{r.scrubber_version}</code>
-                              </div>
-                            ) : null}
-                          </div>
-                          <div style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                            <div>
-                              <div style={detailHdr}>Payload</div>
-                              <pre style={pre}>{JSON.stringify(r.payload, null, 2)}</pre>
-                            </div>
-                            <div>
-                              <div style={detailHdr}>KPI (kpi_json)</div>
-                              <pre style={pre}>{JSON.stringify(r.kpi_json, null, 2)}</pre>
-                            </div>
-                          </div>
-                          {r.health_message ? (
-                            <div style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
-                              <strong>Health message</strong>: {r.health_message}
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <Fragment key={d.id}>
+                  {objs.map((r, idx) => (
+                    <Fragment key={r.id}>
+                      <tr>
+                        <td style={td}>{idx === 0 ? <strong>{d.name}</strong> : null}</td>
+                        <td style={td}>{idx === 0 ? (scrubberEnabled ? "Yes" : "No") : null}</td>
+                        <td style={td}>
+                          <strong>{r.name}</strong>
+                          {r.error_message ? (
+                            <div style={{ fontSize: "0.75rem", color: "#c62828", marginTop: "0.2rem" }}>
+                              {r.error_message}
                             </div>
                           ) : null}
                         </td>
+                        <td style={td}>
+                          <code>{r.lifecycle_status}</code>
+                        </td>
+                        <td style={{ ...td, color: healthColor(r.health_status), fontWeight: 600 }}>
+                          {r.health_status ?? "—"}
+                          {r.health_code ? (
+                            <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--color-text-muted)" }}>
+                              {r.health_code}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={td}>
+                          <div>{new Date(r.updated_at).toLocaleString()}</div>
+                          {r.latest_seen_at ? (
+                            <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
+                              last sample {new Date(r.latest_seen_at).toLocaleString()}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={td}>
+                          {scrubberEnabled && r.raw_data_object_id ? (
+                            <Link
+                              to={`/scrubber/create?rawId=${encodeURIComponent(
+                                r.raw_data_object_id,
+                              )}&deviceId=${encodeURIComponent(r.device_id)}&returnTo=${encodeURIComponent(
+                                "/scrubber/data-objects",
+                              )}`}
+                              style={{ marginRight: "0.5rem" }}
+                            >
+                              Edit scrubber
+                            </Link>
+                          ) : (
+                            <span style={{ color: "var(--color-text-muted)", marginRight: "0.5rem" }}>
+                              {scrubberEnabled ? "No raw source" : "Scrubber locked"}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            style={linkBtn}
+                            onClick={() => setExpanded((x) => (x === r.id ? null : r.id))}
+                          >
+                            {expanded === r.id ? "Hide" : "Details"}
+                          </button>
+                        </td>
                       </tr>
-                    ) : null}
-                  </Fragment>
-                ))}
-              </Fragment>
-            ))}
+                      {expanded === r.id ? (
+                        <tr key={`${r.id}-detail`}>
+                          <td colSpan={7} style={{ ...td, background: "var(--color-bg)", verticalAlign: "top" }}>
+                            <div style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+                              <div>
+                                <strong>device</strong>: {d.name} (<code>{r.device_id}</code>)
+                              </div>
+                              <div>
+                                <strong>data_object_id</strong>: <code>{r.id}</code>
+                              </div>
+                              {r.raw_data_object_id ? (
+                                <div>
+                                  <strong>raw_data_object_id</strong>: <code>{r.raw_data_object_id}</code>
+                                </div>
+                              ) : null}
+                              {r.scrubber_version ? (
+                                <div>
+                                  <strong>scrubber_version</strong>: <code>{r.scrubber_version}</code>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div
+                              style={{ display: "grid", gap: "0.75rem", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
+                            >
+                              <div>
+                                <div style={detailHdr}>Payload</div>
+                                <pre style={pre}>{JSON.stringify(r.payload, null, 2)}</pre>
+                              </div>
+                              <div>
+                                <div style={detailHdr}>KPI (kpi_json)</div>
+                                <pre style={pre}>{JSON.stringify(r.kpi_json, null, 2)}</pre>
+                              </div>
+                            </div>
+                            {r.health_message ? (
+                              <div style={{ marginTop: "0.5rem", fontSize: "0.85rem" }}>
+                                <strong>Health message</strong>: {r.health_message}
+                              </div>
+                            ) : null}
+                            <DataObjectObservedHistory dataObjectId={r.id} />
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  ))}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
-        {rows.length === 0 && !err && (
-          <p style={{ color: "var(--color-text-muted)", marginTop: "0.5rem" }}>No data objects yet.</p>
+        {!devicesLoading && devicesInScope.length === 0 && !err && (
+          <p style={{ color: "var(--color-text-muted)", marginTop: "0.5rem" }}>No devices in scope.</p>
+        )}
+        {!loading && devicesInScope.length > 0 && rows.length === 0 && !deviceFilter && !err && (
+          <p style={{ color: "var(--color-text-muted)", marginTop: "0.5rem" }}>
+            No data objects yet for the devices shown.
+          </p>
         )}
       </div>
     </PageShell>
@@ -409,7 +394,6 @@ const btn: CSSProperties = {
   fontFamily: "inherit",
   fontWeight: 600,
   cursor: "pointer",
-  alignSelf: "flex-end",
 };
 
 const linkBtn: CSSProperties = {
@@ -430,27 +414,6 @@ const th: CSSProperties = {
 };
 const td: CSSProperties = { borderBottom: "1px solid var(--color-border)", padding: "0.4rem" };
 
-const dateGroupRow: CSSProperties = {
-  padding: "0.5rem 0.4rem",
-  background: "color-mix(in oklab, var(--color-surface-elevated) 85%, var(--color-bg) 15%)",
-  borderBottom: "1px solid var(--color-border)",
-  fontSize: "0.82rem",
-};
-
-const tableToolbarRow: CSSProperties = {
-  padding: "0.65rem 0.5rem",
-  background: "color-mix(in oklab, var(--color-surface-elevated) 78%, var(--color-bg) 22%)",
-  borderBottom: "1px solid var(--color-border)",
-  verticalAlign: "middle",
-};
-
-const lastProcessedPanel: CSSProperties = {
-  padding: "0.85rem 0.55rem",
-  background: "color-mix(in oklab, var(--color-bg) 88%, var(--color-surface) 12%)",
-  borderBottom: "1px solid var(--color-border)",
-  verticalAlign: "top",
-};
-
 const detailHdr: CSSProperties = { fontWeight: 600, fontSize: "0.8rem", marginBottom: "0.25rem" };
 const pre: CSSProperties = {
   margin: 0,
@@ -461,4 +424,3 @@ const pre: CSSProperties = {
   wordBreak: "break-word",
   fontFamily: "ui-monospace, monospace",
 };
-

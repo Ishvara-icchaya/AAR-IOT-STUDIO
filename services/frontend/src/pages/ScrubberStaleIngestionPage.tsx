@@ -396,7 +396,7 @@ export function ScrubberStaleIngestionPage() {
               Refresh
             </button>
           </form>
-          <div style={{ overflow: "auto" }}>
+          <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
             <table
               style={{
                 width: "100%",
@@ -525,7 +525,7 @@ export function ScrubberStaleIngestionPage() {
             </button>
           </div>
           {staticErr ? <PageStatus variant="error">{staticErr}</PageStatus> : null}
-          <div style={{ overflow: "auto" }}>
+          <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
               <thead>
                 <tr>
@@ -597,9 +597,9 @@ export function ScrubberStaleIngestionPage() {
               background: "var(--color-surface-elevated)",
               color: "var(--color-text)",
               borderRadius: "var(--radius)",
-              maxWidth: "min(560px, 100%)",
+              maxWidth: "min(920px, 100%)",
               width: "100%",
-              maxHeight: "90vh",
+              maxHeight: "min(92vh, 900px)",
               overflow: "auto",
               padding: "1rem",
               border: "1px solid var(--color-border)",
@@ -612,89 +612,90 @@ export function ScrubberStaleIngestionPage() {
             <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.05rem" }}>
               {editingId ? "Edit static ingestion" : "New static ingestion"}
             </h2>
-            <label style={lbl}>
-              Ingestion name
-              <input value={siName} onChange={(e) => setSiName(e.target.value)} style={inp} disabled={siBusy} />
-            </label>
-            <label style={lbl}>
-              Description
-              <textarea value={siDesc} onChange={(e) => setSiDesc(e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} disabled={siBusy} />
-            </label>
-            <label style={lbl}>
-              End date (optional, local)
-              <input
-                type="datetime-local"
-                value={siEndLocal}
-                onChange={(e) => setSiEndLocal(e.target.value)}
-                style={inp}
-                disabled={siBusy}
-              />
-            </label>
-            <label style={lbl}>
-              Schedule
-              <select value={siScheduleKind} onChange={(e) => onScheduleKindChange(e.target.value)} style={inp} disabled={siBusy}>
-                <option value="hourly">Hourly</option>
-                <option value="daily">Every day</option>
-                <option value="alternate_days">Alternate days</option>
-                <option value="weekly">Specific weekdays</option>
-                <option value="monthly">Monthly (day of month)</option>
-                <option value="cron">Cron expression</option>
-              </select>
-            </label>
+            <div style={formGrid}>
+              <label style={lblRow}>
+                <span style={lblRowLabel}>Ingestion name</span>
+                <input value={siName} onChange={(e) => setSiName(e.target.value)} style={{ ...inp, ...inpGrow }} disabled={siBusy} />
+              </label>
+              <label style={{ ...lblRow, alignItems: "flex-start" }}>
+                <span style={{ ...lblRowLabel, paddingTop: "0.35rem" }}>Description</span>
+                <textarea value={siDesc} onChange={(e) => setSiDesc(e.target.value)} rows={2} style={{ ...inp, ...inpGrow, resize: "vertical" }} disabled={siBusy} />
+              </label>
+              <label style={lblRow}>
+                <span style={lblRowLabel}>End (optional, local)</span>
+                <input
+                  type="datetime-local"
+                  value={siEndLocal}
+                  onChange={(e) => setSiEndLocal(e.target.value)}
+                  style={{ ...inp, ...inpGrow }}
+                  disabled={siBusy}
+                />
+              </label>
+              <label style={lblRow}>
+                <span style={lblRowLabel}>Schedule</span>
+                <select value={siScheduleKind} onChange={(e) => onScheduleKindChange(e.target.value)} style={{ ...inp, ...inpGrow }} disabled={siBusy}>
+                  <option value="hourly">Hourly</option>
+                  <option value="daily">Every day</option>
+                  <option value="alternate_days">Alternate days</option>
+                  <option value="weekly">Specific weekdays</option>
+                  <option value="monthly">Monthly (day of month)</option>
+                  <option value="cron">Cron expression</option>
+                </select>
+              </label>
             {siScheduleKind === "hourly" ? (
-              <label style={lbl}>
-                Minute offset (0–59)
+              <label style={lblRow}>
+                <span style={lblRowLabel}>Minute offset (0–59)</span>
                 <input
                   type="number"
                   min={0}
                   max={59}
                   value={Number(siSchedule.minute ?? 0)}
                   onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
-                  style={inp}
+                  style={{ ...inp, ...inpGrow, maxWidth: "7rem" }}
                   disabled={siBusy}
                 />
               </label>
             ) : null}
             {(siScheduleKind === "daily" || siScheduleKind === "alternate_days") ? (
-              <>
-                <label style={lbl}>
-                  Hour (0–23)
+              <div style={schedulePair}>
+                <label style={{ ...lblRow, flex: "1 1 12rem", marginBottom: 0 }}>
+                  <span style={lblRowLabel}>Hour (0–23)</span>
                   <input
                     type="number"
                     min={0}
                     max={23}
                     value={Number(siSchedule.hour ?? 0)}
                     onChange={(e) => patchSchedule({ hour: Number(e.target.value) })}
-                    style={inp}
+                    style={{ ...inp, width: "100%", maxWidth: "8rem" }}
                     disabled={siBusy}
                   />
                 </label>
-                <label style={lbl}>
-                  Minute (0–59)
+                <label style={{ ...lblRow, flex: "1 1 12rem", marginBottom: 0 }}>
+                  <span style={lblRowLabel}>Minute (0–59)</span>
                   <input
                     type="number"
                     min={0}
                     max={59}
                     value={Number(siSchedule.minute ?? 0)}
                     onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
-                    style={inp}
+                    style={{ ...inp, width: "100%", maxWidth: "8rem" }}
                     disabled={siBusy}
                   />
                 </label>
-              </>
+              </div>
             ) : null}
             {siScheduleKind === "weekly" ? (
               <>
-                <label style={lbl}>
-                  Hour / minute
-                  <div style={{ display: "flex", gap: "0.35rem" }}>
+                <label style={lblRow}>
+                  <span style={lblRowLabel}>Hour / minute</span>
+                  <div style={{ display: "flex", gap: "0.35rem", flex: 1, minWidth: 0 }}>
                     <input
                       type="number"
                       min={0}
                       max={23}
                       value={Number(siSchedule.hour ?? 0)}
                       onChange={(e) => patchSchedule({ hour: Number(e.target.value) })}
-                      style={{ ...inp, flex: 1 }}
+                      style={{ ...inp, flex: 1, minWidth: 0 }}
                       disabled={siBusy}
                     />
                     <input
@@ -703,13 +704,13 @@ export function ScrubberStaleIngestionPage() {
                       max={59}
                       value={Number(siSchedule.minute ?? 0)}
                       onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
-                      style={{ ...inp, flex: 1 }}
+                      style={{ ...inp, flex: 1, minWidth: 0 }}
                       disabled={siBusy}
                     />
                   </div>
                 </label>
-                <label style={lbl}>
-                  Weekdays (0=Mon … 6=Sun), comma-separated
+                <label style={{ ...lblRow, alignItems: "flex-start" }}>
+                  <span style={{ ...lblRowLabel, paddingTop: "0.35rem" }}>Weekdays (0=Mon … 6=Sun)</span>
                   <input
                     value={(siSchedule.days_of_week as number[] | undefined)?.join(",") ?? "0,1,2,3,4,5,6"}
                     onChange={(e) => {
@@ -719,36 +720,36 @@ export function ScrubberStaleIngestionPage() {
                         .filter((n) => !Number.isNaN(n));
                       patchSchedule({ days_of_week: parts });
                     }}
-                    style={inp}
+                    style={{ ...inp, ...inpGrow }}
                     disabled={siBusy}
                   />
                 </label>
               </>
             ) : null}
             {siScheduleKind === "monthly" ? (
-              <>
-                <label style={lbl}>
-                  Day of month (1–31)
+              <div style={schedulePair}>
+                <label style={{ ...lblRow, flex: "1 1 10rem", marginBottom: 0 }}>
+                  <span style={lblRowLabel}>Day (1–31)</span>
                   <input
                     type="number"
                     min={1}
                     max={31}
                     value={Number(siSchedule.day_of_month ?? 1)}
                     onChange={(e) => patchSchedule({ day_of_month: Number(e.target.value) })}
-                    style={inp}
+                    style={{ ...inp, maxWidth: "8rem" }}
                     disabled={siBusy}
                   />
                 </label>
-                <label style={lbl}>
-                  Hour / minute
-                  <div style={{ display: "flex", gap: "0.35rem" }}>
+                <label style={{ ...lblRow, flex: "1 1 14rem", marginBottom: 0 }}>
+                  <span style={lblRowLabel}>Hour / min</span>
+                  <div style={{ display: "flex", gap: "0.35rem", flex: 1, minWidth: 0 }}>
                     <input
                       type="number"
                       min={0}
                       max={23}
                       value={Number(siSchedule.hour ?? 0)}
                       onChange={(e) => patchSchedule({ hour: Number(e.target.value) })}
-                      style={{ ...inp, flex: 1 }}
+                      style={{ ...inp, flex: 1, minWidth: 0 }}
                       disabled={siBusy}
                     />
                     <input
@@ -757,32 +758,33 @@ export function ScrubberStaleIngestionPage() {
                       max={59}
                       value={Number(siSchedule.minute ?? 0)}
                       onChange={(e) => patchSchedule({ minute: Number(e.target.value) })}
-                      style={{ ...inp, flex: 1 }}
+                      style={{ ...inp, flex: 1, minWidth: 0 }}
                       disabled={siBusy}
                     />
                   </div>
                 </label>
-              </>
+              </div>
             ) : null}
             {siScheduleKind === "cron" ? (
-              <label style={lbl}>
-                Cron expression
+              <label style={lblRow}>
+                <span style={lblRowLabel}>Cron expression</span>
                 <input
                   value={String(siSchedule.expression ?? "0 9 * * *")}
                   onChange={(e) => patchSchedule({ expression: e.target.value })}
-                  style={{ ...inp, fontFamily: "monospace" }}
+                  style={{ ...inp, ...inpGrow, fontFamily: "monospace" }}
                   disabled={siBusy}
                 />
               </label>
             ) : null}
-            <label style={lbl}>
-              JSON payload
-              <textarea value={siPayloadText} onChange={(e) => setSiPayloadText(e.target.value)} rows={10} style={{ ...inp, fontFamily: "monospace", fontSize: "0.78rem" }} disabled={siBusy} />
+            <label style={{ ...lblRow, alignItems: "flex-start" }}>
+              <span style={{ ...lblRowLabel, paddingTop: "0.35rem" }}>JSON payload</span>
+              <textarea value={siPayloadText} onChange={(e) => setSiPayloadText(e.target.value)} rows={8} style={{ ...inp, ...inpGrow, fontFamily: "monospace", fontSize: "0.78rem", minHeight: "10rem" }} disabled={siBusy} />
             </label>
-            <label style={lbl}>
-              Load from file
-              <input type="file" accept="application/json,.json" onChange={(e) => onPayloadFile(e.target.files?.[0] ?? null)} disabled={siBusy} />
+            <label style={lblRow}>
+              <span style={lblRowLabel}>Load from file</span>
+              <input type="file" accept="application/json,.json" onChange={(e) => onPayloadFile(e.target.files?.[0] ?? null)} disabled={siBusy} style={inpGrow} />
             </label>
+            </div>
             {siValErrs.length > 0 ? (
               <PageStatus variant="error">
                 <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
@@ -834,7 +836,33 @@ const td: CSSProperties = {
   borderBottom: "1px solid var(--color-border)",
   verticalAlign: "top",
 };
-const lbl: CSSProperties = { display: "grid", gap: "0.35rem", marginBottom: "0.5rem", fontSize: "0.85rem", color: "var(--color-text-muted)" };
+const formGrid: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+};
+const schedulePair: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.5rem",
+  alignItems: "flex-end",
+};
+const lblRow: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.5rem",
+  fontSize: "0.85rem",
+  color: "var(--color-text-muted)",
+};
+const lblRowLabel: CSSProperties = {
+  minWidth: "10rem",
+  flexShrink: 0,
+};
+const inpGrow: CSSProperties = {
+  flex: "1 1 14rem",
+  minWidth: 0,
+};
 const inp: CSSProperties = {
   padding: "0.35rem",
   borderRadius: "var(--radius)",

@@ -25,6 +25,11 @@ class AlertRead(BaseModel):
 
     title: str
     message: str
+    platform_site_id: uuid.UUID | None = Field(
+        default=None,
+        description="Tenant site for the registered device when device_id is set; otherwise alert.site_id.",
+    )
+    platform_site_name: str | None = Field(default=None, description="Resolved site name for platform_site_id.")
     source_component: str | None
     source_object_type: str | None
     source_object_id: uuid.UUID | None
@@ -38,6 +43,10 @@ class AlertRead(BaseModel):
 class AlertListResponse(BaseModel):
     items: list[AlertRead]
     total: int
+
+
+class AlertAcknowledgeAllResponse(BaseModel):
+    acknowledged_count: int
 
 
 class AlertUnacknowledgedSummary(BaseModel):

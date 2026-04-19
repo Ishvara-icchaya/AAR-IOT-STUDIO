@@ -45,11 +45,18 @@ def _invalidate_validation(ep: DeviceEndpoint) -> None:
 
 
 def _to_observability(db: Session, ep: DeviceEndpoint) -> DeviceEndpointObservability:
+    try:
+        poll_iv = int(ep.polling_interval_seconds)
+    except (TypeError, ValueError):
+        poll_iv = 60
+    if poll_iv < 1:
+        poll_iv = 60
     raw = build_observability(
         db,
         device_id=ep.device_id,
         protocol=ep.protocol,
         config=ep.config if isinstance(ep.config, dict) else {},
+        polling_interval_seconds=poll_iv,
     )
     return DeviceEndpointObservability.model_validate(raw)
 
@@ -104,7 +111,19 @@ def validate_device_endpoint(
         )
 
     cfg = ep.config if isinstance(ep.config, dict) else {}
-    st, detail = run_endpoint_validation(db, protocol=ep.protocol, config=cfg, device_id=ep.device_id)
+    try:
+        poll_iv = int(ep.polling_interval_seconds)
+    except (TypeError, ValueError):
+        poll_iv = 60
+    if poll_iv < 1:
+        poll_iv = 60
+    st, detail = run_endpoint_validation(
+        db,
+        protocol=ep.protocol,
+        config=cfg,
+        device_id=ep.device_id,
+        polling_interval_seconds=poll_iv,
+    )
     now = validation_timestamp()
     ep.last_verified_at = now
     ep.validation_status = st

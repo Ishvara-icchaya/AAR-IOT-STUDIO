@@ -1,26 +1,18 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { getAlertsSummary } from "@/api/alerts";
-import { AdminDropdown } from "./AdminDropdown";
 import { AlertsToolbar } from "./AlertsToolbar";
 import { MainNav } from "./MainNav";
-import { AppearancePickers } from "./AppearancePickers";
-import { UserMenu } from "./UserMenu";
-import { userIsAdmin } from "./navigation";
 
 type SiteRow = { id: string; name: string };
 
 export function HeaderBar() {
-  const { me, logout } = useAuth();
-  const navigate = useNavigate();
+  const { me } = useAuth();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [unacked, setUnacked] = useState(0);
   const [alertTone, setAlertTone] = useState<"none" | "critical" | "warning" | "info">("none");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
-  const showAdmin = userIsAdmin(me?.role, me?.is_superuser);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,19 +101,6 @@ export function HeaderBar() {
 
       <div className="shell-header__right">
         <AlertsToolbar unacked={unacked} alertTone={alertTone} />
-        <AppearancePickers />
-        {showAdmin ? <AdminDropdown /> : null}
-        <UserMenu />
-        <button
-          type="button"
-          className="shell__logout-btn"
-          onClick={() => {
-            logout();
-            navigate("/login", { replace: true });
-          }}
-        >
-          Log out
-        </button>
       </div>
     </header>
   );

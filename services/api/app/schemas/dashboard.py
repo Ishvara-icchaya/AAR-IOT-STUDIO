@@ -80,6 +80,7 @@ class DataObjectSourceRow(BaseModel):
     name: str
     lifecycle_status: str
     updated_at: datetime
+    latest_seen_at: datetime | None = None
 
 
 class ResultObjectSourceRow(BaseModel):
@@ -90,6 +91,7 @@ class ResultObjectSourceRow(BaseModel):
     result_object_name: str
     site_id: uuid.UUID
     created_at: datetime
+    latest_seen_at: datetime | None = None
 
 
 class DashboardSourcesDataObjectsResponse(BaseModel):

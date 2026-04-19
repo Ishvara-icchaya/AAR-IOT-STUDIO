@@ -38,6 +38,10 @@ class MonitoringSummary(BaseModel):
     coap_listener_status: str | None = None
     websocket_ingest_status: str | None = None
     rest_poller_status: str | None = None
+    liveness_online_count: int = 0
+    liveness_late_count: int = 0
+    liveness_offline_count: int = 0
+    liveness_waiting_count: int = 0
     active_alerts: int
     cpu_percent: float | None = None
     memory_percent: float | None = None

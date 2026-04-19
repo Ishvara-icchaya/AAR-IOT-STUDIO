@@ -28,6 +28,70 @@ configure_logging()
 log = logging.getLogger(__name__)
 
 
+def _cfg_str(cfg: dict[str, Any], *keys: str) -> str:
+    for k in keys:
+        v = cfg.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ""
+
+
+def _rest_mode(cfg: dict[str, Any]) -> str:
+    return _cfg_str(cfg, "rest_mode", "restMode").lower()
+
+
+def _effective_polling_url(cfg: dict[str, Any]) -> str:
+    """Explicit ``polling_url`` / ``pollingUrl``, else composite ``url`` (host+port+path from UI)."""
+    pu = _cfg_str(cfg, "polling_url", "pollingUrl")
+    if pu:
+        return pu
+    return _cfg_str(cfg, "url")
+
+
+def _headers_json_raw(cfg: dict[str, Any]) -> str:
+    return _cfg_str(cfg, "headers_json", "headersJson")
+
+
+def _auth_type(cfg: dict[str, Any]) -> str:
+    return _cfg_str(cfg, "auth_type", "authType").lower()
+
+
+def _auth_header_name(cfg: dict[str, Any]) -> str:
+    return _cfg_str(cfg, "auth_header_name", "authHeaderName")
+
+
+def _auth_header_value(cfg: dict[str, Any]) -> str:
+    v = cfg.get("auth_header_value")
+    if v is None:
+        v = cfg.get("authHeaderValue")
+    return str(v) if v is not None else ""
+
+
+def _inbound_hook_endpoint_count() -> int:
+    """How many active HTTP endpoints are Inbound hook (poller ignores these)."""
+    try:
+        conn = psycopg2.connect(db_url())
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT COUNT(*)::int FROM device_endpoints
+                    WHERE is_active = true AND LOWER(protocol) IN ('http', 'https', 'rest')
+                    AND LOWER(COALESCE(config->>'rest_mode', config->>'restMode', '')) = 'inbound_hook'
+                    """
+                )
+                row = cur.fetchone()
+                return int(row[0] or 0) if row else 0
+        finally:
+            conn.close()
+    except Exception:
+        log.debug("rest_poller inbound_hook count query failed", exc_info=True)
+        return 0
+
+
 def _load_poll_rows() -> list[tuple[uuid.UUID, uuid.UUID, dict[str, Any], int]]:
     conn = psycopg2.connect(db_url())
     try:
@@ -36,15 +100,15 @@ def _load_poll_rows() -> list[tuple[uuid.UUID, uuid.UUID, dict[str, Any], int]]:
                 """
                 SELECT id::text, device_id::text, config, polling_interval_seconds
                 FROM device_endpoints
-                WHERE is_active = true AND protocol IN ('http', 'https')
+                WHERE is_active = true AND protocol IN ('http', 'https', 'rest')
                 """
             )
             out: list[tuple[uuid.UUID, uuid.UUID, dict[str, Any], int]] = []
             for eid_s, did_s, cfg, poll_col in cur.fetchall():
                 c = cfg if isinstance(cfg, dict) else {}
-                if c.get("rest_mode") != "polling":
+                if _rest_mode(c) != "polling":
                     continue
-                url = (c.get("polling_url") or "").strip()
+                url = _effective_polling_url(c)
                 if not url:
                     continue
                 try:
@@ -59,26 +123,41 @@ def _load_poll_rows() -> list[tuple[uuid.UUID, uuid.UUID, dict[str, Any], int]]:
 
 def _build_headers(cfg: dict[str, Any]) -> dict[str, str]:
     headers: dict[str, str] = {}
-    hj = cfg.get("headers_json")
-    if isinstance(hj, str) and hj.strip():
+    hj = _headers_json_raw(cfg)
+    if hj:
         try:
             parsed = json.loads(hj)
             if isinstance(parsed, dict):
                 headers = {str(k): str(v) for k, v in parsed.items()}
         except json.JSONDecodeError:
             log.warning("rest_poller bad headers_json")
-    auth_type = cfg.get("auth_type")
+    auth_type = _auth_type(cfg)
     if auth_type == "bearer":
-        tok = cfg.get("auth_header_value") or ""
+        tok = _auth_header_value(cfg)
         headers["Authorization"] = f"Bearer {tok}"
     elif auth_type == "header":
-        name = (cfg.get("auth_header_name") or "Authorization").strip()
-        headers[name] = str(cfg.get("auth_header_value") or "")
+        name = _auth_header_name(cfg) or "Authorization"
+        headers[name] = _auth_header_value(cfg)
     return headers
+
+
+def _rest_poll_http_method(cfg: dict[str, Any]) -> str:
+    """Match API connectivity: GET default; disallow PUT/PATCH/DELETE for typical upstream polls."""
+    raw = cfg.get("method")
+    if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+        raw = cfg.get("httpMethod") or cfg.get("http_method")
+    m = str(raw or "GET").strip().upper() or "GET"
+    allowed = frozenset({"GET", "HEAD", "POST"})
+    if m not in allowed:
+        log.info("rest_poller: unsupported HTTP method %r, using GET", m)
+        return "GET"
+    return m
 
 
 def _poll_interval_seconds(cfg: dict[str, Any], column_interval: int) -> int:
     raw = cfg.get("polling_interval_seconds")
+    if raw is None:
+        raw = cfg.get("pollingIntervalSeconds")
     try:
         from_cfg = int(raw) if raw is not None else column_interval
     except (TypeError, ValueError):
@@ -87,9 +166,11 @@ def _poll_interval_seconds(cfg: dict[str, Any], column_interval: int) -> int:
 
 
 def _poll_one(endpoint_id: uuid.UUID, device_id: uuid.UUID, cfg: dict[str, Any]) -> None:
-    url = (cfg.get("polling_url") or "").strip()
-    method = (cfg.get("method") or "GET").strip().upper() or "GET"
+    url = _effective_polling_url(cfg)
+    method = _rest_poll_http_method(cfg)
     timeout_s = cfg.get("timeout_seconds")
+    if timeout_s is None:
+        timeout_s = cfg.get("timeoutSeconds")
     try:
         timeout = float(timeout_s) if timeout_s is not None else 30.0
     except (TypeError, ValueError):
@@ -157,6 +238,11 @@ def _poll_one(endpoint_id: uuid.UUID, device_id: uuid.UUID, cfg: dict[str, Any])
     )
     if ok:
         record_ingest_success("rest_poller", health_status="running")
+        log.info(
+            "rest_poller poll ok device=%s url=%s",
+            device_id,
+            safe_url_for_log(url),
+        )
     else:
         record_quality_event("rest_poller", "ingest_reject")
         record_ingest_error("rest_poller", "ingest failed")
@@ -165,7 +251,11 @@ def _poll_one(endpoint_id: uuid.UUID, device_id: uuid.UUID, cfg: dict[str, Any])
 def main() -> None:
     start_worker_heartbeat("worker-rest-poller")
     write_adapter_boot("rest_poller", status="running")
+    log.info(
+        "rest_poller started — polls active device_endpoints with rest_mode=polling (http/https/rest)"
+    )
     last_poll: dict[uuid.UUID, float] = {}
+    last_idle_log_mono = 0.0
 
     while True:
         try:
@@ -177,6 +267,22 @@ def main() -> None:
 
         if not rows:
             set_adapter_status("rest_poller", "idle")
+            now_mono = time.monotonic()
+            if now_mono - last_idle_log_mono >= 60.0:
+                last_idle_log_mono = now_mono
+                inbound_n = _inbound_hook_endpoint_count()
+                extra = ""
+                if inbound_n > 0:
+                    extra = (
+                        f" You have {inbound_n} active HTTP/REST endpoint(s) on Inbound hook; "
+                        "switch REST mode to Outbound polling so worker-rest-poller can GET your upstream URL. "
+                        "Inbound hook only accepts POSTs to the platform /ingest/raw."
+                    )
+                log.info(
+                    "rest_poller idle — no matching device_endpoints. Need: endpoint is_active, protocol "
+                    "http/https/rest, config.rest_mode=polling, and polling_url or composite url (host+port+path).%s",
+                    extra,
+                )
             time.sleep(15)
             continue
 

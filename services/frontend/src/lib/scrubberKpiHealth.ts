@@ -1,5 +1,12 @@
 /** Client-side KPI + health evaluation (aligned with API scrubber_kpi_service / scrubber_health_service). */
 
+export type HealthEvalResult = {
+  status: string;
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+};
+
 function isObjectRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -81,6 +88,14 @@ function coerceFloat(val: unknown): number | null {
 }
 
 const SEV: Record<string, number> = { red: 3, yellow: 2, green: 1 };
+
+const TH_BAND_RANK: Record<string, number> = { critical: 3, warning: 2, normal: 1, unknown: 0 };
+const TH_TO_DISPLAY: Record<string, string> = {
+  critical: "red",
+  warning: "yellow",
+  normal: "green",
+  unknown: "yellow",
+};
 
 function normStatus(s: string): string {
   const x = s.toLowerCase().trim();
@@ -257,7 +272,7 @@ function evalAst(node: Ast, payload: Record<string, unknown>): boolean {
   return Boolean(node);
 }
 
-function evaluateHealthMap(spec: Record<string, unknown>, payload: Record<string, unknown>): { status: string; code: string; message: string } {
+function evaluateHealthMap(spec: Record<string, unknown>, payload: Record<string, unknown>): HealthEvalResult {
   const source = String(spec.source_field || "").trim();
   const mapping = spec.mapping && typeof spec.mapping === "object" && !Array.isArray(spec.mapping) ? (spec.mapping as Record<string, unknown>) : {};
   const msgFrom = String(spec.message_from || "").trim();
@@ -271,13 +286,20 @@ function evaluateHealthMap(spec: Record<string, unknown>, payload: Record<string
     const mv = getByPath(payload, msgFrom);
     if (mv !== undefined && mv !== null) message = String(mv);
   }
-  return { status, code: String(spec.default_code || "mapped"), message };
+  const details: Record<string, unknown> = {
+    mode: "map",
+    source_field: source,
+    raw_value: raw !== undefined && raw !== null && (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") ? raw : raw != null ? String(raw) : null,
+    mapped_status: status,
+  };
+  if (msgFrom) details.message_from_field = msgFrom;
+  return { status, code: String(spec.default_code || "mapped"), message, details };
 }
 
-function evaluateHealthRules(spec: Record<string, unknown>, payload: Record<string, unknown>): { status: string; code: string; message: string } {
+function evaluateHealthRules(spec: Record<string, unknown>, payload: Record<string, unknown>): HealthEvalResult {
   const defaultStatus = normStatus(String(spec.default_status || "green"));
   const rules = Array.isArray(spec.rules) ? spec.rules : [];
-  const matches: { sev: number; pr: number; status: string; code: string; message: string }[] = [];
+  const matches: { sev: number; pr: number; status: string; code: string; message: string; name: string }[] = [];
   for (const r of rules) {
     if (!r || typeof r !== "object" || Array.isArray(r)) continue;
     const row = r as Record<string, unknown>;
@@ -287,15 +309,132 @@ function evaluateHealthRules(spec: Record<string, unknown>, payload: Record<stri
     const st = normStatus(String(row.status || "yellow"));
     const sev = SEV[st] ?? 1;
     const pr = typeof row.priority === "number" ? row.priority : parseInt(String(row.priority || 0), 10) || 0;
-    matches.push({ sev, pr, status: st, code: String(row.code || ""), message: String(row.message || "") });
+    matches.push({
+      sev,
+      pr,
+      status: st,
+      code: String(row.code || ""),
+      message: String(row.message || ""),
+      name: String(row.name || ""),
+    });
   }
-  if (matches.length === 0) return { status: defaultStatus, code: "default", message: "No rule matched" };
+  if (matches.length === 0) {
+    return {
+      status: defaultStatus,
+      code: "default",
+      message: "No rule matched",
+      details: { mode: "simple_rules", matched: null },
+    };
+  }
   matches.sort((a, b) => b.sev - a.sev || b.pr - a.pr);
   const w = matches[0];
-  return { status: w.status, code: w.code || "rule", message: w.message };
+  return {
+    status: w.status,
+    code: w.code || "rule",
+    message: w.message,
+    details: { mode: "simple_rules", matched: { name: w.name, code: w.code, message: w.message, status: w.status } },
+  };
 }
 
-function evalHealthLegacyList(rules: unknown[], payload: Record<string, unknown>): { status: string; code: string; message: string } {
+function matchesBand(val: number, band: Record<string, unknown>): boolean {
+  if (!band || typeof band !== "object") return false;
+  let ok = true;
+  if ("min" in band) ok = ok && val >= Number(band["min"]);
+  if ("max" in band) ok = ok && val <= Number(band["max"]);
+  if ("min_exclusive" in band) ok = ok && val > Number(band["min_exclusive"]);
+  if ("max_exclusive" in band) ok = ok && val < Number(band["max_exclusive"]);
+  return ok;
+}
+
+function bandForField(
+  fieldKey: string,
+  normal: Record<string, unknown>,
+  warning: Record<string, unknown>,
+  critical: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): { band: string; val: number | null } {
+  const specCrit = critical[fieldKey];
+  const specWarn = warning[fieldKey];
+  const specNorm = normal[fieldKey];
+  const val = coerceFloat(getByPath(payload, fieldKey));
+  if (val === null) return { band: "unknown", val: null };
+  const c = isObjectRecord(specCrit) ? specCrit : null;
+  const w = isObjectRecord(specWarn) ? specWarn : null;
+  const n = isObjectRecord(specNorm) ? specNorm : null;
+  if (c && matchesBand(val, c)) return { band: "critical", val };
+  if (w && matchesBand(val, w)) return { band: "warning", val };
+  if (n && matchesBand(val, n)) return { band: "normal", val };
+  return { band: "unknown", val };
+}
+
+function evaluateHealthThresholds(spec: Record<string, unknown>, payload: Record<string, unknown>): HealthEvalResult {
+  const definition = spec.definition;
+  if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+    return {
+      status: "yellow",
+      code: "thresholds_invalid",
+      message: "Missing or invalid thresholds definition",
+      details: { mode: "thresholds", error: "no_definition" },
+    };
+  }
+  const def = definition as Record<string, unknown>;
+  const refName = String(def.reference_name || "thresholds");
+  const normal = isObjectRecord(def.normal) ? def.normal : {};
+  const warning = isObjectRecord(def.warning) ? def.warning : {};
+  const critical = isObjectRecord(def.critical) ? def.critical : {};
+
+  const keys = new Set<string>();
+  for (const d of [normal, warning, critical]) {
+    for (const [k, v] of Object.entries(d)) {
+      if (isObjectRecord(v)) keys.add(k);
+    }
+  }
+
+  if (keys.size === 0) {
+    return {
+      status: "green",
+      code: "thresholds:empty",
+      message: "No threshold fields defined",
+      details: { mode: "thresholds", reference_name: refName, overall_severity: "normal", fields: [] },
+    };
+  }
+
+  const fieldRows: { path: string; value: number | null; band: string; display_severity: string }[] = [];
+  let worstRank = 0;
+  for (const fk of [...keys].sort()) {
+    const { band, val } = bandForField(fk, normal, warning, critical, payload);
+    worstRank = Math.max(worstRank, TH_BAND_RANK[band] ?? 0);
+    fieldRows.push({
+      path: fk,
+      value: val,
+      band,
+      display_severity: TH_TO_DISPLAY[band] ?? "yellow",
+    });
+  }
+
+  const overallLabels = ["unknown", "normal", "warning", "critical"] as const;
+  const overall =
+    worstRank >= 0 && worstRank < overallLabels.length ? overallLabels[worstRank] : "unknown";
+  const displayStatus = TH_TO_DISPLAY[overall] ?? "yellow";
+  const status = normStatus(displayStatus);
+
+  const worstLabels = fieldRows.filter((r) => r.band === overall && overall !== "normal").map((r) => r.path);
+  let message: string;
+  if (overall === "normal" && fieldRows.length) message = `All sampled fields within normal bands (${refName})`;
+  else if (overall === "unknown") message = `One or more fields did not match any band (${refName})`;
+  else message = `${overall}: ${worstLabels.slice(0, 8).join(", ")}${worstLabels.length > 8 ? "…" : ""}`;
+
+  const code = `thresholds:${refName}:${overall}`;
+  const details: Record<string, unknown> = {
+    mode: "thresholds",
+    reference_name: refName,
+    overall_severity: overall,
+    fields: fieldRows,
+  };
+  return { status, code, message, details };
+}
+
+function evalHealthLegacyList(rules: unknown[], payload: Record<string, unknown>): HealthEvalResult {
   for (const rule of rules) {
     if (!rule || typeof rule !== "object") continue;
     const r = rule as Record<string, unknown>;
@@ -308,6 +447,7 @@ function evalHealthLegacyList(rules: unknown[], payload: Record<string, unknown>
           status: normStatus(String(r.status || "yellow")),
           code: String(r.code || "missing"),
           message: String(r.message || `Missing ${path}`),
+          details: { mode: "legacy", matched: "missing", path },
         };
       }
     }
@@ -326,6 +466,7 @@ function evalHealthLegacyList(rules: unknown[], payload: Record<string, unknown>
                 status: normStatus(String(r.status || "red")),
                 code: String(r.code || "match"),
                 message: String(r.message || "Pattern matched"),
+                details: { mode: "legacy", matched: "match", path },
               };
             }
           } catch {
@@ -335,27 +476,35 @@ function evalHealthLegacyList(rules: unknown[], payload: Record<string, unknown>
       }
     }
   }
-  return { status: "green", code: "ok", message: "All rules passed" };
+  return {
+    status: "green",
+    code: "ok",
+    message: "All rules passed",
+    details: { mode: "legacy", matched: null },
+  };
 }
 
-export function evaluateHealth(healthSpec: unknown, payload: Record<string, unknown>): { status: string; code: string; message: string } {
-  if (!healthSpec) return { status: "green", code: "ok", message: "" };
+export function evaluateHealth(healthSpec: unknown, payload: Record<string, unknown>): HealthEvalResult {
+  if (!healthSpec) return { status: "green", code: "ok", message: "", details: { mode: "none" } };
   if (Array.isArray(healthSpec)) return evalHealthLegacyList(healthSpec, payload);
-  if (!isObjectRecord(healthSpec)) return { status: "green", code: "ok", message: "" };
+  if (!isObjectRecord(healthSpec)) return { status: "green", code: "ok", message: "", details: { mode: "none" } };
   const h = healthSpec as Record<string, unknown>;
   const mode = String(h.mode || "").toLowerCase();
   if (mode === "map") return evaluateHealthMap(h, payload);
   if (mode === "rules") return evaluateHealthRules(h, payload);
+  if (mode === "thresholds") return evaluateHealthThresholds(h, payload);
   const rules = h.rules;
   if (Array.isArray(rules) && rules[0] && isObjectRecord(rules[0]) && "condition" in (rules[0] as object)) {
     return evaluateHealthRules({ ...h, mode: "rules" }, payload);
   }
   if ("status" in h) {
+    const st = normStatus(String(h.status || "green"));
     return {
-      status: normStatus(String(h.status || "green")),
+      status: st,
       code: String(h.code || "ok"),
       message: String(h.message || ""),
+      details: { mode: "static", status: st },
     };
   }
-  return { status: "green", code: "ok", message: "" };
+  return { status: "green", code: "ok", message: "", details: { mode: "none" } };
 }

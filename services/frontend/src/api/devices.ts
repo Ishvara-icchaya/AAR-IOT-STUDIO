@@ -1,5 +1,21 @@
 import { apiFetch } from "./client";
 
+/** Mirrors API `DeviceEndpointNested` + `DeviceRead` list fields used by the UI. */
+export type DeviceEndpointList = {
+  id: string;
+  protocol: string;
+  config: Record<string, unknown>;
+  polling_interval_seconds: number;
+  is_active: boolean;
+  activation_status?: string;
+  first_payload_at?: string | null;
+  last_payload_at?: string | null;
+  last_error?: string | null;
+  validation_status?: string | null;
+  validation_detail?: string | null;
+  last_verified_at?: string | null;
+} | null;
+
 export type DeviceRead = {
   id: string;
   site_id: string;
@@ -8,8 +24,14 @@ export type DeviceRead = {
   icon: string | null;
   is_active: boolean;
   polling_enabled: boolean;
-  endpoint: unknown | null;
+  last_seen_at?: string | null;
+  current_liveness_state?: string;
+  endpoint: DeviceEndpointList;
 };
+
+export async function getDevice(deviceId: string) {
+  return apiFetch<DeviceRead>(`/devices/${encodeURIComponent(deviceId)}`);
+}
 
 export async function listDevices(params?: { q?: string; site_id?: string }): Promise<DeviceRead[]> {
   const sp = new URLSearchParams();

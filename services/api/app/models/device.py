@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,6 +37,15 @@ class Device(Base, TimestampMixin):
     polling_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     """Stop/restart polling toggles this field."""
     operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_liveness_state: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="waiting_for_first_payload"
+    )
+    last_state_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_alerted_state: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expected_interval_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    late_threshold_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
+    offline_threshold_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
 
     customer: Mapped["Customer"] = relationship(back_populates="devices")
     site: Mapped["Site"] = relationship(back_populates="devices")

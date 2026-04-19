@@ -23,6 +23,7 @@ from app.services.monitoring_collectors import (
 )
 from app.services.monitoring_queue_service import build_queue_rows
 from app.services import ingress_metrics
+from app.services.device_liveness_rollup import customer_liveness_counts
 from app.services.monitoring_storage_service import build_storage_rows
 
 log = logging.getLogger(__name__)
@@ -313,6 +314,8 @@ def build_overview(db: Session, customer_id: uuid.UUID, state: dict[str, Any]) -
     if lag_sum > threshold * 5:
         queue_st = "critical"
 
+    liveness = customer_liveness_counts(db, customer_id=customer_id)
+
     summary = {
         "api_status": "healthy" if state["postgres_ok"] and state["redis_ok"] else "warning",
         "kafka_status": _status_label(state["kafka_ok"]),
@@ -362,6 +365,10 @@ def build_overview(db: Session, customer_id: uuid.UUID, state: dict[str, Any]) -
             _websocket_ingest_status_label(state) if settings.websocket_ingest_deployed else None
         ),
         "rest_poller_status": _rest_poller_status_label(state) if settings.rest_poller_deployed else None,
+        "liveness_online_count": int(liveness.get("online") or 0),
+        "liveness_late_count": int(liveness.get("late") or 0),
+        "liveness_offline_count": int(liveness.get("offline") or 0),
+        "liveness_waiting_count": int(liveness.get("waiting_for_first_payload") or 0),
     }
 
     if not state["postgres_ok"]:
@@ -429,6 +436,9 @@ def _rest_poller_status_label(state: dict[str, Any]) -> str:
         return "critical"
     snap = state.get("rest_poller_snapshot") or {}
     if not snap.get("deployed"):
+        return "warning"
+    link_st = str(snap.get("status") or "").strip().lower()
+    if link_st in ("no_recent_payload", "poll_quiet"):
         return "warning"
     try:
         pt = int(snap.get("poll_total") or 0)
@@ -518,7 +528,11 @@ def _service_row(
         elif "worker-rest-poller" in state.get("heartbeat_missing", []):
             st = "critical"
         elif snap.get("deployed"):
-            st = "healthy"
+            link_st = str(snap.get("status") or "").strip().lower()
+            if link_st in ("no_recent_payload", "poll_quiet"):
+                st = "warning"
+            else:
+                st = "healthy"
         else:
             st = "warning"
         lm = snap.get("last_payload_at") or snap.get("last_message_at")

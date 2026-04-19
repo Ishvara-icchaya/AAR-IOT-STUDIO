@@ -122,7 +122,10 @@ export function KpiStepEditor(props: {
       </label>
 
       <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.35rem" }}>Display fields (dashboard click)</div>
-      <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", maxHeight: "220px", overflow: "auto" }}>
+      <div
+        className="table-scroll-sticky"
+        style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", maxHeight: "220px", overflow: "auto" }}
+      >
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "var(--color-surface-elevated)" }}>

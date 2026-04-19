@@ -1,4 +1,7 @@
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { listHealthThresholdReferences, type HealthThresholdReferenceDTO } from "@/api/scrubber";
+import { getDevice } from "@/api/devices";
 import type { HealthRuleV2, StudioDraftForm } from "@/types/scrubberStudioForm";
 
 const HEALTH_STATUS_OPTIONS = ["green", "yellow", "red"] as const;
@@ -12,7 +15,7 @@ const inp: CSSProperties = {
 };
 const miniLbl: CSSProperties = { display: "grid", gap: "0.2rem", fontSize: "0.78rem", color: "var(--color-text-muted)" };
 const rowChk: CSSProperties = { display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" };
-const pairRow: CSSProperties = { display: "flex", gap: "0.35rem", alignItems: "center", marginBottom: "0.35rem" };
+const pairRow: CSSProperties = { display: "flex", gap: "0.35rem", alignItems: "center", marginBottom: "0.35rem", flexWrap: "wrap" };
 const th: CSSProperties = {
   textAlign: "left",
   padding: "0.35rem",
@@ -33,8 +36,36 @@ export function HealthStepEditor(props: {
   form: StudioDraftForm;
   setForm: Dispatch<SetStateAction<StudioDraftForm>>;
   datalistId: string;
+  pathSuggestions: string[];
+  deviceId: string;
 }) {
-  const { form, setForm, datalistId } = props;
+  const { form, setForm, datalistId, pathSuggestions, deviceId } = props;
+  const [registryItems, setRegistryItems] = useState<HealthThresholdReferenceDTO[]>([]);
+  const [registryErr, setRegistryErr] = useState<string | null>(null);
+
+  const loadRegistry = useCallback(async () => {
+    setRegistryErr(null);
+    if (!deviceId.trim()) {
+      setRegistryItems([]);
+      return;
+    }
+    try {
+      const dev = await getDevice(deviceId.trim());
+      const siteId = dev?.site_id;
+      const data = await listHealthThresholdReferences({
+        site_id: siteId,
+        device_id: deviceId.trim(),
+      });
+      setRegistryItems(data?.items ?? []);
+    } catch (e) {
+      setRegistryErr(e instanceof Error ? e.message : "Failed to load threshold registry");
+      setRegistryItems([]);
+    }
+  }, [deviceId]);
+
+  useEffect(() => {
+    void loadRegistry();
+  }, [loadRegistry]);
 
   function setRule(i: number, patch: Partial<HealthRuleV2>) {
     setForm((f) => {
@@ -52,12 +83,25 @@ export function HealthStepEditor(props: {
     });
   }
 
+  function onPickRegistry(id: string) {
+    if (!id) {
+      setForm((f) => ({ ...f, healthThresholdsReferenceId: "", healthThresholdsDefinition: null }));
+      return;
+    }
+    const row = registryItems.find((r) => r.id === id);
+    if (row?.body_json) {
+      setForm((f) => ({
+        ...f,
+        healthThresholdsReferenceId: id,
+        healthThresholdsDefinition: row.body_json as Record<string, unknown>,
+        healthThresholdsInlineJson: JSON.stringify(row.body_json, null, 2),
+        healthThresholdsSource: "registry",
+      }));
+    }
+  }
+
   return (
     <>
-      <p style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginTop: 0 }}>
-        Map an upstream field to green/yellow/red, or define rule expressions with precedence (red beats yellow beats green; tie-break
-        by higher priority).
-      </p>
       <div style={pairRow}>
         <label style={rowChk}>
           <input
@@ -73,7 +117,15 @@ export function HealthStepEditor(props: {
             checked={form.healthEngineMode === "rules"}
             onChange={() => setForm((f) => ({ ...f, healthEngineMode: "rules" }))}
           />{" "}
-          Compute from rules
+          Simple rules
+        </label>
+        <label style={rowChk}>
+          <input
+            type="radio"
+            checked={form.healthEngineMode === "thresholds"}
+            onChange={() => setForm((f) => ({ ...f, healthEngineMode: "thresholds" }))}
+          />{" "}
+          Thresholds
         </label>
       </div>
 
@@ -81,16 +133,39 @@ export function HealthStepEditor(props: {
         <>
           <label style={miniLbl}>
             Source field
-            <input
+            <select
               style={inp}
-              list={datalistId}
               value={form.healthMapSourceField}
               onChange={(e) => setForm((f) => ({ ...f, healthMapSourceField: e.target.value }))}
-              placeholder="e.g. status"
-            />
+            >
+              <option value="">— Select attribute —</option>
+              {pathSuggestions.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={miniLbl}>
+            Message from field (optional)
+            <select
+              style={inp}
+              value={form.healthMapMessageFrom}
+              onChange={(e) => setForm((f) => ({ ...f, healthMapMessageFrom: e.target.value }))}
+            >
+              <option value="">— None —</option>
+              {pathSuggestions.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
           </label>
           <div style={{ fontWeight: 600, fontSize: "0.82rem", margin: "0.5rem 0 0.25rem" }}>Value mapping</div>
-          <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", overflow: "auto" }}>
+          <div
+            className="table-scroll-sticky"
+            style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", overflow: "auto" }}
+          >
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "var(--color-surface-elevated)" }}>
@@ -115,9 +190,9 @@ export function HealthStepEditor(props: {
                         value={HEALTH_STATUS_OPTIONS.includes(row.outStatus as (typeof HEALTH_STATUS_OPTIONS)[number]) ? row.outStatus : "green"}
                         onChange={(e) => setMapPair(i, { outStatus: e.target.value })}
                       >
-                        {HEALTH_STATUS_OPTIONS.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
+                        {HEALTH_STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
                           </option>
                         ))}
                       </select>
@@ -133,91 +208,79 @@ export function HealthStepEditor(props: {
             style={{ marginTop: "0.35rem" }}
             onClick={() => setForm((f) => ({ ...f, healthMapPairs: [...f.healthMapPairs, { incoming: "", outStatus: "green" }] }))}
           >
-            Add row
+            Add mapping row
           </button>
-          <label style={{ ...miniLbl, marginTop: "0.5rem" }}>
-            Message from field (optional)
-            <input
-              style={inp}
-              list={datalistId}
-              value={form.healthMapMessageFrom}
-              onChange={(e) => setForm((f) => ({ ...f, healthMapMessageFrom: e.target.value }))}
-              placeholder="e.g. status_message"
-            />
-          </label>
         </>
-      ) : (
+      ) : null}
+
+      {form.healthEngineMode === "rules" ? (
         <>
           <label style={miniLbl}>
-            Default status (no rule matched)
+            Default when no rule matches
             <select
               style={inp}
               value={form.healthRulesDefault}
               onChange={(e) => setForm((f) => ({ ...f, healthRulesDefault: e.target.value }))}
             >
-              {HEALTH_STATUS_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {HEALTH_STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
                 </option>
               ))}
             </select>
           </label>
-          <div style={{ fontWeight: 600, fontSize: "0.82rem", margin: "0.65rem 0 0.25rem" }}>Rules</div>
-          <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", margin: "0 0 0.35rem" }}>
-            Conditions: comparisons like <code>cpu &gt; 70</code>, <code>memory &gt; 50 and cpu &gt; 70</code>, string equals{" "}
-            <code>status == &quot;WARN&quot;</code>.
-          </p>
           {form.healthRulesV2.map((r, i) => (
             <div
               key={i}
               style={{
                 border: "1px solid var(--color-border)",
                 borderRadius: "var(--radius)",
-                padding: "0.5rem",
-                marginBottom: "0.5rem",
+                padding: "0.45rem",
+                marginBottom: "0.45rem",
               }}
             >
-              <label style={miniLbl}>
-                Name
-                <input style={inp} value={r.name} onChange={(e) => setRule(i, { name: e.target.value })} />
-              </label>
-              <label style={{ ...miniLbl, marginTop: "0.35rem" }}>
-                Condition
-                <input
-                  style={{ ...inp, fontFamily: "ui-monospace, monospace", fontSize: "0.8rem" }}
-                  value={r.condition}
-                  onChange={(e) => setRule(i, { condition: e.target.value })}
-                  placeholder='e.g. disk > 90'
-                />
-              </label>
-              <div style={{ ...pairRow, marginTop: "0.35rem", flexWrap: "wrap" }}>
-                <label style={miniLbl}>
-                  Priority
-                  <input style={{ ...inp, width: "5rem" }} value={r.priority} onChange={(e) => setRule(i, { priority: e.target.value })} />
+              <div style={{ ...pairRow, marginBottom: "0.25rem" }}>
+                <label style={{ ...miniLbl, flex: "1 1 120px", margin: 0 }}>
+                  Name
+                  <input style={inp} value={r.name} onChange={(e) => setRule(i, { name: e.target.value })} />
                 </label>
-                <label style={miniLbl}>
+                <label style={{ ...miniLbl, flex: "0 0 88px", margin: 0 }}>
+                  Priority
+                  <input style={inp} value={r.priority} onChange={(e) => setRule(i, { priority: e.target.value })} />
+                </label>
+                <label style={{ ...miniLbl, flex: "0 0 100px", margin: 0 }}>
                   Status
                   <select style={inp} value={r.status} onChange={(e) => setRule(i, { status: e.target.value })}>
-                    {HEALTH_STATUS_OPTIONS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    {HEALTH_STATUS_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
                       </option>
                     ))}
                   </select>
                 </label>
               </div>
-              <label style={{ ...miniLbl, marginTop: "0.35rem" }}>
-                Code
-                <input style={inp} value={r.code} onChange={(e) => setRule(i, { code: e.target.value })} />
+              <label style={miniLbl}>
+                Condition (e.g. cpu &gt; 70 and memory &gt; 90)
+                <input
+                  style={inp}
+                  list={datalistId}
+                  value={r.condition}
+                  onChange={(e) => setRule(i, { condition: e.target.value })}
+                />
               </label>
-              <label style={{ ...miniLbl, marginTop: "0.35rem" }}>
-                Message
-                <input style={inp} value={r.message} onChange={(e) => setRule(i, { message: e.target.value })} />
-              </label>
+              <div style={{ ...pairRow, marginTop: "0.25rem" }}>
+                <label style={{ ...miniLbl, flex: 1, margin: 0 }}>
+                  Code
+                  <input style={inp} value={r.code} onChange={(e) => setRule(i, { code: e.target.value })} />
+                </label>
+                <label style={{ ...miniLbl, flex: 1, margin: 0 }}>
+                  Message
+                  <input style={inp} value={r.message} onChange={(e) => setRule(i, { message: e.target.value })} />
+                </label>
+              </div>
               <button
                 type="button"
                 className="scrubber-btn scrubber-btn--ghost"
-                style={{ marginTop: "0.35rem" }}
                 onClick={() =>
                   setForm((f) => ({
                     ...f,
@@ -233,10 +296,71 @@ export function HealthStepEditor(props: {
             Add rule
           </button>
         </>
-      )}
+      ) : null}
 
-      <details style={{ marginTop: "0.75rem" }}>
-        <summary style={{ cursor: "pointer", fontSize: "0.8rem", color: "var(--color-text-muted)" }}>Health output keys</summary>
+      {form.healthEngineMode === "thresholds" ? (
+        <>
+          <p style={{ fontSize: "0.76rem", color: "var(--color-text-muted)", marginTop: 0 }}>
+            JSON defines <code>reference_name</code>, <code>normal</code>, <code>warning</code>, and <code>critical</code>{" "}
+            maps from dotted field paths to min/max bands. Evaluation order per field: critical → warning → normal.
+          </p>
+          <label style={rowChk}>
+            <input
+              type="radio"
+              checked={form.healthThresholdsSource === "inline"}
+              onChange={() => setForm((f) => ({ ...f, healthThresholdsSource: "inline", healthThresholdsReferenceId: "" }))}
+            />{" "}
+            Paste / edit JSON
+          </label>
+          <label style={rowChk}>
+            <input
+              type="radio"
+              checked={form.healthThresholdsSource === "registry"}
+              onChange={() => setForm((f) => ({ ...f, healthThresholdsSource: "registry" }))}
+            />{" "}
+            Load from registry
+          </label>
+          {form.healthThresholdsSource === "registry" ? (
+            <label style={miniLbl}>
+              Saved reference
+              <select
+                style={inp}
+                value={form.healthThresholdsReferenceId}
+                onChange={(e) => void onPickRegistry(e.target.value)}
+                disabled={!deviceId.trim()}
+              >
+                <option value="">— Select —</option>
+                {registryItems.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.reference_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {registryErr ? <p style={{ fontSize: "0.76rem", color: "var(--page-status-error-fg)" }}>{registryErr}</p> : null}
+          {!deviceId.trim() ? (
+            <p style={{ fontSize: "0.76rem", color: "var(--color-text-muted)" }}>Open a device context (deviceId in URL) to list registry entries.</p>
+          ) : null}
+          <label style={{ ...miniLbl, marginTop: "0.5rem" }}>
+            Threshold JSON
+            <textarea
+              style={{ ...inp, fontFamily: "ui-monospace, monospace", fontSize: "0.78rem", minHeight: "12rem" }}
+              value={form.healthThresholdsInlineJson}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  healthThresholdsInlineJson: e.target.value,
+                  healthThresholdsDefinition: null,
+                  healthThresholdsSource: "inline",
+                }))
+              }
+            />
+          </label>
+        </>
+      ) : null}
+
+      <div style={{ marginTop: "0.75rem", paddingTop: "0.5rem", borderTop: "1px solid var(--color-border)" }}>
         <label style={rowChk}>
           <input
             type="checkbox"
@@ -245,21 +369,25 @@ export function HealthStepEditor(props: {
           />{" "}
           Copy normalized health onto payload
         </label>
-        <div style={pairRow}>
+        <div style={{ display: "grid", gap: "0.35rem", marginTop: "0.35rem", fontSize: "0.78rem" }}>
           <label style={miniLbl}>
-            Status key
+            status key
             <input style={inp} value={form.healthStatusKey} onChange={(e) => setForm((f) => ({ ...f, healthStatusKey: e.target.value }))} />
           </label>
           <label style={miniLbl}>
-            Code key
+            code key
             <input style={inp} value={form.healthCodeKey} onChange={(e) => setForm((f) => ({ ...f, healthCodeKey: e.target.value }))} />
           </label>
           <label style={miniLbl}>
-            Message key
+            message key
             <input style={inp} value={form.healthMessageKey} onChange={(e) => setForm((f) => ({ ...f, healthMessageKey: e.target.value }))} />
           </label>
+          <label style={miniLbl}>
+            health_details key
+            <input style={inp} value={form.healthDetailsKey} onChange={(e) => setForm((f) => ({ ...f, healthDetailsKey: e.target.value }))} />
+          </label>
         </div>
-      </details>
+      </div>
     </>
   );
 }

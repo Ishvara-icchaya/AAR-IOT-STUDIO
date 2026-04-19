@@ -62,6 +62,43 @@ def _stats_key(prefix: str) -> str:
     return f"{prefix}:stats"
 
 
+def _parse_iso_ts(s: str | None) -> datetime | None:
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        raw = s.strip().replace("Z", "+00:00")
+        dt = datetime.fromisoformat(raw)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _derive_rest_poller_snapshot_status(h: dict[str, str]) -> str:
+    """Expose payload freshness in snapshot JSON (hash ``status`` may stay ``running`` from the worker loop)."""
+    explicit = (h.get("status") or "").strip().lower()
+    if explicit == "idle":
+        return "idle"
+    try:
+        stale_sec = int(os.environ.get("REST_POLLER_SNAPSHOT_STALE_SEC", "180"))
+    except ValueError:
+        stale_sec = 180
+    stale_sec = max(30, stale_sec)
+    now = datetime.now(timezone.utc)
+    lp_dt = _parse_iso_ts(h.get("last_payload_at"))
+    pol_dt = _parse_iso_ts(h.get("last_poll_at"))
+
+    if lp_dt is not None:
+        if (now - lp_dt).total_seconds() <= float(stale_sec):
+            return str(h.get("status") or "running").strip() or "running"
+        return "no_recent_payload"
+
+    if pol_dt is not None and (now - pol_dt).total_seconds() <= max(float(stale_sec), 300.0):
+        return "awaiting_first_payload"
+    if pol_dt is not None:
+        return "poll_quiet"
+    return str(h.get("status") or "running").strip() or "running"
+
+
 def _flush_snapshot(r: Any, prefix: str) -> None:
     h = r.hgetall(_stats_key(prefix)) or {}
     try:
@@ -95,6 +132,9 @@ def _flush_snapshot(r: Any, prefix: str) -> None:
         snap["poll_total"] = poll_total
         snap["poll_fail_total"] = poll_fail_total
         snap["last_poll_at"] = h.get("last_poll_at")
+
+    if prefix == ADAPTER_PREFIX.get("rest_poller"):
+        snap["status"] = _derive_rest_poller_snapshot_status(h)
 
     r.set(f"{prefix}:snapshot", json.dumps(snap, separators=(",", ":")))
 

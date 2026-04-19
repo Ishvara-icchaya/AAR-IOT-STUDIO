@@ -107,6 +107,13 @@ class WorkflowValidateResponse(BaseModel):
 class WorkflowTestRequest(BaseModel):
     data_object_id: uuid.UUID | None = None
     sample_payload: dict[str, Any] | None = None
+    use_latest_observed_payload: bool = Field(
+        default=False,
+        description=(
+            "When True, input nodes load the newest observed detail row (data_object_details) "
+            "instead of the mirrored data_objects.payload."
+        ),
+    )
 
 
 class ResultObjectPreview(BaseModel):

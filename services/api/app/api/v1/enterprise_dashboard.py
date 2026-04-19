@@ -24,6 +24,7 @@ from app.schemas.dashboard import (
     EnterpriseSiteObjectCountsResponse,
 )
 from app.services.dashboard_live import build_live_payload
+from app.services.tenant_site_rollup import site_object_counts_with_redis
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -232,7 +233,14 @@ def get_enterprise_site_object_counts(
         except Exception:
             log.debug("enterprise site counts cache read failed", exc_info=True)
 
-    out = _site_object_counts(
+    rollup = site_object_counts_with_redis(
+        db,
+        customer_id=user.customer_id,
+        allowed=allowed,
+        page=page,
+        page_size=page_size,
+    )
+    out = rollup if rollup is not None else _site_object_counts(
         db,
         customer_id=user.customer_id,
         allowed=allowed,

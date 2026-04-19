@@ -104,7 +104,7 @@ export function ScrubberRawSelectPage() {
           </Link>
         )}
       </form>
-      <div style={{ overflow: "auto" }}>
+      <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
         <table style={tbl}>
           <thead>
             <tr>

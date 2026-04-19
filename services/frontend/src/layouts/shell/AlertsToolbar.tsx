@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { useAlertsModal } from "@/contexts/AlertsModalContext";
 
 type AlertTone = "none" | "critical" | "warning" | "info";
 
@@ -9,9 +9,11 @@ export function AlertsToolbar({
   unacked: number;
   alertTone: AlertTone;
 }) {
+  const { openList } = useAlertsModal();
+
   return (
-    <NavLink
-      to="/alerts"
+    <button
+      type="button"
       className={`shell__alert-link${
         alertTone === "critical"
           ? " shell__alert-link--critical"
@@ -22,6 +24,8 @@ export function AlertsToolbar({
               : ""
       }`}
       title="Unified alerts"
+      aria-label="Open alerts"
+      onClick={() => openList()}
     >
       <span aria-hidden>🔔</span>
       <span>Alerts</span>
@@ -47,6 +51,6 @@ export function AlertsToolbar({
           {unacked > 99 ? "99+" : unacked}
         </span>
       ) : null}
-    </NavLink>
+    </button>
   );
 }

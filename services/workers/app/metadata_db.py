@@ -10,6 +10,8 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import Json
 
+from app.tenant_rollup_redis import rollup_incr_site
+
 log = logging.getLogger(__name__)
 
 
@@ -64,8 +66,13 @@ def insert_data_object(
     error_message: str | None,
     trace_id: str | None,
 ) -> str:
+    """Insert metadata row on ``data_objects``, one observed row on ``data_object_details``, then set latest pointers.
+
+    Metadata columns remain the compatibility surface for readers; detail holds the same snapshot for history.
+    """
     oid = str(uuid.uuid4())
-    sql = """
+    detail_id = str(uuid.uuid4())
+    insert_meta = """
     INSERT INTO data_objects (
       id, customer_id, site_id, device_id, raw_data_object_id, name, payload,
       kpi_json, health_status, health_code, health_message, scrubber_version,
@@ -78,12 +85,30 @@ def insert_data_object(
       %s, %s, %s, NOW(), NOW()
     )
     """
+    insert_detail = """
+    INSERT INTO data_object_details (
+      id, data_object_id, raw_data_object_id, customer_id, site_id, device_id,
+      observed_at, payload_json, kpi_json, health_status, health_code, health_message,
+      grouping_json, trace_id, created_at
+    ) VALUES (
+      %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid,
+      NOW(), %s, %s, %s, %s, %s,
+      %s, %s, NOW()
+    )
+    """
+    update_latest = """
+    UPDATE data_objects
+    SET latest_detail_id = %s::uuid, latest_seen_at = NOW()
+    WHERE id = %s::uuid
+    """
     raw_uuid = raw_data_object_id if raw_data_object_id else None
+    grouping: dict[str, Any] = {}
     conn = psycopg2.connect(_db_url())
     try:
+        conn.autocommit = False
         with conn.cursor() as cur:
             cur.execute(
-                sql,
+                insert_meta,
                 (
                     oid,
                     customer_id,
@@ -106,7 +131,33 @@ def insert_data_object(
                     trace_id,
                 ),
             )
+            cur.execute(
+                insert_detail,
+                (
+                    detail_id,
+                    oid,
+                    raw_uuid,
+                    customer_id,
+                    site_id,
+                    device_id,
+                    Json(payload),
+                    Json(kpi_json),
+                    health_status,
+                    health_code,
+                    health_message,
+                    Json(grouping),
+                    trace_id,
+                ),
+            )
+            cur.execute(update_latest, (detail_id, oid))
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
+    try:
+        rollup_incr_site(customer_id=customer_id, site_id=site_id, kind="do")
+    except Exception:
+        pass
     return oid

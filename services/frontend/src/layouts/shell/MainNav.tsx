@@ -1,6 +1,15 @@
+import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { activeMainSectionId, MAIN_NAV_GROUPS, type NavGroup } from "./navigation";
+import { MainNavFlatIcon, MainNavGroupIcon } from "./mainNavIcons";
+import {
+  activeMainSectionId,
+  MAIN_NAV_FLAT_LINKS,
+  MAIN_NAV_GROUPS,
+  pathMatchesFlatLink,
+  type MainNavFlatLink,
+  type NavGroup,
+} from "./navigation";
 
 const HOVER_CLOSE_MS = 200;
 
@@ -107,6 +116,9 @@ export function MainNav({ mobileOpen, onNavigate }: { mobileOpen: boolean; onNav
       aria-label="Primary modules"
       data-main-nav-root
     >
+      {MAIN_NAV_FLAT_LINKS.map((link) => (
+        <NavFlatLink key={link.id} link={link} onPick={onNavigate} />
+      ))}
       {MAIN_NAV_GROUPS.map((group) => (
         <NavModuleDropdown
           key={group.id}
@@ -126,6 +138,26 @@ export function MainNav({ mobileOpen, onNavigate }: { mobileOpen: boolean; onNav
         />
       ))}
     </nav>
+  );
+}
+
+function NavFlatLink({ link, onPick }: { link: MainNavFlatLink; onPick?: () => void }) {
+  const { pathname } = useLocation();
+  const active = pathMatchesFlatLink(pathname, link);
+
+  return (
+    <NavLink
+      to={link.to}
+      end={link.end}
+      className={
+        "shell-main-nav__flat-link" + (active ? " shell-main-nav__flat-link--active" : "")
+      }
+      title={link.label}
+      aria-label={link.label}
+      onClick={() => onPick?.()}
+    >
+      <MainNavFlatIcon navId={link.id} />
+    </NavLink>
   );
 }
 
@@ -165,15 +197,15 @@ function NavModuleDropdown({
         }
         aria-expanded={show}
         aria-haspopup="true"
+        title={group.label}
+        aria-label={group.label}
         onClick={(e) => {
           e.preventDefault();
           onTogglePin();
         }}
       >
-        {group.label}
-        <span className="shell-nav-module__caret" aria-hidden>
-          ▾
-        </span>
+        <MainNavGroupIcon groupId={group.id} />
+        <ChevronDown size={18} strokeWidth={2} className="shell-nav-module__chevron" aria-hidden />
       </button>
       {show ? (
         <div className="shell-nav-module__panel" role="menu">

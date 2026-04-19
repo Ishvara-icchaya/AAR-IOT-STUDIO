@@ -13,6 +13,8 @@ from app.access_control import ensure_site_in_tenant, allowed_site_ids_for_user,
 from app.core.config import settings
 from app.core.redis_sync import get_redis
 from app.models.data_object import DataObject
+from app.services.data_object_query import order_by_metadata_recency
+from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
 from app.models.published_service import PublishedService
 from app.models.published_service_delivery_log import PublishedServiceDeliveryLog
@@ -248,7 +250,7 @@ def list_data_object_sources(
             DataObject.customer_id == user.customer_id,
             Device.site_id == site_id,
         )
-        .order_by(DataObject.updated_at.desc())
+        .order_by(order_by_metadata_recency())
         .limit(500)
     )
     rows = list(db.scalars(stmt).all())
@@ -260,6 +262,7 @@ def list_data_object_sources(
                 site_id=r.site_id,
                 name=r.name,
                 lifecycle_status=r.lifecycle_status,
+                latest_seen_at=r.latest_seen_at,
             )
             for r in rows
         ]
@@ -281,7 +284,7 @@ def list_result_object_sources(
             WorkflowResultObject.customer_id == user.customer_id,
             WorkflowResultObject.site_id == site_id,
         )
-        .order_by(WorkflowResultObject.created_at.desc())
+        .order_by(order_result_objects_by_recency())
         .limit(500)
     )
     rows = list(db.scalars(stmt).all())
@@ -292,6 +295,7 @@ def list_result_object_sources(
                 workflow_id=r.workflow_id,
                 result_object_name=r.result_object_name,
                 site_id=r.site_id,
+                latest_seen_at=r.latest_seen_at,
             )
             for r in rows
         ]

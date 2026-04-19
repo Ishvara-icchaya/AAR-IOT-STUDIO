@@ -7,7 +7,7 @@ export function AiResultsTable({ res }: { res: AIChatResponse | null }) {
   }
   const keys = Array.from(new Set(sample.flatMap((r) => (r && typeof r === "object" ? Object.keys(r as object) : []))));
   return (
-    <div style={{ overflow: "auto" }}>
+    <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
         <thead>
           <tr>

@@ -33,6 +33,7 @@ class DeviceEndpointNested(BaseModel):
     is_active: bool
     last_verified_at: datetime | None = None
     validation_status: str | None = None
+    validation_detail: str | None = None
     activation_status: str = Field(default="configured", description=ACTIVATION_STATUS_DESCRIPTION)
     first_payload_at: datetime | None = None
     last_payload_at: datetime | None = None
@@ -50,6 +51,13 @@ class DeviceRead(BaseModel):
     icon: str | None
     is_active: bool
     polling_enabled: bool
+    last_seen_at: datetime | None = None
+    current_liveness_state: str = "waiting_for_first_payload"
+    last_state_changed_at: datetime | None = None
+    last_alerted_state: str | None = None
+    expected_interval_seconds: int = 60
+    late_threshold_seconds: int = 120
+    offline_threshold_seconds: int = 300
     endpoint: DeviceEndpointNested | None = None
 
 

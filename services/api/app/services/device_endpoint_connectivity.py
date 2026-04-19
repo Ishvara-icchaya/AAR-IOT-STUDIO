@@ -50,29 +50,61 @@ def check_mqtt_connectivity(config: dict[str, Any]) -> tuple[bool, str]:
     return ok, msg
 
 
+def _effective_polling_url(config: dict[str, Any]) -> str:
+    """Match worker-rest-poller: explicit ``polling_url`` / ``pollingUrl`` or composite ``url``."""
+    pu = str(config.get("polling_url") or config.get("pollingUrl") or "").strip()
+    if pu:
+        return pu
+    return str(config.get("url") or "").strip()
+
+
+def _rest_mode(config: dict[str, Any]) -> str:
+    r = config.get("rest_mode") if config.get("rest_mode") is not None else config.get("restMode")
+    return str(r or "").strip().lower()
+
+
+def _rest_poll_http_method(config: dict[str, Any]) -> str:
+    """HTTP verb for REST Pull polling. Defaults to GET; only GET/HEAD/POST are allowed (PUT etc. break typical metrics APIs)."""
+    raw = config.get("method")
+    if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+        raw = config.get("httpMethod") or config.get("http_method")
+    m = str(raw or "GET").strip().upper() or "GET"
+    allowed = frozenset({"GET", "HEAD", "POST"})
+    if m not in allowed:
+        log.info("rest_poll_http_method: unsupported %r in endpoint config, using GET", m)
+        return "GET"
+    return m
+
+
 def check_http_connectivity(config: dict[str, Any]) -> tuple[bool, str]:
-    rm = config.get("rest_mode")
+    rm = _rest_mode(config)
+    if rm == "inbound_hook":
+        return (
+            True,
+            "REST Push (Push to Platform): the platform does not call an upstream URL. "
+            "Cadence is controlled by the upstream system when it POSTs to the ingest API.",
+        )
     if rm == "polling":
-        url = (config.get("polling_url") or "").strip()
+        url = _effective_polling_url(config)
         if not url:
-            return False, "REST polling URL is empty."
+            return False, "REST Pull: upstream URL is empty (set upstream URL or Host + Port + Path)."
         try:
             headers: dict[str, str] = {}
-            hj = config.get("headers_json")
+            hj = config.get("headers_json") or config.get("headersJson")
             if isinstance(hj, str) and hj.strip():
                 import json
 
                 parsed = json.loads(hj)
                 if isinstance(parsed, dict):
                     headers = {str(k): str(v) for k, v in parsed.items()}
-            auth_type = config.get("auth_type")
+            auth_type = str(config.get("auth_type") or config.get("authType") or "").lower()
             if auth_type == "bearer":
-                tok = config.get("auth_header_value") or ""
+                tok = str(config.get("auth_header_value") or config.get("authHeaderValue") or "")
                 headers["Authorization"] = f"Bearer {tok}"
             elif auth_type == "header":
-                name = (config.get("auth_header_name") or "Authorization").strip()
-                headers[name] = str(config.get("auth_header_value") or "")
-            method = (config.get("method") or "GET").upper()
+                name = str(config.get("auth_header_name") or config.get("authHeaderName") or "Authorization").strip()
+                headers[name] = str(config.get("auth_header_value") or config.get("authHeaderValue") or "")
+            method = _rest_poll_http_method(config)
             timeout_s = config.get("timeout_seconds", 30)
             try:
                 t = float(timeout_s)
@@ -89,14 +121,15 @@ def check_http_connectivity(config: dict[str, Any]) -> tuple[bool, str]:
         except Exception as e:
             return False, f"HTTP polling check error: {e!s}"[:500]
 
+    # Legacy configs without rest_mode: best-effort TCP probe on stored url
     url = (config.get("url") or "").strip()
-    if not url:
-        return False, "REST inbound URL is empty."
-    parsed = _parse_url_host_port(url, bool(config.get("use_tls")))
-    if not parsed:
+    if url:
+        parsed = _parse_url_host_port(url, bool(config.get("use_tls")))
+        if parsed:
+            host, port, _tls = parsed
+            return _tcp_check(host, port)
         return False, "Could not parse REST URL."
-    host, port, _tls = parsed
-    return _tcp_check(host, port)
+    return False, "REST: set Push to Platform or Pull from Upstream (rest_mode)."
 
 
 def check_websocket_connectivity(config: dict[str, Any]) -> tuple[bool, str]:
@@ -133,7 +166,7 @@ def run_connectivity_for_protocol(protocol: str, config: dict[str, Any]) -> tupl
     p = (protocol or "").lower()
     if p == "mqtt":
         return check_mqtt_connectivity(config)
-    if p in ("http", "https"):
+    if p in ("http", "https", "rest"):
         return check_http_connectivity(config)
     if p == "websocket":
         return check_websocket_connectivity(config)

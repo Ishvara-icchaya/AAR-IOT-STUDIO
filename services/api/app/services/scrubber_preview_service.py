@@ -113,6 +113,7 @@ def scrubber_preview(
             health_code=result.health_code,
             health_message=result.health_message,
             scrubber_version=result.scrubber_version,
+            health_details=result.health_details,
         ),
         error=None,
     )

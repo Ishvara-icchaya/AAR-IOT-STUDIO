@@ -4,6 +4,9 @@ export type AlertRow = {
   id: string;
   customer_id: string;
   site_id: string | null;
+  /** Tenant site for the registered device (ingest context); preferred for display over ``site_id`` when set. */
+  platform_site_id?: string | null;
+  platform_site_name?: string | null;
   device_id: string | null;
   category: string;
   severity: string;
@@ -20,6 +23,8 @@ export type AlertRow = {
 };
 
 export type AlertListResponse = { items: AlertRow[]; total: number };
+
+export type AlertAcknowledgeAllResponse = { acknowledged_count: number };
 
 export type AlertSummary = {
   critical: number;
@@ -58,6 +63,24 @@ export async function getAlert(id: string) {
 
 export async function acknowledgeAlert(id: string) {
   return apiFetch<AlertRow>(`/alerts/${id}/acknowledge`, { method: "POST" });
+}
+
+/** Acknowledge up to ``limit`` unacknowledged alerts matching the same filters as ``listAlerts`` (omit ``acknowledged``). */
+export async function acknowledgeAllAlerts(params?: {
+  site_id?: string;
+  severity?: string;
+  category?: string;
+  search?: string;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.site_id) qs.set("site_id", params.site_id);
+  if (params?.severity) qs.set("severity", params.severity);
+  if (params?.category) qs.set("category", params.category);
+  if (params?.search?.trim()) qs.set("search", params.search.trim());
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  const s = qs.toString();
+  return apiFetch<AlertAcknowledgeAllResponse>(`/alerts/acknowledge-all${s ? `?${s}` : ""}`, { method: "POST" });
 }
 
 export async function getAlertsSummary() {

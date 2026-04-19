@@ -26,10 +26,18 @@ def touch_after_archived_success(cur, device_id: uuid.UUID, protocol_source: str
           (%s = 'mqtt' AND LOWER(protocol) = 'mqtt')
           OR (%s = 'coap' AND LOWER(protocol) = 'coap')
           OR (%s = 'websocket' AND LOWER(protocol) = 'websocket')
-          OR (%s IN ('rest_poll', 'rest', 'upload') AND LOWER(protocol) IN ('http', 'https'))
+          OR (%s IN ('rest_poll', 'rest', 'upload') AND LOWER(protocol) IN ('http', 'https', 'rest'))
         )
         """,
         (str(device_id), ps, ps, ps, ps),
+    )
+    cur.execute(
+        """
+        UPDATE devices
+        SET last_seen_at = NOW()
+        WHERE id = %s::uuid
+        """,
+        (str(device_id),),
     )
 
 
@@ -50,7 +58,7 @@ def record_ingest_failure(cur, device_id: uuid.UUID, protocol_source: str, messa
           (%s = 'mqtt' AND LOWER(protocol) = 'mqtt')
           OR (%s = 'coap' AND LOWER(protocol) = 'coap')
           OR (%s = 'websocket' AND LOWER(protocol) = 'websocket')
-          OR (%s IN ('rest_poll', 'rest', 'upload') AND LOWER(protocol) IN ('http', 'https'))
+          OR (%s IN ('rest_poll', 'rest', 'upload') AND LOWER(protocol) IN ('http', 'https', 'rest'))
         )
         """,
         (msg, str(device_id), ps, ps, ps, ps),

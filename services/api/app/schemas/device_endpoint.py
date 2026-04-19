@@ -55,6 +55,18 @@ class DeviceEndpointObservability(BaseModel):
         description="Logical protocol: mqtt | rest | coap | websocket (HTTP endpoints use rest).",
     )
     details: dict[str, Any] = Field(default_factory=dict)
+    payload_receipt_status: str = Field(
+        default="none",
+        description="none: no archived raw yet; fresh: within timeliness window; stale: exceeds window.",
+    )
+    payload_age_seconds: int | None = Field(
+        default=None,
+        description="Seconds since latest raw archive when status is fresh or stale.",
+    )
+    payload_receipt_threshold_seconds: int | None = Field(
+        default=None,
+        description="Staleness threshold used (device late threshold, or max with REST Pull cadence).",
+    )
 
 
 class DeviceEndpointGetResponse(BaseModel):

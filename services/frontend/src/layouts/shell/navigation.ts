@@ -8,16 +8,38 @@ export type NavGroup = {
   items: NavChild[];
 };
 
-export const MAIN_NAV_GROUPS: NavGroup[] = [
+/** Single top-level links (no dropdown), rendered before module groups. */
+export type MainNavFlatLink = {
+  id: string;
+  label: string;
+  to: string;
+  end?: boolean;
+  /** Exact pathnames that keep this item highlighted (e.g. related device routes). */
+  alsoActiveOn?: readonly string[];
+};
+
+export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
   {
     id: "devices",
-    label: "Devices",
-    items: [
-      { to: "/devices/register", label: "Register Devices" },
-      { to: "/devices/manage", label: "Manage Devices" },
-      { to: "/devices/raw", label: "Raw Data" },
-    ],
+    label: "Manage Devices",
+    to: "/devices/register",
+    alsoActiveOn: ["/devices/manage", "/devices/raw"],
   },
+  {
+    id: "enterprise-ai",
+    label: "Enterprise AI",
+    to: "/enterprise-ai",
+    end: true,
+  },
+];
+
+export function pathMatchesFlatLink(pathname: string, link: MainNavFlatLink): boolean {
+  if (link.alsoActiveOn?.includes(pathname)) return true;
+  if (link.end) return pathname === link.to;
+  return pathname === link.to || pathname.startsWith(`${link.to}/`);
+}
+
+export const MAIN_NAV_GROUPS: NavGroup[] = [
   {
     id: "scrubber",
     label: "Scrubber",
@@ -52,16 +74,6 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: "alerts",
-    label: "Alerts",
-    items: [{ to: "/alerts", label: "Unified Alerts" }],
-  },
-  {
-    id: "ai",
-    label: "AI",
-    items: [{ to: "/enterprise-ai", label: "Enterprise AI" }],
-  },
-  {
     id: "published",
     label: "Published",
     items: [{ to: "/published-services", label: "Start/Stop Publishing" }],
@@ -71,6 +83,7 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
 export const ADMIN_NAV_ITEMS: NavChild[] = [
   { to: "/administration/users", label: "Create Users" },
   { to: "/administration/sites", label: "Create Sites" },
+  { to: "/administration/clear-data", label: "Clear operational data" },
   { to: "/administration/monitoring", label: "Monitoring" },
   { to: "/administration/llm-config", label: "LLM Configuration" },
   { to: "/administration/ports", label: "Configure Ports" },
@@ -92,10 +105,12 @@ export function isChildActive(pathname: string, child: NavChild): boolean {
 
 /** Main nav section id when pathname belongs to that module, or null. */
 export function activeMainSectionId(pathname: string): string | null {
+  for (const link of MAIN_NAV_FLAT_LINKS) {
+    if (pathMatchesFlatLink(pathname, link)) return link.id;
+  }
   for (const g of MAIN_NAV_GROUPS) {
     if (g.id === "dashboard" && pathname.startsWith("/dashboard/")) return "dashboard";
     if (g.id === "workflow" && pathname.startsWith("/workflow/")) return "workflow";
-    if (g.id === "alerts" && pathname.startsWith("/alerts")) return "alerts";
     if (g.id === "published" && pathname.startsWith("/published-services")) return "published";
     if (g.items.some((c) => pathMatchesChild(pathname, c))) return g.id;
   }
@@ -110,6 +125,10 @@ export function isAdminSectionActive(pathname: string): boolean {
 export function titleFromPath(pathname: string): string {
   if (pathname === "/iot-dashboard") return "Operations Console";
   if (pathname === "/scrubber/create") return "Scrubber Studio";
+  if (pathname === "/devices/register") return "Manage Devices";
+  if (pathname === "/devices/manage") return "Manage device";
+  if (pathname === "/devices/raw") return "Raw Data";
+  if (pathname === "/enterprise-ai") return "Enterprise AI";
   for (const g of MAIN_NAV_GROUPS) {
     const hit = g.items.find((i) => isChildActive(pathname, i));
     if (hit) return hit.label;
@@ -122,6 +141,7 @@ export function titleFromPath(pathname: string): string {
   if (pathname.startsWith("/workflow/") && pathname.includes("/edit")) return "Edit workflow";
   if (pathname.startsWith("/workflow/") && pathname.includes("/test")) return "Test workflow";
   if (pathname.startsWith("/workflow/") && pathname.includes("/live")) return "Live workflow";
+  if (pathname === "/alerts") return "Alerts";
   if (pathname.startsWith("/alerts/")) return "Alert detail";
   if (pathname.startsWith("/published-services/")) {
     if (pathname.endsWith("/test")) return "Test published service";

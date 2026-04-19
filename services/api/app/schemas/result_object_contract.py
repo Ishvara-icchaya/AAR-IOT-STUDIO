@@ -24,6 +24,8 @@ RESULT_OBJECT_V1_FIELD_NAMES: tuple[str, ...] = (
     "payload_json",
     "health_status",
     "created_at",
+    "latest_detail_id",
+    "latest_seen_at",
 )
 
 
@@ -45,6 +47,36 @@ class ResultObjectV1(BaseModel):
     payload_json: dict[str, Any] = Field(default_factory=dict)
     health_status: str | None = Field(None, max_length=16)
     created_at: datetime
+    latest_detail_id: uuid.UUID | None = None
+    latest_seen_at: datetime | None = None
+
+
+class WorkflowResultObjectDetailRead(BaseModel):
+    """One observed row from ``workflow_result_object_details`` (history / drill-down)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    workflow_result_object_id: uuid.UUID
+    workflow_execution_id: uuid.UUID
+    workflow_id: uuid.UUID
+    customer_id: uuid.UUID
+    site_id: uuid.UUID
+    observed_at: datetime
+    payload_json: dict[str, Any]
+    health_status: str | None = None
+    grouping_json: dict[str, Any] = Field(default_factory=dict)
+    trace_id: str | None = None
+    created_at: datetime
+
+
+class WorkflowResultObjectDetailListResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[WorkflowResultObjectDetailRead]
+    total: int
+    page: int
+    page_size: int
 
 
 class ResultObjectListV1Response(BaseModel):

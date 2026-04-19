@@ -22,15 +22,15 @@ Reference contracts: `docs/CANONICAL_RAW_INGEST.md`, `docs/ARCHITECTURE_MQTT_ING
 
 | Mode | Product role | In-stack components (typical) |
 |------|----------------|------------------------------|
-| **REST** | Platform-hosted HTTP ingest + optional outbound polling | FastAPI `POST /api/v1/ingest/raw`, future poller worker |
+| **REST** | **Push to Platform** (upstream POSTs to ingest API) + optional **Pull from Upstream** (worker polls a URL) | FastAPI `POST /api/v1/ingest/raw`, `worker-rest-poller` for pull |
 | **MQTT** | Broker (external or Mosquitto) + bridge | `worker-mqtt-bridge`, optional `mosquitto` |
 | **CoAP** | **Listener / adapter** (not a broker) | Future `coap-listener` service |
 | **WebSocket** | **Real-time listener** | Future `websocket-ingest` service |
 
 ## REST — product requirements
 
-- **Inbound**: Multipart upload to **`/api/v1/ingest/raw`** with authenticated user; flows through `raw_ingest_service` (MinIO + DB + Kafka).
-- **Outbound polling**: Device endpoint config stores `rest_mode: polling`, upstream URL, interval, headers, auth — processed by **`worker-rest-poller`** when deployed.
+- **Push to Platform** (`rest_mode: inbound_hook`): Upstream systems send HTTP payloads to **`/api/v1/ingest/raw`** (JWT); cadence is controlled by the upstream (when it POSTs). No upstream URL is stored on the device endpoint row for this mode.
+- **Pull from Upstream** (`rest_mode: polling`): **`worker-rest-poller`** polls the configured upstream URL on the interval saved on the endpoint (and in config); cadence is controlled by AAR-IoT-Studio. Device endpoint stores upstream URL/host/port/path, method, auth, headers, timeout, and polling interval.
 - **Monitoring**: Redis-backed metrics (`ingress_metrics`) — success/fail totals, rolling failure window, last latency, last error. Service row **`rest-ingest`** in Monitoring.
 - **Alerts**: Category **`ingest`** when REST failures in ~15m exceed `INGEST_REST_FAILURES_ALERT_THRESHOLD_15M` (deep check). Additional alerts: MinIO/DB failures already emitted from `raw_ingest_service`.
 - **Ports**: Logical row **`api`** (REST/API), tenant flags `allow_external_access` / `restrict_to_localhost` on **Platform ports**.

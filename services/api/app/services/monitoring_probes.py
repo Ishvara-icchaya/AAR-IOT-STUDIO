@@ -19,6 +19,7 @@ LEGACY_MQTT_BRIDGE_LAST_INGEST_REDIS_KEY = "aar:mqtt_bridge:last_ingest_at"
 
 DEFAULT_PIPELINE_WORKERS = (
     "worker-ingest",
+    "worker-device-liveness",
     "worker-scrubber",
     "worker-workflow",
     "worker-publish",

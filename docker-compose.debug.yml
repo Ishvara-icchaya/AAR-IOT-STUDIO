@@ -85,3 +85,19 @@ services:
       AAR_TRACE_PIPELINE: "true"
       AAR_LOG_JSON: "true"
       LOG_LEVEL: DEBUG
+
+  worker-rest-poller:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG
+
+  worker-device-liveness:
+    environment:
+      AAR_DEBUG: "true"
+      AAR_LOG_LEVEL: debug
+      AAR_TRACE_PIPELINE: "true"
+      AAR_LOG_JSON: "true"
+      LOG_LEVEL: DEBUG

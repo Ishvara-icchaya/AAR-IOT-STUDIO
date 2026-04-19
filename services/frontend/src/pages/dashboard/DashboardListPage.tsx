@@ -84,37 +84,46 @@ export function DashboardListPage() {
   }
 
   return (
-    <PageShell title="Dashboards">
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        Operational dashboards bind to <code>data_object</code> and <code>result_object</code> only. Freeze before live
-        view; set one dashboard as your Enterprise landing.
-      </p>
-      {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <form onSubmit={onSearch} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-        <label style={lbl}>
-          Site
-          <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={inp}>
-            <option value="">All permitted</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={lbl}>
-          Search
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name" style={inp} />
-        </label>
-        <button type="submit" style={btn}>
-          Apply
-        </button>
-        <Link to="/dashboard/create" style={{ ...btn, textDecoration: "none", alignSelf: "flex-end" }}>
-          Create dashboard
-        </Link>
-      </form>
-      <div style={{ overflow: "auto" }}>
-        <table style={tbl}>
+    <PageShell title="Dashboards" className="dashboard-list-page">
+      <div className="dashboard-list-layout">
+        <div className="dashboard-list-layout__main">
+          <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem", flexShrink: 0 }}>
+            Operational dashboards bind to <code>data_object</code> and <code>result_object</code> only. Freeze before live
+            view; set one dashboard as your Enterprise landing.
+          </p>
+          {err ? (
+            <div style={{ flexShrink: 0 }}>
+              <PageStatus variant="error">{err}</PageStatus>
+            </div>
+          ) : null}
+          <form
+            onSubmit={onSearch}
+            style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem", flexShrink: 0 }}
+          >
+            <label style={lbl}>
+              Site
+              <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={inp}>
+                <option value="">All permitted</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={lbl}>
+              Search
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name" style={inp} />
+            </label>
+            <button type="submit" style={btn}>
+              Apply
+            </button>
+            <Link to="/dashboard/create" style={{ ...btn, textDecoration: "none", alignSelf: "flex-end" }}>
+              Create dashboard
+            </Link>
+          </form>
+          <div className="dashboard-list-layout__table-scroll">
+            <table style={tbl}>
           <thead>
             <tr>
               <th style={th}>Name</th>
@@ -154,7 +163,17 @@ export function DashboardListPage() {
             ))}
           </tbody>
         </table>
-        {items.length === 0 && <p style={{ marginTop: "1rem", color: "var(--color-text-muted)" }}>No dashboards.</p>}
+            {items.length === 0 && (
+              <p style={{ marginTop: "1rem", color: "var(--color-text-muted)" }}>No dashboards.</p>
+            )}
+          </div>
+        </div>
+        <aside className="dashboard-list-layout__aside" aria-label="Dashboard context">
+          <p className="dashboard-list-layout__aside-title">Context</p>
+          <p className="dashboard-list-layout__aside-hint">
+            Reserved panel (≈20% width), aligned with the operations console layout. Content will be added here.
+          </p>
+        </aside>
       </div>
     </PageShell>
   );

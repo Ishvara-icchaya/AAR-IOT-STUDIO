@@ -1,7 +1,9 @@
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, String, Text
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -9,6 +11,7 @@ from app.db.base import Base
 from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.data_object_detail import DataObjectDetail
     from app.models.device import Device
     from app.models.raw_data_object import RawDataObject
     from app.models.site import Site
@@ -46,7 +49,24 @@ class DataObject(Base, TimestampMixin):
     lifecycle_status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    latest_detail_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("data_object_details.id", ondelete="SET NULL"), nullable=True
+    )
+    latest_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     device: Mapped["Device"] = relationship()
     site: Mapped["Site"] = relationship()
     raw_object: Mapped["RawDataObject | None"] = relationship()
+    details: Mapped[list["DataObjectDetail"]] = relationship(
+        "DataObjectDetail",
+        back_populates="data_object",
+        foreign_keys="DataObjectDetail.data_object_id",
+        cascade="all, delete-orphan",
+        overlaps="latest_detail",
+    )
+    latest_detail: Mapped["DataObjectDetail | None"] = relationship(
+        "DataObjectDetail",
+        foreign_keys=[latest_detail_id],
+        post_update=True,
+        overlaps="details",
+    )

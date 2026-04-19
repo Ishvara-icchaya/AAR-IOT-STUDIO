@@ -1,6 +1,7 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { ArrowLeft, BrushCleaning, ClipboardCheck, Loader2, Save, X } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import {
   fetchDeviceEndpoint,
@@ -13,7 +14,15 @@ import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
 import {
+  configStructureSignature,
+  jsonCloneForShape,
+  normalizeConfigJsonForCompare,
+  stableStringifyConfig,
+} from "@/lib/configStructureSignature";
+import {
   buildConfigFromFields,
+  canonicalConfigFromStored,
+  defaultFieldsForProtocol,
   type CoapFields,
   type HttpFields,
   INGEST_PROTOCOLS,
@@ -23,23 +32,15 @@ import {
   parseConfigToFields,
   type WebSocketFields,
 } from "@/lib/deviceEndpointConfig";
-import {
-  ENDPOINT_ACTIVATION_STATUSES,
-  activationStatusStyle,
-  formatActivationLabel,
-} from "@/lib/endpointActivation";
-import {
-  monitoringIngressLinks,
-  monitoringOverviewHref,
-  monitoringServiceHref,
-} from "@/lib/monitoringIngressLinks";
-
+import { activationStatusStyle, formatActivationLabel } from "@/lib/endpointActivation";
 type DeviceRow = {
   id: string;
   site_id: string;
   name: string;
   is_active: boolean;
   polling_enabled: boolean;
+  current_liveness_state?: string;
+  last_seen_at?: string | null;
   endpoint: {
     id: string;
     protocol: string;
@@ -126,6 +127,39 @@ function formatOptionalTs(iso: string | null | undefined): string {
   }
 }
 
+function livenessLabel(s: string | null | undefined): string {
+  const x = String(s || "waiting_for_first_payload");
+  if (x === "waiting_for_first_payload") return "Waiting first payload";
+  if (x === "online") return "Online";
+  if (x === "late") return "Late";
+  if (x === "offline") return "Offline";
+  if (x === "recovered") return "Recovered";
+  return x;
+}
+
+function livenessStyle(s: string | null | undefined): CSSProperties {
+  const x = String(s || "waiting_for_first_payload");
+  if (x === "online") return { color: "var(--color-success, #2e7d32)", fontWeight: 600 };
+  if (x === "late") return { color: "var(--color-warning, #b8860b)", fontWeight: 600 };
+  if (x === "offline") return { color: "var(--page-status-error-fg, #c62828)", fontWeight: 700 };
+  if (x === "recovered") return { color: "var(--color-accent, #4da3ff)", fontWeight: 600 };
+  return { color: "var(--color-text-muted)" };
+}
+
+function payloadReceiptLabel(status: string | undefined): string {
+  const x = String(status || "none");
+  if (x === "fresh") return "Fresh (within threshold)";
+  if (x === "stale") return "Stale — no recent archive";
+  return "No archive yet";
+}
+
+function payloadReceiptStyle(status: string | undefined): CSSProperties {
+  const x = String(status || "none");
+  if (x === "fresh") return { color: "var(--color-success, #2e7d32)", fontWeight: 600 };
+  if (x === "stale") return { color: "var(--color-warning, #b8860b)", fontWeight: 600 };
+  return { color: "var(--color-text-muted)", fontWeight: 500 };
+}
+
 function protocolLabel(p: string) {
   const n = normalizeProtocol(p);
   if (n === "http") return "HTTP / REST";
@@ -140,13 +174,15 @@ export function DeviceManagePage() {
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [editingDevice, setEditingDevice] = useState<DeviceRow | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deviceIdFromQuery = searchParams.get("device");
+  const navigate = useNavigate();
 
   const [protocol, setProtocol] = useState<IngestProtocol>("http");
   const [httpF, setHttpF] = useState<HttpFields>(() => parseConfigToFields("http", {}).http);
   const [mqttF, setMqttF] = useState<MqttFields>(() => parseConfigToFields("mqtt", {}).mqtt);
   const [coapF, setCoapF] = useState<CoapFields>(() => parseConfigToFields("coap", {}).coap);
   const [wsF, setWsF] = useState<WebSocketFields>(() => parseConfigToFields("websocket", {}).websocket);
-  const [activationFilter, setActivationFilter] = useState<string>("");
 
   const [pollRealtime, setPollRealtime] = useState(false);
   const [pollIntervalSec, setPollIntervalSec] = useState(60);
@@ -156,7 +192,6 @@ export function DeviceManagePage() {
   const [payloadErr, setPayloadErr] = useState<string | null>(null);
   const [payloadBlocking, setPayloadBlocking] = useState(false);
   const [payloadHydrated, setPayloadHydrated] = useState(false);
-  const [rawListTotal, setRawListTotal] = useState<number | null>(null);
 
   const [observability, setObservability] = useState<DeviceEndpointObservability | null>(null);
   const [savedEndpoint, setSavedEndpoint] = useState<DeviceEndpointRead | null>(null);
@@ -208,12 +243,8 @@ export function DeviceManagePage() {
     setLoading(true);
     setErr(null);
     try {
-      const af = activationFilter.trim();
-      const devPath = af
-        ? `/devices?endpoint_activation_status=${encodeURIComponent(af)}`
-        : "/devices";
       const [devRes, siteList] = await Promise.all([
-        apiFetch<{ items: DeviceRow[] }>(devPath),
+        apiFetch<{ items: DeviceRow[] }>("/devices"),
         apiFetch<SiteRow[]>("/administration/sites").catch(() => [] as SiteRow[]),
       ]);
       const items = devRes?.items ?? [];
@@ -228,11 +259,23 @@ export function DeviceManagePage() {
     } finally {
       setLoading(false);
     }
-  }, [activationFilter]);
+  }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (loading || !deviceIdFromQuery) return;
+    const match = devices.find((d) => d.id === deviceIdFromQuery);
+    if (!match) {
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    setEditingDevice(match);
+    setErr(null);
+    setSearchParams({}, { replace: true });
+  }, [loading, deviceIdFromQuery, devices, setSearchParams]);
 
   useEffect(() => {
     if (refreshToken === 0) return;
@@ -247,6 +290,10 @@ export function DeviceManagePage() {
   const previewRefreshMs =
     editingDevice && (pollRealtime || savedEndpoint?.polling_interval_seconds === 0) ? 2000 : 5000;
 
+  /** Scrubber entry unlocks after archived ingest (endpoint) or a successful raw preview load for this session. */
+  const scrubberUnlocked =
+    !!savedEndpoint?.first_payload_at || (!!payloadMeta && payloadHydrated);
+
   const runPayloadFetch = useCallback(async (deviceId: string, mode: "initial" | "silent" | "manual") => {
     const showBlocking = mode !== "silent";
     if (showBlocking) setPayloadBlocking(true);
@@ -254,7 +301,6 @@ export function DeviceManagePage() {
       setPayloadHydrated(false);
       setPayloadMeta(null);
       setPayloadPreview(null);
-      setRawListTotal(null);
     }
     setPayloadErr(null);
     try {
@@ -266,8 +312,6 @@ export function DeviceManagePage() {
       ]);
       if (epPack?.observability) setObservability(epPack.observability);
       const items = Array.isArray(list?.items) ? list.items : [];
-      const total = typeof list?.total === "number" ? list.total : items.length ? items.length : 0;
-      setRawListTotal(total);
       const first = items[0];
       if (!first) {
         setPayloadMeta(null);
@@ -288,7 +332,6 @@ export function DeviceManagePage() {
       setPayloadErr(msg);
       setPayloadPreview(null);
       setPayloadMeta(null);
-      setRawListTotal(null);
     } finally {
       if (showBlocking) setPayloadBlocking(false);
       setPayloadHydrated(true);
@@ -302,7 +345,6 @@ export function DeviceManagePage() {
       setPayloadErr(null);
       setPayloadBlocking(false);
       setPayloadHydrated(false);
-      setRawListTotal(null);
       return;
     }
     void runPayloadFetch(editingDevice.id, "initial");
@@ -315,18 +357,11 @@ export function DeviceManagePage() {
     return () => window.clearInterval(id);
   }, [editingDevice?.id, previewRefreshMs, runPayloadFetch, payloadHydrated]);
 
-  function startEdit(d: DeviceRow) {
-    setEditingDevice(d);
-    setErr(null);
-  }
-
   function cancelEdit() {
     setEditingDevice(null);
     setObservability(null);
     setSavedEndpoint(null);
-    window.requestAnimationFrame(() => {
-      document.getElementById("registered-devices-table")?.scrollIntoView({ block: "start", behavior: "smooth" });
-    });
+    navigate("/devices/register#registered-devices-table");
   }
 
   async function runValidation() {
@@ -352,16 +387,47 @@ export function DeviceManagePage() {
     () => buildConfigFromFields(protocol, httpF, mqttF, coapF, wsF),
     [protocol, httpF, mqttF, coapF, wsF],
   );
-  const pollingSecondsForSave = pollRealtime ? 0 : pollIntervalSec;
+  /** REST Push: cadence is upstream-driven; device row interval is not used by the REST poller. */
+  const pollingSecondsForSave =
+    protocol === "http" && httpF.restMode === "inbound_hook" ? 0 : pollRealtime ? 0 : pollIntervalSec;
+
+  const isHttpRestPush = protocol === "http" && httpF.restMode === "inbound_hook";
+  const isHttpRestPull = protocol === "http" && httpF.restMode === "polling";
+
+  /** Keep serialized HTTP Pull config interval aligned with the device polling row (worker reads both). */
+  useEffect(() => {
+    if (!isHttpRestPull) return;
+    const sec = pollRealtime ? 60 : Math.max(5, pollIntervalSec);
+    const s = String(sec);
+    setHttpF((h) => (h.pollingIntervalSeconds === s ? h : { ...h, pollingIntervalSeconds: s }));
+  }, [isHttpRestPull, pollRealtime, pollIntervalSec]);
+
+  /** Stored config normalized through the same parse → build path as the form (drops legacy/extra keys). */
+  const canonicalSavedConfig = useMemo(() => {
+    if (!savedEndpoint) return null;
+    try {
+      return normalizeConfigJsonForCompare(
+        jsonCloneForShape(
+          canonicalConfigFromStored(savedEndpoint.protocol, savedEndpoint.config as Record<string, unknown>),
+        ),
+      );
+    } catch {
+      return null;
+    }
+  }, [savedEndpoint]);
 
   const hasUnsavedChanges = useMemo(() => {
     if (!savedEndpoint) return true;
     if (savedEndpoint.protocol !== protocol) return true;
     if (savedEndpoint.polling_interval_seconds !== pollingSecondsForSave) return true;
-    return (
-      JSON.stringify(savedEndpoint.config ?? {}) !== JSON.stringify(builtConfigForCompare)
-    );
-  }, [savedEndpoint, protocol, pollingSecondsForSave, builtConfigForCompare]);
+    try {
+      const a = canonicalSavedConfig ?? normalizeConfigJsonForCompare(jsonCloneForShape(savedEndpoint.config ?? {}));
+      const b = normalizeConfigJsonForCompare(jsonCloneForShape(builtConfigForCompare));
+      return stableStringifyConfig(a) !== stableStringifyConfig(b);
+    } catch {
+      return true;
+    }
+  }, [savedEndpoint, protocol, pollingSecondsForSave, builtConfigForCompare, canonicalSavedConfig]);
 
   /** After first save, API requires a successful validation before persisting again; warning = connectivity OK, no payload yet; ok = operational. */
   const validationAllowsSave = useMemo(() => {
@@ -370,14 +436,46 @@ export function DeviceManagePage() {
     return v === "warning" || v === "ok";
   }, [savedEndpoint]);
 
+  /** Draft vs saved: same key topology as the editors emit (saved JSON is compared after canonical round-trip). */
+  const configStructureMatches = useMemo(() => {
+    if (!savedEndpoint || savedEndpoint.protocol !== protocol) return true;
+    try {
+      const a =
+        canonicalSavedConfig ??
+        normalizeConfigJsonForCompare(jsonCloneForShape(savedEndpoint.config ?? {}));
+      const b = normalizeConfigJsonForCompare(jsonCloneForShape(builtConfigForCompare));
+      return configStructureSignature(a) === configStructureSignature(b);
+    } catch {
+      return false;
+    }
+  }, [savedEndpoint, protocol, builtConfigForCompare, canonicalSavedConfig]);
+
   const canSaveConfiguration =
-    !submitting && hasUnsavedChanges && validationAllowsSave;
+    !submitting && hasUnsavedChanges && validationAllowsSave && configStructureMatches;
 
   function validateEndpoint(): string | null {
+    if (savedEndpoint && savedEndpoint.protocol === protocol) {
+      try {
+        const a =
+          canonicalSavedConfig ??
+          normalizeConfigJsonForCompare(jsonCloneForShape(savedEndpoint.config ?? {}));
+        const b = normalizeConfigJsonForCompare(jsonCloneForShape(builtConfigForCompare));
+        if (configStructureSignature(a) !== configStructureSignature(b)) {
+          return (
+            "Configuration structure must stay identical to what was saved — only values may change. " +
+            "Undo added or removed keys (including inside JSON fields such as headers), then save again to avoid corrupting the endpoint."
+          );
+        }
+      } catch {
+        return "Could not verify configuration shape; fix invalid JSON or nested values.";
+      }
+    }
     if (protocol === "http") {
       if (httpF.restMode === "polling") {
-        if (!httpF.pollingUrl.trim()) return "Polling upstream URL is required for polling mode.";
-      } else if (!httpF.host.trim()) return "HTTP host is required for inbound hook configuration.";
+        if (!httpF.pollingUrl.trim() && !httpF.host.trim()) {
+          return "Pull from Upstream: set an upstream polling URL or Host (with Port + Path).";
+        }
+      }
     }
     if (protocol === "mqtt") {
       if (mqttF.brokerMode === "external" && !mqttF.host.trim()) {
@@ -391,7 +489,9 @@ export function DeviceManagePage() {
     if (protocol === "websocket") {
       if (!wsF.url.trim()) return "WebSocket URL is required.";
     }
-    if (!pollRealtime && pollIntervalSec < 5) return "Polling interval must be at least 5 seconds (or use Real time).";
+    if (!isHttpRestPush && !pollRealtime && pollIntervalSec < 5) {
+      return "Polling interval must be at least 5 seconds (or use Real time).";
+    }
     return null;
   }
 
@@ -404,7 +504,7 @@ export function DeviceManagePage() {
       return;
     }
     if (!canSaveConfiguration) {
-      setErr("Run validation first; save is enabled when validation is warning or ok (not failed).");
+      setErr("Validate first; save is enabled when validation is warning or ok (not failed).");
       return;
     }
     setSubmitting(true);
@@ -432,13 +532,13 @@ export function DeviceManagePage() {
   }
 
   return (
-    <PageShell title="Manage Devices">
+    <PageShell title="Manage device" className="device-endpoint-page">
       <div style={stack}>
         {err ? <PageStatus variant="error">{err}</PageStatus> : null}
 
         <nav style={breadcrumbNav} aria-label="Manage devices">
           <span style={breadcrumbCurrent}>Devices</span>
-          <span style={breadcrumbMuted}> — click a row to configure endpoint</span>
+          <span style={breadcrumbMuted}> — open a device from Register devices to configure its endpoint</span>
         </nav>
 
         <ConfigDrawer
@@ -446,18 +546,96 @@ export function DeviceManagePage() {
           onClose={cancelEdit}
           title="Device & endpoint"
           subtitle={editingDevice?.name}
-          width={880}
+          width={1680}
         >
           {editingDevice ? (
             <>
-            <nav style={breadcrumbNav} aria-label="Manage devices">
-              <button type="button" style={breadcrumbBtn} onClick={cancelEdit}>
-                ← Back to list
-              </button>
-              <span style={breadcrumbSep} aria-hidden>
-                /
-              </span>
-              <span style={breadcrumbCurrent}>Edit · {editingDevice.name}</span>
+            <nav style={drawerToolbarNav} aria-label="Manage devices">
+              <div style={drawerToolbarLeft}>
+                <button
+                  type="button"
+                  style={toolbarIconBtn}
+                  onClick={cancelEdit}
+                  title="Back to Register devices — device list"
+                  aria-label="Back to device list"
+                >
+                  <ArrowLeft size={18} strokeWidth={2} aria-hidden />
+                </button>
+                <span style={breadcrumbSep} aria-hidden>
+                  /
+                </span>
+                <span style={breadcrumbCurrent}>Edit · {editingDevice.name}</span>
+              </div>
+              <div style={drawerToolbarRight}>
+                <button
+                  type="button"
+                  style={toolbarIconBtn}
+                  disabled={validating || submitting}
+                  title={
+                    savedEndpoint
+                      ? "Validate: checks broker/URL connectivity, payload receipt in Postgres, refreshes bridge observability, and reloads latest archived raw + preview."
+                      : "Validate: requires a saved endpoint first — use Save, then Validate (or try now to see the server message)."
+                  }
+                  aria-label={validating ? "Validating endpoint" : "Validate endpoint"}
+                  onClick={() => void runValidation()}
+                >
+                  {validating ? (
+                    <Loader2 size={18} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
+                  ) : (
+                    <ClipboardCheck size={18} strokeWidth={2} aria-hidden />
+                  )}
+                </button>
+                {scrubberUnlocked ? (
+                  <Link
+                    to={`/scrubber/data-objects?device=${encodeURIComponent(editingDevice.id)}`}
+                    style={{ ...toolbarIconBtn, textDecoration: "none" }}
+                    title="Open Scrubber data objects for this device"
+                    aria-label="Open Scrubber data objects for this device"
+                  >
+                    <BrushCleaning size={18} strokeWidth={2} aria-hidden />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    style={{ ...toolbarIconBtn, opacity: 0.45, cursor: "not-allowed" }}
+                    title="Scrubber unlocks after the first archived payload is available (or once raw preview loads)."
+                    aria-label="Scrubber (locked until first payload or raw preview)"
+                  >
+                    <BrushCleaning size={18} strokeWidth={2} aria-hidden />
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  form="device-endpoint-form"
+                  style={toolbarIconBtnPrimary}
+                  disabled={!canSaveConfiguration || submitting}
+                  title={
+                    !configStructureMatches && savedEndpoint && savedEndpoint.protocol === protocol
+                      ? "Save blocked: configuration layout (keys / nested shape) must match the saved configuration — only values may change."
+                      : canSaveConfiguration
+                        ? "Save configuration — persist protocol, polling, and connection settings."
+                        : "Save is available when there are changes, structure matches the saved layout, and validation is warning or ok (not failed)."
+                  }
+                  aria-label={submitting ? "Saving configuration" : "Save configuration"}
+                >
+                  {submitting ? (
+                    <Loader2 size={18} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
+                  ) : (
+                    <Save size={18} strokeWidth={2} aria-hidden />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  style={toolbarIconBtn}
+                  onClick={cancelEdit}
+                  disabled={submitting}
+                  title="Close without saving — return to Register devices"
+                  aria-label="Cancel and close"
+                >
+                  <X size={18} strokeWidth={2} aria-hidden />
+                </button>
+              </div>
             </nav>
             <h2 style={{ ...h2, fontSize: "0.95rem", marginTop: "0.5rem" }}>Edit device</h2>
             <p style={{ ...muted, fontSize: "0.8rem" }}>
@@ -469,8 +647,22 @@ export function DeviceManagePage() {
               <div style={editRow1}>
                 <div style={editPanel}>
                   <div style={editPanelTitle}>Endpoint configuration</div>
+                  {savedEndpoint && savedEndpoint.protocol === protocol && !configStructureMatches ? (
+                    <div style={{ marginBottom: "0.5rem" }}>
+                      <PageStatus variant="warning" icon>
+                        Configuration structure must match what was saved. Only field values may change — revert added or
+                        removed keys (including in JSON text areas) before saving to avoid corrupting the endpoint.
+                        {protocol === "mqtt" ? (
+                          <span style={{ display: "block", marginTop: "0.35rem", fontSize: "0.78rem", opacity: 0.95 }}>
+                            MQTT message payloads (e.g. fleet telemetry) are not stored in endpoint configuration — only
+                            broker, topic, and related fields are.
+                          </span>
+                        ) : null}
+                      </PageStatus>
+                    </div>
+                  ) : null}
                 <form id="device-endpoint-form" onSubmit={saveEndpoint} style={{ minWidth: 0 }}>
-                <div style={fieldGrid23}>
+                <div style={fieldGrid3}>
                   <label style={lblSm}>
                     Protocol
                     <select
@@ -486,89 +678,92 @@ export function DeviceManagePage() {
                       ))}
                     </select>
                   </label>
-                  <label style={lblSm}>
-                    Polling
-                    <select
-                      value={pollRealtime ? "rt" : "iv"}
-                      onChange={(e) => setPollRealtime(e.target.value === "rt")}
-                      style={inpSm}
-                    >
-                      <option value="rt">Real time (0s)</option>
-                      <option value="iv">Interval</option>
-                    </select>
-                  </label>
-                  <label style={lblSm}>
-                    Interval (sec)
-                    <input
-                      type="number"
-                      min={5}
-                      max={86400}
-                      disabled={pollRealtime}
-                      value={pollIntervalSec}
-                      onChange={(e) => setPollIntervalSec(Number(e.target.value))}
-                      style={{ ...inpSm, opacity: pollRealtime ? 0.5 : 1 }}
-                    />
-                  </label>
-                </div>
-
-                {protocol === "http" && (
-                  <div style={fieldGrid23}>
-                    <label style={lblSm}>
-                      REST mode
-                      <select
-                        value={httpF.restMode}
-                        onChange={(e) =>
-                          setHttpF({
-                            ...httpF,
-                            restMode: e.target.value as "inbound_hook" | "polling",
-                          })
-                        }
-                        style={inpSm}
-                      >
-                        <option value="inbound_hook">Inbound hook (POST/PUT to platform /ingest/raw)</option>
-                        <option value="polling">Outbound polling (upstream REST)</option>
-                      </select>
-                    </label>
-                    {httpF.restMode === "inbound_hook" ? (
-                      <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.75rem", margin: 0 }}>
-                        Platform canonical path: multipart <code>POST /api/v1/ingest/raw</code> with JWT auth (same MinIO +
-                        Postgres + Kafka flow as other ingress modes).
-                      </p>
-                    ) : null}
-                    {httpF.restMode === "polling" ? (
-                      <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                        Upstream polling URL
-                        <input
-                          value={httpF.pollingUrl}
-                          onChange={(e) => setHttpF({ ...httpF, pollingUrl: e.target.value })}
-                          style={inpSm}
-                          placeholder="https://vendor.example/api/stream"
-                        />
-                      </label>
-                    ) : null}
-                    {httpF.restMode === "polling" ? (
+                  {isHttpRestPush ? (
+                    <p style={{ ...muted, gridColumn: "2 / -1", fontSize: "0.78rem", margin: 0, alignSelf: "center" }}>
+                      <strong>Push to Platform:</strong> ingest cadence is controlled by the upstream system (each POST to the
+                      platform API). No upstream URL is configured here.
+                    </p>
+                  ) : (
+                    <>
                       <label style={lblSm}>
-                        Poll interval (sec)
+                        Polling
+                        <select
+                          value={pollRealtime ? "rt" : "iv"}
+                          onChange={(e) => setPollRealtime(e.target.value === "rt")}
+                          style={inpSm}
+                        >
+                          <option value="rt">Real time (0s)</option>
+                          <option value="iv">Interval</option>
+                        </select>
+                      </label>
+                      <label style={lblSm}>
+                        Interval (sec)
                         <input
                           type="number"
                           min={5}
-                          value={httpF.pollingIntervalSeconds}
-                          onChange={(e) => setHttpF({ ...httpF, pollingIntervalSeconds: e.target.value })}
-                          style={inpSm}
+                          max={86400}
+                          disabled={pollRealtime}
+                          value={pollIntervalSec}
+                          onChange={(e) => setPollIntervalSec(Number(e.target.value))}
+                          style={{ ...inpSm, opacity: pollRealtime ? 0.5 : 1 }}
                         />
                       </label>
-                    ) : null}
+                    </>
+                  )}
+                </div>
+
+                {protocol === "http" && (
+                  <div style={fieldGrid3}>
                     <label style={lblSm}>
+                      REST integration
+                      <select
+                        value={httpF.restMode}
+                        onChange={(e) => {
+                          const mode = e.target.value as "inbound_hook" | "polling";
+                          setHttpF((prev) => {
+                            if (mode === "polling" && prev.restMode === "inbound_hook") {
+                              return defaultFieldsForProtocol("http") as HttpFields;
+                            }
+                            return { ...prev, restMode: mode };
+                          });
+                        }}
+                        style={inpSm}
+                      >
+                        <option value="inbound_hook">Push to Platform</option>
+                        <option value="polling">Pull from Upstream</option>
+                      </select>
+                    </label>
+                    {isHttpRestPush ? (
+                      <p style={{ ...muted, gridColumn: "2 / -1", fontSize: "0.78rem", margin: 0 }}>
+                        Upstream systems send HTTP payloads to AAR-IoT-Studio. Use{" "}
+                        <code>POST /api/v1/ingest/raw</code> with JWT auth (multipart body per product contract).
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+
+                {protocol === "http" && isHttpRestPull && (
+                  <div style={fieldGrid3}>
+                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
+                      Upstream URL (optional if Host + Port + Path below)
+                      <input
+                        value={httpF.pollingUrl}
+                        onChange={(e) => setHttpF({ ...httpF, pollingUrl: e.target.value })}
+                        style={inpSm}
+                        placeholder="https://upstream.example.com/api/readings"
+                      />
+                    </label>
+                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
                       Host
                       <input value={httpF.host} onChange={(e) => setHttpF({ ...httpF, host: e.target.value })} style={inpSm} />
+                    </label>
+                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
+                      Path
+                      <input value={httpF.path} onChange={(e) => setHttpF({ ...httpF, path: e.target.value })} style={inpSm} />
                     </label>
                     <label style={lblSm}>
                       Port
                       <input value={httpF.port} onChange={(e) => setHttpF({ ...httpF, port: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={lblSm}>
-                      Path
-                      <input value={httpF.path} onChange={(e) => setHttpF({ ...httpF, path: e.target.value })} style={inpSm} />
                     </label>
                     <label style={lblSm}>
                       Method
@@ -650,7 +845,7 @@ export function DeviceManagePage() {
                 )}
 
                 {protocol === "mqtt" && (
-                  <div style={fieldGrid23}>
+                  <div style={fieldGrid3}>
                     <label style={lblSm}>
                       Broker mode
                       <select
@@ -681,14 +876,24 @@ export function DeviceManagePage() {
                       Broker port
                       <input value={mqttF.port} onChange={(e) => setMqttF({ ...mqttF, port: e.target.value })} style={inpSm} />
                     </label>
-                    <label style={lblSm}>
+                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
                       Topic
-                      <input value={mqttF.topic} onChange={(e) => setMqttF({ ...mqttF, topic: e.target.value })} style={inpSm} />
+                      <input
+                        value={mqttF.topic}
+                        onChange={(e) => setMqttF({ ...mqttF, topic: e.target.value })}
+                        style={inpSm}
+                        placeholder="e.g. factory/# or factory/telemetry"
+                      />
                     </label>
                     <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.72rem", margin: 0 }}>
-                      Use the same topic filter your sensors publish to (wildcards like <code>devices/+/telemetry</code> are
-                      supported). After you validate, the bridge picks this up from the DB within ~90s (or restart{" "}
-                      <code>worker-mqtt-bridge</code>).
+                      The bridge subscribes with this filter; it must match the full published topic path. An exact
+                      filter <code>factory/telemetry</code> does not receive messages on{" "}
+                      <code>factory/telemetry/truck-001</code> — use a wildcard such as <code>factory/#</code> or{" "}
+                      <code>factory/+/telemetry</code> when your fleet publishes under a <code>factory/…</code> hierarchy.
+                      Patterns like <code>devices/+/telemetry</code> are supported. After validate, the bridge reloads
+                      within ~90s (or restart <code>worker-mqtt-bridge</code>). If upstream stops sending, liveness moves
+                      to late/offline by design; widen the topic only if messages still publish on the broker but never
+                      reach the platform.
                     </p>
                     <label style={lblSm}>
                       QoS
@@ -729,22 +934,22 @@ export function DeviceManagePage() {
                 )}
 
                 {protocol === "coap" && (
-                  <div style={fieldGrid23}>
+                  <div style={fieldGrid3}>
                     <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.75rem", margin: 0 }}>
                       CoAP is modeled as a <strong>listener/adapter</strong> (not a broker). Payloads must be normalized and
                       written through the canonical raw ingest path when the adapter is deployed.
                     </p>
-                    <label style={lblSm}>
+                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
                       Host
                       <input value={coapF.host} onChange={(e) => setCoapF({ ...coapF, host: e.target.value })} style={inpSm} />
+                    </label>
+                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
+                      Path
+                      <input value={coapF.path} onChange={(e) => setCoapF({ ...coapF, path: e.target.value })} style={inpSm} />
                     </label>
                     <label style={lblSm}>
                       Port
                       <input value={coapF.port} onChange={(e) => setCoapF({ ...coapF, port: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={lblSm}>
-                      Path
-                      <input value={coapF.path} onChange={(e) => setCoapF({ ...coapF, path: e.target.value })} style={inpSm} />
                     </label>
                     <label style={lblSm}>
                       Method
@@ -802,7 +1007,7 @@ export function DeviceManagePage() {
                 )}
 
                 {protocol === "websocket" && (
-                  <div style={fieldGrid23}>
+                  <div style={fieldGrid3}>
                     <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.75rem", margin: 0 }}>
                       WebSocket ingest is a <strong>platform listener</strong>; configuration here is consumed by the ingest
                       adapter (same canonical archive + Kafka path as REST/MQTT).
@@ -866,30 +1071,9 @@ export function DeviceManagePage() {
                   </div>
                 )}
 
-                <div style={{ ...btnRow, marginTop: "0.65rem" }}>
-                  <button
-                    type="button"
-                    style={secBtnSm}
-                    disabled={validating || submitting}
-                    title={
-                      savedEndpoint
-                        ? "Checks broker/URL connectivity, payload receipt in Postgres, refreshes bridge observability, and reloads Latest archived raw + preview."
-                        : "Requires a saved endpoint first — use Save configuration, then run validation (or try now to see the server message)."
-                    }
-                    onClick={() => void runValidation()}
-                  >
-                    {validating ? "Validating…" : "Run validation"}
-                  </button>
-                  <button type="submit" style={btnSm} disabled={!canSaveConfiguration || submitting}>
-                    {submitting ? "Saving…" : "Save configuration"}
-                  </button>
-                  <button type="button" style={secBtnSm} onClick={cancelEdit} disabled={submitting}>
-                    Cancel
-                  </button>
-                </div>
                 {!canSaveConfiguration && hasUnsavedChanges && savedEndpoint ? (
                   <p style={{ ...muted, fontSize: "0.72rem", margin: "0.35rem 0 0" }}>
-                    Run validation to enable save (status must be <strong>warning</strong> or <strong>ok</strong>, not failed).
+                    Validate to enable save (status must be <strong>warning</strong> or <strong>ok</strong>, not failed).
                   </p>
                 ) : null}
                 {!hasUnsavedChanges && savedEndpoint ? (
@@ -900,7 +1084,7 @@ export function DeviceManagePage() {
               </form>
                 </div>
                 <div style={{ ...editPanel, ...payloadCell }}>
-                  <div style={editPanelTitle}>Ingest observability</div>
+                  <div style={editPanelTitle}>Ingest Observability</div>
                   <div style={payloadHeaderRow}>
                     <div style={payloadTitle}>Latest archived raw</div>
                     <button
@@ -912,34 +1096,12 @@ export function DeviceManagePage() {
                       Refresh preview
                     </button>
                   </div>
-                  <p style={payloadHint}>
-                    Most recent <code>raw_data_objects</code> row for this device (same MinIO archive as MQTT bridge /
-                    REST). <strong>Run validation</strong> reloads this list and preview after connectivity checks.
-                    Auto-refresh ~{previewRefreshMs / 1000}s.
-                  </p>
                   {payloadBlocking ? <p style={payloadLoadingLine}>Loading ingested payload…</p> : null}
                   {payloadErr ? (
                     <p style={{ color: "var(--page-status-error-fg)", fontSize: "0.78rem" }}>{payloadErr}</p>
                   ) : null}
                   {!payloadBlocking && !payloadMeta && !payloadErr ? (
-                    <div style={{ marginTop: "0.35rem" }}>
-                      <p style={payloadEmpty}>
-                        No archived raw payloads for this device (total matching API: {rawListTotal ?? "—"}).
-                      </p>
-                      <p style={{ ...payloadHint, marginTop: "0.4rem" }}>
-                        For <strong>MQTT</strong>, <strong>WebSocket</strong>, and <strong>REST polling</strong>, ingest is
-                        tied to this saved endpoint — payload does not need to carry the AAR device UUID. If you use{" "}
-                        <strong>CoAP</strong> without endpoint binding, the payload must still identify a registered device
-                        (UUID or unique name + site). Optional upstream <code>device_id</code> / <code>site_id</code> fields
-                        are copied into <code>ingest_metadata</code> when present.
-                      </p>
-                      <p style={{ ...payloadHint, marginTop: "0.25rem" }}>
-                        <Link to="/devices/raw" style={{ color: "var(--color-accent)" }}>
-                          Raw Data
-                        </Link>{" "}
-                        — search archives by device or site name.
-                      </p>
-                    </div>
+                    <div style={{ marginTop: "0.35rem" }} />
                   ) : null}
                   {payloadMeta ? (
                     <>
@@ -975,13 +1137,27 @@ export function DeviceManagePage() {
                     <p style={payloadHint}>Preview truncated — open Raw Data for full object.</p>
                   ) : null}
                 </div>
-              </div>
 
-              <div style={editRow2}>
                 <div style={editPanel}>
-                  <div style={editPanelTitle}>Endpoint runtime state</div>
-                  <table style={kvTable} aria-label="Endpoint runtime state">
+                  <div style={editPanelTitle}>Endpoint runtime series</div>
+                  <table style={kvTable} aria-label="Endpoint runtime series">
                     <tbody>
+                      <tr>
+                        <th scope="row" style={kvTh}>
+                          Liveness state
+                        </th>
+                        <td style={kvTd}>
+                          <span style={livenessStyle(editingDevice.current_liveness_state)}>
+                            {livenessLabel(editingDevice.current_liveness_state)}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row" style={kvTh}>
+                          Last seen
+                        </th>
+                        <td style={kvTd}>{formatOptionalTs(editingDevice.last_seen_at)}</td>
+                      </tr>
                       <tr>
                         <th scope="row" style={kvTh}>
                           Configuration saved
@@ -1042,6 +1218,32 @@ export function DeviceManagePage() {
                       </tr>
                       <tr>
                         <th scope="row" style={kvTh}>
+                          Archived raw timeliness
+                        </th>
+                        <td style={kvTd}>
+                          <span style={payloadReceiptStyle(observability?.payload_receipt_status)}>
+                            {payloadReceiptLabel(observability?.payload_receipt_status)}
+                          </span>
+                          {(observability?.payload_receipt_status === "fresh" ||
+                            observability?.payload_receipt_status === "stale") &&
+                          observability?.payload_age_seconds != null &&
+                          observability?.payload_receipt_threshold_seconds != null ? (
+                            <span
+                              style={{
+                                ...muted,
+                                display: "block",
+                                fontSize: "0.72rem",
+                                marginTop: "0.2rem",
+                              }}
+                            >
+                              Last raw ~{observability.payload_age_seconds}s ago (threshold{" "}
+                              {observability.payload_receipt_threshold_seconds}s, same basis as liveness).
+                            </span>
+                          ) : null}
+                        </td>
+                      </tr>
+                      <tr>
+                        <th scope="row" style={kvTh}>
                           First payload
                         </th>
                         <td style={kvTd}>{formatOptionalTs(savedEndpoint?.first_payload_at)}</td>
@@ -1076,110 +1278,9 @@ export function DeviceManagePage() {
                     <pre style={validationPre}>{savedEndpoint.validation_detail}</pre>
                   ) : (
                     <p style={{ ...muted, fontSize: "0.72rem", margin: "0.35rem 0 0" }}>
-                      Use <strong>Run validation</strong> above after the first save to refresh connectivity and payload-receipt checks.
+                      Use <strong>Validate</strong> in the toolbar after the first save to refresh connectivity and payload-receipt checks.
                     </p>
                   )}
-                </div>
-
-                <div style={editPanel}>
-                  <div style={editPanelTitle}>MQTT (platform bridge)</div>
-                  {normalizeProtocol(savedEndpoint?.protocol ?? protocol) === "mqtt" ? (
-                    observability ? (
-                      <MqttBridgeObservabilityTable o={observability} />
-                    ) : (
-                      <p style={{ ...muted, fontSize: "0.72rem", margin: 0 }}>
-                        Save the endpoint and run <strong>Run validation</strong> (or refresh the page) to load bridge
-                        subscription snapshot from Redis.
-                      </p>
-                    )
-                  ) : (
-                    <p style={{ ...muted, fontSize: "0.72rem", margin: 0 }}>
-                      Shown when the saved protocol is MQTT. Subscription state comes from{" "}
-                      <code>worker-mqtt-bridge</code> via Redis.
-                    </p>
-                  )}
-                  <p
-                    style={{
-                      ...payloadHint,
-                      marginTop: "0.55rem",
-                      paddingTop: "0.45rem",
-                      borderTop: "1px solid var(--color-border-subtle, #333)",
-                    }}
-                  >
-                    <strong>Monitor MQTT ingest (terminal on the host)</strong>
-                    <br />
-                    <code>mosquitto</code> and <code>worker-mqtt-bridge</code> are part of the default Compose stack (
-                    <code>docker compose up -d</code>). If <code>logs -f</code> is empty, confirm the containers are up (
-                    <code>docker compose ps</code>).
-                    <br />
-                    <code style={{ fontSize: "0.68rem", wordBreak: "break-all", display: "block", marginTop: "0.2rem" }}>
-                      docker compose logs -f worker-mqtt-bridge
-                    </code>
-                    <code style={{ fontSize: "0.68rem", wordBreak: "break-all", display: "block", marginTop: "0.2rem" }}>
-                      docker compose logs -f mosquitto
-                    </code>
-                    Logs should show <code>ingest connected broker_host=… broker_port=…</code>, then{" "}
-                    <code>subscribed topic=… sources=[endpoint_id, device_id, …]</code> from your saved Manage Devices
-                    config (not a single global broker). Optional <code>MQTT_TOPICS</code> still uses{" "}
-                    <code>MQTT_BROKER_HOST</code> in Compose. More detail: <code>LOG_LEVEL=DEBUG</code> on the worker.
-                    Compose maps Mosquitto to host port <code>18883</code> by default (container 1883). Publish from the
-                    host with <code>-p 18883</code>, or set <code>MQTT_BROKER_PUBLISH_PORT</code> in <code>.env</code>.
-                  </p>
-                </div>
-
-                <div style={editPanel}>
-                  <table style={kvTable} aria-label="Platform monitoring links">
-                    <caption
-                      style={{
-                        captionSide: "top",
-                        textAlign: "left",
-                        fontSize: "0.82rem",
-                        fontWeight: 600,
-                        paddingBottom: "0.35rem",
-                        color: "var(--color-text)",
-                      }}
-                    >
-                      Platform monitoring
-                    </caption>
-                    <tbody>
-                      <tr>
-                        <td colSpan={2} style={{ ...kvTd, borderBottom: "none", paddingBottom: "0.35rem" }}>
-                          <p style={{ ...muted, fontSize: "0.72rem", margin: 0 }}>
-                            Workers and brokers under Monitoring → Services. Links open the service detail drawer.
-                          </p>
-                        </td>
-                      </tr>
-                      <tr>
-                        <th scope="row" style={kvTh}>
-                          Overview
-                        </th>
-                        <td style={kvTd}>
-                          <Link to={monitoringOverviewHref()} style={{ color: "var(--color-accent)" }}>
-                            Open overview
-                          </Link>
-                          <span style={{ color: "var(--color-text-muted)" }}> — aggregate ingress health</span>
-                        </td>
-                      </tr>
-                      {monitoringIngressLinks(protocol, httpF.restMode).map((row) => (
-                        <tr key={row.service}>
-                          <th scope="row" style={kvTh}>
-                            {row.label}
-                          </th>
-                          <td style={kvTd}>
-                            <Link
-                              to={monitoringServiceHref(row.service)}
-                              style={{ color: "var(--color-accent)" }}
-                            >
-                              Open in Monitoring
-                            </Link>
-                            {row.hint ? (
-                              <span style={{ color: "var(--color-text-muted)" }}> — {row.hint}</span>
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </div>
               </div>
             </div>
@@ -1187,120 +1288,52 @@ export function DeviceManagePage() {
           ) : null}
         </ConfigDrawer>
 
-          <section style={section} id="registered-devices-table">
-            <h2 style={h2}>Registered devices</h2>
+        {!editingDevice ? (
+          <div style={manageEmpty}>
             <p style={muted}>
-              Click a row or use <strong>Edit</strong> to open the endpoint configuration drawer.
+              Use{" "}
+              <Link to="/devices/register" style={{ color: "var(--color-accent)" }}>
+                Register devices
+              </Link>{" "}
+              to view and manage the device list (activation, status, last data). Choose <strong>Manage</strong> on a
+              device to open endpoint configuration here.
             </p>
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.65rem",
-                alignItems: "center",
-                marginBottom: "0.65rem",
-              }}
-            >
-              <label style={{ ...lblSm, margin: 0, minWidth: "12rem" }}>
-                Filter by endpoint activation
-                <select
-                  value={activationFilter}
-                  onChange={(e) => setActivationFilter(e.target.value)}
-                  style={inpSm}
-                >
-                  <option value="">All devices</option>
-                  {ENDPOINT_ACTIVATION_STATUSES.map((st) => (
-                    <option key={st} value={st}>
-                      {formatActivationLabel(st)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div style={tableWrap}>
-              <table className="ops-data-table" style={tbl}>
-                <caption style={tblCaption}>All registered devices — tabular list</caption>
-                <thead>
-                  <tr>
-                    <th style={th}>Name</th>
-                    <th style={th}>Site</th>
-                    <th style={th}>Protocol</th>
-                    <th style={th}>Activation</th>
-                    <th style={th}>Status</th>
-                    <th style={th}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading && devices.length === 0 ? (
-                    <tr>
-                      <td style={tdMuted} colSpan={6}>
-                        Loading…
-                      </td>
-                    </tr>
-                  ) : devices.length === 0 ? (
-                    <tr>
-                      <td style={tdMuted} colSpan={6}>
-                        No devices yet.{" "}
-                        <Link to="/devices/register" style={{ color: "var(--color-accent)" }}>
-                          Register one
-                        </Link>
-                        .
-                      </td>
-                    </tr>
-                  ) : (
-                    devices.map((dev) => (
-                      <tr
-                        key={dev.id}
-                        onClick={() => startEdit(dev)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            startEdit(dev);
-                          }
-                        }}
-                        tabIndex={0}
-                        role="row"
-                      >
-                        <td style={td}>{dev.name}</td>
-                        <td style={td}>
-                          <small>{sitesById[dev.site_id] ?? dev.site_id.slice(0, 8) + "…"}</small>
-                        </td>
-                        <td style={td}>
-                          <small>{dev.endpoint ? protocolLabel(dev.endpoint.protocol) : "—"}</small>
-                        </td>
-                        <td style={td}>
-                          {dev.endpoint?.activation_status ? (
-                            <small style={activationStatusStyle(dev.endpoint.activation_status)}>
-                              {formatActivationLabel(dev.endpoint.activation_status)}
-                            </small>
-                          ) : (
-                            <small>—</small>
-                          )}
-                        </td>
-                        <td style={td}>{dev.is_active ? "Active" : "Inactive"}</td>
-                        <td style={td}>
-                          <button
-                            type="button"
-                            style={editBtn}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEdit(dev);
-                            }}
-                          >
-                            Edit
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          </div>
+        ) : null}
       </div>
     </PageShell>
   );
 }
+
+const drawerToolbarNav: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.65rem",
+  rowGap: "0.5rem",
+  fontSize: "0.82rem",
+  marginBottom: "0.35rem",
+  paddingBottom: "0.5rem",
+  borderBottom: "1px solid var(--color-border)",
+};
+
+const drawerToolbarLeft: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.35rem",
+  minWidth: 0,
+};
+
+const drawerToolbarRight: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: "0.4rem",
+  marginLeft: "auto",
+};
 
 const breadcrumbNav: CSSProperties = {
   display: "flex",
@@ -1311,31 +1344,18 @@ const breadcrumbNav: CSSProperties = {
   marginBottom: "0.25rem",
 };
 
-const breadcrumbBtn: CSSProperties = {
-  padding: 0,
-  border: "none",
-  background: "none",
-  color: "var(--color-accent)",
-  fontFamily: "inherit",
-  fontSize: "inherit",
-  cursor: "pointer",
-  textDecoration: "underline",
-  textUnderlineOffset: "2px",
-};
-
 const breadcrumbSep: CSSProperties = { color: "var(--color-text-muted)", userSelect: "none" };
 
 const breadcrumbCurrent: CSSProperties = { color: "var(--color-text)", fontWeight: 600 };
 
 const breadcrumbMuted: CSSProperties = { color: "var(--color-text-muted)", fontWeight: 400 };
 
-const tblCaption: CSSProperties = {
-  captionSide: "top",
-  textAlign: "left",
-  padding: "0.35rem 0.5rem",
-  fontSize: "0.78rem",
-  color: "var(--color-text-muted)",
-  fontWeight: 500,
+const manageEmpty: CSSProperties = {
+  border: "1px solid var(--color-border)",
+  borderRadius: "12px",
+  background: "var(--color-surface-elevated)",
+  padding: "1.25rem 1.5rem",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
 };
 
 const stack: CSSProperties = {
@@ -1346,14 +1366,6 @@ const stack: CSSProperties = {
   width: "100%",
   minWidth: 0,
   boxSizing: "border-box",
-};
-
-const section: CSSProperties = {
-  border: "1px solid var(--color-border)",
-  borderRadius: "12px",
-  background: "var(--color-surface-elevated)",
-  padding: "1.25rem 1.5rem",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
 };
 
 const h2: CSSProperties = {
@@ -1380,13 +1392,6 @@ const editLayoutRoot: CSSProperties = {
 
 const editRow1: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-  gap: "0.75rem",
-  alignItems: "start",
-};
-
-const editRow2: CSSProperties = {
-  display: "grid",
   gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)",
   gap: "0.75rem",
   alignItems: "start",
@@ -1409,9 +1414,10 @@ const editPanelTitle: CSSProperties = {
   borderBottom: "1px solid var(--color-border)",
 };
 
-const fieldGrid23: CSSProperties = {
+/** Endpoint configuration: fixed three columns inside the drawer panel. */
+const fieldGrid3: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr))",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
   gap: "0.45rem 0.5rem",
   marginTop: "0.45rem",
 };
@@ -1436,35 +1442,27 @@ const inpSm: CSSProperties = {
   minWidth: 0,
 };
 
-const btnSm: CSSProperties = {
-  padding: "0.45rem 0.75rem",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "var(--color-accent)",
-  color: "var(--btn-on-accent)",
-  fontFamily: "inherit",
-  fontWeight: 600,
-  cursor: "pointer",
-  fontSize: "0.82rem",
-};
-
-const secBtnSm: CSSProperties = {
-  padding: "0.45rem 0.75rem",
+const toolbarIconBtn: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: "2.25rem",
+  minHeight: "2.25rem",
+  padding: "0.35rem",
   borderRadius: "var(--radius)",
   border: "1px solid var(--color-border)",
   background: "var(--color-surface)",
   color: "var(--color-text)",
-  fontFamily: "inherit",
-  fontWeight: 600,
   cursor: "pointer",
-  fontSize: "0.82rem",
+  fontFamily: "inherit",
+  boxSizing: "border-box",
 };
 
-const btnRow: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.4rem",
-  marginTop: "0.5rem",
+const toolbarIconBtnPrimary: CSSProperties = {
+  ...toolbarIconBtn,
+  border: "1px solid color-mix(in oklab, var(--color-accent) 55%, var(--color-border))",
+  background: "var(--color-accent)",
+  color: "var(--btn-on-accent, #fff)",
 };
 
 const payloadHeaderRow: CSSProperties = {
@@ -1507,12 +1505,6 @@ const payloadHint: CSSProperties = {
   lineHeight: 1.35,
 };
 
-const payloadEmpty: CSSProperties = {
-  margin: "0.5rem 0 0",
-  fontSize: "0.78rem",
-  color: "var(--color-text-muted)",
-};
-
 const payloadPre: CSSProperties = {
   margin: "0.35rem 0 0",
   flex: "1 1 auto",
@@ -1526,28 +1518,6 @@ const payloadPre: CSSProperties = {
   padding: "0.4rem",
   borderRadius: "4px",
   border: "1px solid var(--color-border)",
-};
-
-const tableWrap: CSSProperties = {
-  marginTop: "0.75rem",
-  overflow: "auto",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-};
-
-const tbl: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.88rem",
-};
-
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem 0.65rem",
-  borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  color: "var(--color-text-muted)",
-  fontWeight: 600,
 };
 
 const kvTable: CSSProperties = {
@@ -1592,29 +1562,6 @@ const payloadPreLabel: CSSProperties = {
   letterSpacing: "0.02em",
 };
 
-const td: CSSProperties = {
-  padding: "0.45rem 0.65rem",
-  borderBottom: "1px solid var(--color-border)",
-  verticalAlign: "top",
-};
-
-const tdMuted: CSSProperties = {
-  ...td,
-  color: "var(--color-text-muted)",
-  padding: "1rem",
-};
-
-const editBtn: CSSProperties = {
-  padding: "0.2rem 0.45rem",
-  fontSize: "0.78rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  cursor: "pointer",
-  fontFamily: "inherit",
-  color: "var(--color-text)",
-};
-
 const validationPre: CSSProperties = {
   margin: "0.45rem 0 0",
   padding: "0.4rem",
@@ -1628,123 +1575,3 @@ const validationPre: CSSProperties = {
   fontFamily: "inherit",
 };
 
-function strList(v: unknown): string[] {
-  return Array.isArray(v) ? v.map((x) => String(x)) : [];
-}
-
-function MqttBridgeObservabilityTable({ o }: { o: DeviceEndpointObservability }) {
-  const d = o.details || {};
-  if (o.protocol !== "mqtt") {
-    return (
-      <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", margin: 0 }}>
-        Observability snapshot is for protocol &quot;{o.protocol}&quot;. Save as MQTT and run validation to refresh bridge
-        details.
-      </p>
-    );
-  }
-  const topics = strList(d.configured_topics);
-  const active = strList(d.active_subscribed_topics);
-  const bridge = Boolean(d.bridge_snapshot_available);
-  const sub = typeof d.subscription_state === "string" ? d.subscription_state : "—";
-  const lastResync = typeof d.last_resync_at === "string" && d.last_resync_at ? d.last_resync_at : null;
-  const resyncNote = typeof d.resync_note === "string" ? d.resync_note : "";
-  const brokerConnCount =
-    typeof d.mqtt_ingest_broker_connection_count === "number" ? d.mqtt_ingest_broker_connection_count : null;
-  const ingestRoutes = Array.isArray(d.device_mqtt_ingest_routes) ? d.device_mqtt_ingest_routes : [];
-  const activeDisplay = active.length
-    ? active.join(", ")
-    : bridge
-      ? "(none reported)"
-      : "Bridge snapshot not available (is worker-mqtt-bridge running with Redis?)";
-  return (
-    <table style={{ ...kvTable, marginTop: 0 }} aria-label="MQTT bridge observability">
-      <tbody>
-        <tr>
-          <th scope="row" style={kvTh}>
-            Configured topics (this device)
-          </th>
-          <td style={kvTd}>{topics.length ? topics.join(", ") : "—"}</td>
-        </tr>
-        <tr>
-          <th scope="row" style={kvTh}>
-            Active subscribed topics
-          </th>
-          <td style={kvTd}>{activeDisplay}</td>
-        </tr>
-        {brokerConnCount !== null ? (
-          <tr>
-            <th scope="row" style={kvTh}>
-              Ingest broker connections
-            </th>
-            <td style={kvTd}>
-              {brokerConnCount} subscriber client(s) — one MQTT connection per distinct saved broker profile (host, port,
-              TLS, auth, client id)
-            </td>
-          </tr>
-        ) : null}
-        {ingestRoutes.length > 0 ? (
-          <tr>
-            <th scope="row" style={kvTh}>
-              This device on broker
-            </th>
-            <td style={{ ...kvTd, fontSize: "0.72rem", lineHeight: 1.45 }}>
-              {ingestRoutes.map((r: Record<string, unknown>, i: number) => {
-                const host = String(r.broker_host ?? "—");
-                const port = String(r.broker_port ?? "—");
-                const tls = Boolean(r.use_tls);
-                const auth = String(r.auth_mode ?? "—");
-                const subs = Array.isArray(r.subscriptions) ? r.subscriptions : [];
-                const topicLine = subs
-                  .map((s) => (s && typeof s === "object" && "topic" in s ? String((s as { topic?: string }).topic) : ""))
-                  .filter(Boolean)
-                  .join(", ");
-                return (
-                  <div key={i} style={{ marginBottom: i < ingestRoutes.length - 1 ? "0.45rem" : 0 }}>
-                    <strong>
-                      {host}:{port}
-                    </strong>
-                    {tls ? " (TLS)" : ""} · auth {auth}
-                    {topicLine ? (
-                      <>
-                        <br />
-                        Topics: {topicLine}
-                      </>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </td>
-          </tr>
-        ) : null}
-        <tr>
-          <th scope="row" style={kvTh}>
-            Subscription state
-          </th>
-          <td style={kvTd}>{sub}</td>
-        </tr>
-        <tr>
-          <th scope="row" style={kvTh}>
-            Last resync
-          </th>
-          <td style={kvTd}>{lastResync ? formatOptionalTs(lastResync) : "—"}</td>
-        </tr>
-        {typeof d.resync_interval_seconds === "number" ? (
-          <tr>
-            <th scope="row" style={kvTh}>
-              Resync interval (s)
-            </th>
-            <td style={kvTd}>{d.resync_interval_seconds}</td>
-          </tr>
-        ) : null}
-        {resyncNote ? (
-          <tr>
-            <th scope="row" style={kvTh}>
-              Note
-            </th>
-            <td style={{ ...kvTd, color: "var(--color-text-muted)" }}>{resyncNote}</td>
-          </tr>
-        ) : null}
-      </tbody>
-    </table>
-  );
-}

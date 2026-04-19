@@ -1,6 +1,6 @@
 import type { CSSProperties, FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
@@ -86,6 +86,9 @@ function formatPayloadPreview(text: string, contentType: string | null): string 
 }
 
 export function DeviceRawDataPage() {
+  const [searchParams] = useSearchParams();
+  const deviceIdFilter = searchParams.get("deviceId") ?? "";
+
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<RawRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -100,11 +103,15 @@ export function DeviceRawDataPage() {
 
   const groups = useMemo(() => aggregateByObjectName(rows), [rows]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setErr(null);
     try {
       const qs = new URLSearchParams({ limit: "200", offset: "0" });
-      if (q.trim()) qs.set("q", q.trim());
+      if (deviceIdFilter.trim()) {
+        qs.set("device_id", deviceIdFilter.trim());
+      } else if (q.trim()) {
+        qs.set("q", q.trim());
+      }
       const data = await apiFetch<ListResp>(`/raw-data-objects?${qs.toString()}`);
       const items = data?.items ?? [];
       setRows(
@@ -124,11 +131,11 @@ export function DeviceRawDataPage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load");
     }
-  }
+  }, [deviceIdFilter, q]);
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [load]);
 
   async function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -159,12 +166,26 @@ export function DeviceRawDataPage() {
     setPayloadModal(null);
   }
 
+  const manageDevicesHref = "/devices/register#registered-devices-table";
+
   return (
     <PageShell title="Raw Data">
+      <nav style={backNav} aria-label="Back to manage devices">
+        <Link to={manageDevicesHref} style={backLink}>
+          ← Manage Devices
+        </Link>
+      </nav>
+      {deviceIdFilter ? (
+        <p style={{ fontSize: "0.9rem", color: "var(--color-accent)", marginBottom: "0.75rem" }}>
+          Showing raw archives for the selected device only.{" "}
+          <Link to="/devices/raw" style={{ fontWeight: 600 }}>
+            Clear filter
+          </Link>
+        </p>
+      ) : null}
       <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
         Rows are <strong>aggregated by object name</strong> (registered device). Each line summarizes all raw archives for
-        that device; <strong>View payload</strong> loads the <em>latest</em> archive for that device from MinIO. Canonical
-        SoT: Postgres <code>raw_data_objects</code> + MinIO.
+        that device; <strong>View payload</strong> loads the <em>latest</em> archive for that device.
       </p>
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       <form onSubmit={onSearch} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "1rem" }}>
@@ -190,7 +211,7 @@ export function DeviceRawDataPage() {
           </span>
         ) : null}
       </p>
-      <div style={{ overflow: "auto", marginTop: "0.5rem" }}>
+      <div className="table-scroll-sticky" style={{ overflow: "auto", marginTop: "0.5rem" }}>
         <table style={tbl}>
           <thead>
             <tr>
@@ -292,6 +313,18 @@ function fmt(iso: string) {
     return iso;
   }
 }
+
+const backNav: CSSProperties = {
+  marginBottom: "0.75rem",
+};
+
+const backLink: CSSProperties = {
+  display: "inline-block",
+  fontSize: "0.88rem",
+  fontWeight: 600,
+  color: "var(--color-accent)",
+  textDecoration: "none",
+};
 
 const inp: CSSProperties = {
   padding: "0.5rem",

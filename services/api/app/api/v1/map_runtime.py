@@ -86,6 +86,11 @@ def map_markers(
     longitude_field: str = Query("gps.lon"),
     kpi_fields: str = Query("", description="Comma-separated KPI paths"),
     excluded_source_ids: str = Query("", alias="excludedSourceIds"),
+    device_ids: str = Query(
+        "",
+        alias="deviceIds",
+        description="Comma-separated device UUIDs; when set, only data objects on these devices are included.",
+    ),
     light: bool = Query(
         True,
         description="If true, omit KPI maps and long health text (use /detail on click).",
@@ -102,6 +107,19 @@ def map_markers(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     kpi_list = [x.strip() for x in kpi_fields.split(",") if x.strip()]
     excluded = {str(x).strip() for x in excluded_source_ids.split(",") if str(x).strip()}
+    allowed_devices: set[uuid.UUID] | None = None
+    if device_ids.strip():
+        allowed_devices = set()
+        for part in device_ids.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                allowed_devices.add(uuid.UUID(part))
+            except ValueError:
+                continue
+        if not allowed_devices:
+            allowed_devices = None
     markers = markers_with_redis_first(
         db,
         customer_id=user.customer_id,
@@ -112,6 +130,7 @@ def map_markers(
         excluded=excluded,
         title_field=None,
         health_field=None,
+        allowed_device_ids=allowed_devices,
         pg_markers_fn=_map_markers_site,
     )
     if light:

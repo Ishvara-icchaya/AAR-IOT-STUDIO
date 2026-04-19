@@ -17,6 +17,8 @@ from app.db.session import get_db
 from app.models.dashboard import Dashboard
 from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.data_object import DataObject
+from app.services.data_object_query import order_by_metadata_recency
+from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
 from app.models.user import User
 from app.models.user_site import UserSite
@@ -108,7 +110,7 @@ def list_data_object_sources(
         select(DataObject)
         .join(Device, Device.id == DataObject.device_id)
         .where(DataObject.customer_id == user.customer_id, Device.site_id == site_id)
-        .order_by(DataObject.updated_at.desc())
+        .order_by(order_by_metadata_recency())
         .limit(limit)
     )
     rows = list(db.scalars(stmt).all())
@@ -120,6 +122,7 @@ def list_data_object_sources(
             name=r.name,
             lifecycle_status=r.lifecycle_status,
             updated_at=r.updated_at,
+            latest_seen_at=r.latest_seen_at,
         )
         for r in rows
     ]
@@ -145,7 +148,7 @@ def list_result_object_sources(
             WorkflowResultObject.customer_id == user.customer_id,
             WorkflowResultObject.site_id == site_id,
         )
-        .order_by(WorkflowResultObject.created_at.desc())
+        .order_by(order_result_objects_by_recency())
         .limit(limit)
     )
     rows = list(db.scalars(stmt).all())
@@ -156,6 +159,7 @@ def list_result_object_sources(
             result_object_name=r.result_object_name,
             site_id=r.site_id,
             created_at=r.created_at,
+            latest_seen_at=r.latest_seen_at,
         )
         for r in rows
     ]

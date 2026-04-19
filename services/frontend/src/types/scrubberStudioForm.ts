@@ -42,16 +42,23 @@ export type StudioDraftForm = {
   gpsHeadingPath: string;
   gpsSpeedPath: string;
   gpsTimestampPath: string;
-  healthEngineMode: "map" | "rules";
+  healthEngineMode: "map" | "rules" | "thresholds";
   healthMapSourceField: string;
   healthMapPairs: { incoming: string; outStatus: string }[];
   healthMapMessageFrom: string;
   healthRulesDefault: string;
   healthRulesV2: HealthRuleV2[];
+  /** Threshold JSON source: paste inline or pick registry (resolved body stored in healthThresholdsDefinition when saving). */
+  healthThresholdsSource: "registry" | "inline";
+  healthThresholdsReferenceId: string;
+  healthThresholdsInlineJson: string;
+  /** Snapshot of definition JSON for registry selection (saved into draft as `definition`). */
+  healthThresholdsDefinition: Record<string, unknown> | null;
   healthDisplayEnabled: boolean;
   healthStatusKey: string;
   healthCodeKey: string;
   healthMessageKey: string;
+  healthDetailsKey: string;
   kpiDisplayFields: string[];
   kpiMetrics: KpiMetricRow[];
   /** When set, draft keeps pre–v4 health list until user edits the health step. */

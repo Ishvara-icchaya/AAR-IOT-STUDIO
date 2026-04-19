@@ -11,6 +11,8 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import Json
 
+from app.tenant_rollup_redis import rollup_incr_site
+
 log = logging.getLogger(__name__)
 
 
@@ -186,7 +188,8 @@ def insert_result_object_row(
     health_status: str | None,
 ) -> str:
     rid = str(uuid.uuid4())
-    sql = """
+    detail_id = str(uuid.uuid4())
+    insert_meta = """
     INSERT INTO workflow_result_objects (
       id, workflow_execution_id, workflow_id, terminate_node_id,
       result_object_name, customer_id, site_id, payload_json, health_status
@@ -195,11 +198,29 @@ def insert_result_object_row(
       %s, %s::uuid, %s::uuid, %s, %s
     )
     """
+    insert_detail = """
+    INSERT INTO workflow_result_object_details (
+      id, workflow_result_object_id, workflow_execution_id, workflow_id,
+      customer_id, site_id, observed_at, payload_json, health_status,
+      grouping_json, trace_id, created_at
+    ) VALUES (
+      %s::uuid, %s::uuid, %s::uuid, %s::uuid,
+      %s::uuid, %s::uuid, NOW(), %s, %s,
+      %s, NULL, NOW()
+    )
+    """
+    update_latest = """
+    UPDATE workflow_result_objects
+    SET latest_detail_id = %s::uuid, latest_seen_at = NOW()
+    WHERE id = %s::uuid
+    """
+    grouping: dict[str, Any] = {}
     conn = psycopg2.connect(_db_url())
     try:
+        conn.autocommit = False
         with conn.cursor() as cur:
             cur.execute(
-                sql,
+                insert_meta,
                 (
                     rid,
                     execution_id,
@@ -212,9 +233,31 @@ def insert_result_object_row(
                     health_status,
                 ),
             )
+            cur.execute(
+                insert_detail,
+                (
+                    detail_id,
+                    rid,
+                    execution_id,
+                    workflow_id,
+                    customer_id,
+                    site_id,
+                    Json(payload),
+                    health_status,
+                    Json(grouping),
+                ),
+            )
+            cur.execute(update_latest, (detail_id, rid))
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
+    try:
+        rollup_incr_site(customer_id=customer_id, site_id=site_id, kind="ro")
+    except Exception:
+        pass
     return rid
 
 

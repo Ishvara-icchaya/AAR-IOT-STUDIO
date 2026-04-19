@@ -14,7 +14,7 @@ import json
 import math
 import re
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.scrubber_health_service import evaluate_health
@@ -30,6 +30,7 @@ class ScrubberRunResult:
     health_code: str
     health_message: str
     scrubber_version: str | None
+    health_details: dict[str, Any] = field(default_factory=dict)
 
 
 def _parse_raw_payload(raw: bytes, content_type: str | None, parse_as: str | None) -> dict[str, Any]:
@@ -366,8 +367,8 @@ def _eval_kpi(template: Any, payload: dict[str, Any]) -> dict[str, Any]:
     return build_kpi_output(template, payload)
 
 
-def _eval_health(rules: Any, payload: dict[str, Any]) -> tuple[str, str, str]:
-    """Returns (status, code, message)."""
+def _eval_health(rules: Any, payload: dict[str, Any]) -> tuple[str, str, str, dict[str, Any]]:
+    """Returns (status, code, message, health_details)."""
     return evaluate_health(rules, payload)
 
 
@@ -377,15 +378,19 @@ def _merge_health_onto_payload(
     h_status: str,
     h_code: str,
     h_msg: str,
+    h_details: dict[str, Any] | None = None,
 ) -> None:
     if not display.get("enabled"):
         return
     sk = str(display.get("statusKey") or "health_status")
     ck = str(display.get("codeKey") or "health_code")
     mk = str(display.get("messageKey") or "health_message")
+    dk = str(display.get("detailsKey") or "health_details")
     payload[sk] = h_status
     payload[ck] = h_code
     payload[mk] = h_msg
+    if h_details is not None and dk:
+        payload[dk] = h_details
 
 
 def _extract_json_object_from_llm(text: str) -> dict[str, Any] | None:
@@ -584,13 +589,13 @@ def run_scrubber(
 
     object_name = str(active.get("objectName") or ss.get("objectName") or "Data object")[:255]
     kpi = _eval_kpi(active.get("kpi"), payload)
-    h_status, h_code, h_msg = _eval_health(active.get("health"), payload)
+    h_status, h_code, h_msg, h_details = _eval_health(active.get("health"), payload)
     if h_status not in ("green", "yellow", "red"):
         h_status = "yellow"
 
     hd = active.get("healthDisplay")
     if isinstance(hd, dict):
-        _merge_health_onto_payload(payload, hd, h_status, h_code, h_msg)
+        _merge_health_onto_payload(payload, hd, h_status, h_code, h_msg, h_details)
 
     version = ss.get("version")
     scrubber_version = str(version) if version is not None else None
@@ -603,4 +608,5 @@ def run_scrubber(
         health_code=h_code,
         health_message=h_msg,
         scrubber_version=scrubber_version,
+        health_details=h_details if isinstance(h_details, dict) else {},
     )

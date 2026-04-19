@@ -1,12 +1,68 @@
 import { useEffect, useState } from "react";
+import {
+  getDataObjectFieldMetadata,
+  getResultObjectFieldMetadata,
+  type PayloadFieldEntry,
+} from "@/api/fieldMetadata";
 import type { DashboardWidgetModel } from "@/types/dashboardLayout";
 import * as dashApi from "@/api/dashboard";
+import { listDevices, type DeviceRead } from "@/api/devices";
+
+type FieldPathPickerProps = {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  meta: PayloadFieldEntry[];
+  loading: boolean;
+  disabled?: boolean;
+};
+
+function FieldPathPicker({ label, value, onChange, meta, loading, disabled }: FieldPathPickerProps) {
+  const optVals = meta.map((m) => m.path);
+  const known = Boolean(value && optVals.includes(value));
+  return (
+    <label className="dash-drawer__label">
+      {label}
+      {loading ? (
+        <span className="dash-widget__muted" style={{ fontSize: "0.78rem" }}>
+          Loading fields…
+        </span>
+      ) : null}
+      <select
+        className="dash-drawer__input"
+        disabled={disabled || meta.length === 0}
+        value={known ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{meta.length ? "Select…" : "No fields (use advanced)"}</option>
+        {meta.map((m) => (
+          <option key={m.path} value={m.path}>
+            {m.path} ({m.type})
+          </option>
+        ))}
+      </select>
+      <details style={{ marginTop: "0.35rem" }}>
+        <summary className="dash-widget__muted" style={{ cursor: "pointer", fontSize: "0.82rem" }}>
+          Advanced path
+        </summary>
+        <input
+          className="dash-drawer__input"
+          style={{ marginTop: "0.25rem" }}
+          disabled={disabled}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. metrics.temp.value"
+        />
+      </details>
+    </label>
+  );
+}
 
 type Props = {
   widget: DashboardWidgetModel;
   onChange: (next: DashboardWidgetModel) => void;
   disabled?: boolean;
-  /** Dashboard site — required for map eligible multiselect when auto GPS is off. */
+  /** Dashboard site — map: eligible sources when auto GPS is off; device filter when auto GPS is on. */
   siteId?: string | null;
 };
 
@@ -33,6 +89,43 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
   const mapAuto = widget.type === "map" && (c.autoIncludeGpsObjects !== false);
 
   const [eligibleMap, setEligibleMap] = useState<dashApi.MapEligibleItem[]>([]);
+  const [mapSiteDevices, setMapSiteDevices] = useState<DeviceRead[]>([]);
+  const sourceIdBind = String(b.sourceId ?? "").trim();
+  const sourceTypeBind = (b.sourceType as string) || "data_object";
+  const [fieldMeta, setFieldMeta] = useState<PayloadFieldEntry[]>([]);
+  const [fieldMetaLoading, setFieldMetaLoading] = useState(false);
+
+  useEffect(() => {
+    const needsMeta =
+      Boolean(sourceIdBind) &&
+      (widget.type === "kpi" ||
+        widget.type === "table" ||
+        widget.type === "map" ||
+        widget.type === "device_tile");
+    if (!needsMeta) {
+      setFieldMeta([]);
+      return;
+    }
+    let cancelled = false;
+    setFieldMetaLoading(true);
+    void (async () => {
+      try {
+        const res =
+          sourceTypeBind === "data_object"
+            ? await getDataObjectFieldMetadata(sourceIdBind)
+            : await getResultObjectFieldMetadata(sourceIdBind);
+        if (!cancelled) setFieldMeta(res?.items ?? []);
+      } catch {
+        if (!cancelled) setFieldMeta([]);
+      } finally {
+        if (!cancelled) setFieldMetaLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceIdBind, sourceTypeBind, widget.type]);
+
   useEffect(() => {
     if (widget.type !== "map" || mapAuto || !siteId) {
       setEligibleMap([]);
@@ -46,6 +139,24 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
       })
       .catch(() => {
         if (!cancelled) setEligibleMap([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [widget.type, mapAuto, siteId]);
+
+  useEffect(() => {
+    if (widget.type !== "map" || !mapAuto || !siteId) {
+      setMapSiteDevices([]);
+      return;
+    }
+    let cancelled = false;
+    void listDevices({ site_id: siteId })
+      .then((items) => {
+        if (!cancelled) setMapSiteDevices(items);
+      })
+      .catch(() => {
+        if (!cancelled) setMapSiteDevices([]);
       });
     return () => {
       cancelled = true;
@@ -115,6 +226,72 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
             </label>
           )}
 
+          {widget.type === "map" && mapAuto && siteId && (
+            <div className="dash-drawer__label">
+              <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                Devices on map — leave all unchecked to include every device at this site; check specific devices to
+                limit markers
+              </span>
+              <div
+                style={{
+                  maxHeight: 200,
+                  overflow: "auto",
+                  border: "1px solid var(--border, #ccc)",
+                  borderRadius: "var(--radius)",
+                  padding: "0.5rem",
+                  fontSize: "0.85rem",
+                }}
+              >
+                {mapSiteDevices.length === 0 ? (
+                  <span className="dash-widget__muted">No devices or loading…</span>
+                ) : (
+                  mapSiteDevices.map((d) => {
+                    const allowed = (c.mapDeviceIds as string[] | undefined) ?? [];
+                    const allIds = mapSiteDevices.map((x) => x.id);
+                    const restrict = allowed.length > 0;
+                    const checked = !restrict || allowed.includes(d.id);
+                    return (
+                      <label
+                        key={d.id}
+                        style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.25rem" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => {
+                            const cur = (c.mapDeviceIds as string[] | undefined) ?? [];
+                            if (!restrict) {
+                              const next = allIds.filter((id) => id !== d.id);
+                              patchConfig({ mapDeviceIds: next });
+                              return;
+                            }
+                            if (cur.includes(d.id)) {
+                              const next = cur.filter((id) => id !== d.id);
+                              patchConfig({ mapDeviceIds: next });
+                            } else {
+                              const next = [...cur, d.id];
+                              const setNext = new Set(next);
+                              if (allIds.length > 0 && allIds.every((id) => setNext.has(id))) {
+                                patchConfig({ mapDeviceIds: [] });
+                              } else {
+                                patchConfig({ mapDeviceIds: next });
+                              }
+                            }
+                          }}
+                        />
+                        <span>
+                          {d.name}{" "}
+                          <span className="dash-widget__muted">({d.id.slice(0, 8)}…)</span>
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           {widget.type === "map" && !mapAuto && siteId && (
             <div className="dash-drawer__label">
               <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
@@ -171,84 +348,162 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
       )}
 
       {widget.type === "kpi" && (
-        <label className="dash-drawer__label">
-          Metric field (path or key)
-          <input
-            className="dash-drawer__input"
-            value={String(b.metric ?? "")}
-            disabled={disabled}
-            placeholder='value — or e.g. temperature, metrics.temp.value'
-            onChange={(e) => patchBinding({ metric: e.target.value })}
-          />
-          <span className="dash-widget__muted" style={{ display: "block", marginTop: "0.35rem", fontSize: "0.8rem" }}>
-            Default <code>value</code> matches a top-level key, then scrubber KPI <code>metrics</code> /{" "}
-            <code>displayFields</code>, then a single numeric field on the payload.
-          </span>
-        </label>
+        <FieldPathPicker
+          label="Metric field"
+          value={String(b.metric ?? "")}
+          onChange={(v) => patchBinding({ metric: v })}
+          meta={fieldMeta}
+          loading={fieldMetaLoading}
+          disabled={disabled}
+        />
       )}
 
       {widget.type === "table" && (
-        <label className="dash-drawer__label">
-          Columns (comma-separated field names, empty = all keys)
-          <input
-            className="dash-drawer__input"
-            value={(b.fields as string[])?.join(", ") ?? ""}
-            disabled={disabled}
-            onChange={(e) => patchBinding({ fields: parseList(e.target.value) })}
-          />
-        </label>
+        <>
+          {fieldMeta.length > 0 ? (
+            <div className="dash-drawer__label">
+              <span>Columns (from payload catalog)</span>
+              <div
+                style={{
+                  maxHeight: 160,
+                  overflow: "auto",
+                  border: "1px solid var(--border, #ccc)",
+                  borderRadius: "var(--radius)",
+                  padding: "0.4rem 0.5rem",
+                  marginTop: "0.35rem",
+                  fontSize: "0.82rem",
+                }}
+              >
+                {fieldMeta.slice(0, 64).map((f) => {
+                  const cur = ((b.fields as string[]) ?? []) as string[];
+                  const checked = cur.includes(f.path);
+                  return (
+                    <label
+                      key={f.path}
+                      style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.2rem" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => {
+                          const next = checked
+                            ? cur.filter((x) => x !== f.path)
+                            : [...cur, f.path];
+                          patchBinding({ fields: next });
+                        }}
+                      />
+                      <span>
+                        {f.path} <span className="dash-widget__muted">({f.type})</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <label className="dash-drawer__label">
+            Columns (comma-separated, overrides checklist; empty = all keys)
+            <input
+              className="dash-drawer__input"
+              value={(b.fields as string[])?.join(", ") ?? ""}
+              disabled={disabled}
+              onChange={(e) => patchBinding({ fields: parseList(e.target.value) })}
+            />
+          </label>
+        </>
       )}
 
       {(widget.type === "device_tile" || widget.type === "map") && (
-        <label className="dash-drawer__label">
-          KPI fields (comma-separated paths)
-          <input
-            className="dash-drawer__input"
-            value={(b.kpiFields as string[])?.join(", ") ?? ""}
-            disabled={disabled}
-            onChange={(e) => patchBinding({ kpiFields: parseList(e.target.value) })}
-          />
-        </label>
+        <>
+          {widget.type === "device_tile" && fieldMeta.length > 0 ? (
+            <div className="dash-drawer__label">
+              <span>KPI fields (catalog)</span>
+              <div
+                style={{
+                  maxHeight: 140,
+                  overflow: "auto",
+                  border: "1px solid var(--border, #ccc)",
+                  borderRadius: "var(--radius)",
+                  padding: "0.4rem 0.5rem",
+                  marginTop: "0.35rem",
+                  fontSize: "0.82rem",
+                }}
+              >
+                {fieldMeta.slice(0, 48).map((f) => {
+                  const cur = ((b.kpiFields as string[]) ?? []) as string[];
+                  const checked = cur.includes(f.path);
+                  return (
+                    <label
+                      key={f.path}
+                      style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.2rem" }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => {
+                          const next = checked
+                            ? cur.filter((x) => x !== f.path)
+                            : [...cur, f.path];
+                          patchBinding({ kpiFields: next });
+                        }}
+                      />
+                      <span>
+                        {f.path} <span className="dash-widget__muted">({f.type})</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <label className="dash-drawer__label">
+            KPI fields (comma-separated paths; overrides checklist on device tile)
+            <input
+              className="dash-drawer__input"
+              value={(b.kpiFields as string[])?.join(", ") ?? ""}
+              disabled={disabled}
+              onChange={(e) => patchBinding({ kpiFields: parseList(e.target.value) })}
+            />
+          </label>
+        </>
       )}
 
       {widget.type === "map" && (
         <>
-          <label className="dash-drawer__label">
-            Latitude field
-            <input
-              className="dash-drawer__input"
-              value={String(b.latitudeField ?? "gps.lat")}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ latitudeField: e.target.value })}
-            />
-          </label>
-          <label className="dash-drawer__label">
-            Longitude field
-            <input
-              className="dash-drawer__input"
-              value={String(b.longitudeField ?? "gps.lon")}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ longitudeField: e.target.value })}
-            />
-          </label>
-          <label className="dash-drawer__label">
-            Title field (optional, from payload)
-            <input
-              className="dash-drawer__input"
-              value={String(b.titleField ?? "")}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ titleField: e.target.value || undefined })}
-            />
-          </label>
-          <label className="dash-drawer__label">
-            Health field override (optional path)
-            <input
-              className="dash-drawer__input"
-              value={String(b.healthField ?? "")}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ healthField: e.target.value || undefined })}
-            />
-          </label>
+          <FieldPathPicker
+            label="Latitude field"
+            value={String(b.latitudeField ?? "gps.lat")}
+            onChange={(v) => patchBinding({ latitudeField: v || "gps.lat" })}
+            meta={fieldMeta}
+            loading={fieldMetaLoading}
+            disabled={disabled}
+          />
+          <FieldPathPicker
+            label="Longitude field"
+            value={String(b.longitudeField ?? "gps.lon")}
+            onChange={(v) => patchBinding({ longitudeField: v || "gps.lon" })}
+            meta={fieldMeta}
+            loading={fieldMetaLoading}
+            disabled={disabled}
+          />
+          <FieldPathPicker
+            label="Title field (optional)"
+            value={String(b.titleField ?? "")}
+            onChange={(v) => patchBinding({ titleField: v || undefined })}
+            meta={fieldMeta}
+            loading={fieldMetaLoading}
+            disabled={disabled}
+          />
+          <FieldPathPicker
+            label="Health field override (optional)"
+            value={String(b.healthField ?? "")}
+            onChange={(v) => patchBinding({ healthField: v || undefined })}
+            meta={fieldMeta}
+            loading={fieldMetaLoading}
+            disabled={disabled}
+          />
 
           <fieldset
             style={{ border: "1px solid var(--border, #ccc)", borderRadius: "var(--radius)", padding: "0.5rem 0.75rem", marginTop: "0.5rem" }}

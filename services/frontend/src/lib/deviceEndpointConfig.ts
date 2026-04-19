@@ -56,13 +56,23 @@ export type WebSocketFields = {
   headersJson: string;
 };
 
+/**
+ * Default REST Pull example (plain HTTP GET), equivalent to:
+ * `curl http://192.168.68.78:7001/api/v1/runs/<run-id>/metrics`
+ * Replace host, port, path, or use “Upstream URL” for your environment.
+ */
+export const DEFAULT_REST_PULL_EXAMPLE_HOST = "192.168.68.78";
+export const DEFAULT_REST_PULL_EXAMPLE_PORT = "7001";
+export const DEFAULT_REST_PULL_EXAMPLE_PATH =
+  "/api/v1/runs/b90d92eb-e7e5-4e4d-97ca-a8736946521d/metrics";
+
 const DEFAULT_HTTP: HttpFields = {
-  restMode: "inbound_hook",
-  host: "",
-  port: "443",
-  path: "/api/v1/ingest/raw",
-  method: "POST",
-  useTls: true,
+  restMode: "polling",
+  host: DEFAULT_REST_PULL_EXAMPLE_HOST,
+  port: DEFAULT_REST_PULL_EXAMPLE_PORT,
+  path: DEFAULT_REST_PULL_EXAMPLE_PATH,
+  method: "GET",
+  useTls: false,
   timeoutSeconds: "30",
   pollingUrl: "",
   pollingIntervalSeconds: "60",
@@ -127,7 +137,8 @@ function num(s: string, fallback: number): number {
 /** Map legacy `http` + `{ url }` and structured keys into HTTP fields. */
 export function configToHttpFields(protocol: string, c: Record<string, unknown>): HttpFields {
   const base = { ...DEFAULT_HTTP };
-  const rm = typeof c.rest_mode === "string" ? c.rest_mode : "";
+  const rmRaw = typeof c.rest_mode === "string" ? c.rest_mode : typeof c.restMode === "string" ? c.restMode : "";
+  const rm = rmRaw.toLowerCase();
   if (rm === "inbound_hook" || rm === "polling") base.restMode = rm;
   const urlStr = typeof c.url === "string" ? c.url : "";
   if (urlStr) {
@@ -160,17 +171,37 @@ export function configToHttpFields(protocol: string, c: Record<string, unknown>)
   if (typeof c.auth_header_name === "string") base.authHeaderName = c.auth_header_name;
   if (typeof c.auth_header_value === "string") base.authHeaderValue = c.auth_header_value;
   if (protocol === "https") base.useTls = true;
+  if (base.restMode === "inbound_hook") {
+    base.host = "";
+    base.pollingUrl = "";
+    base.method = typeof c.method === "string" && c.method.trim() ? c.method.toUpperCase() : "POST";
+  } else if (base.restMode === "polling") {
+    const hasExplicitMethod = typeof c.method === "string" && c.method.trim().length > 0;
+    if (!hasExplicitMethod) {
+      base.method = "GET";
+    }
+  }
   return base;
 }
 
 export function httpFieldsToConfig(f: HttpFields): Record<string, unknown> {
+  /** REST Push: upstream POSTs to the platform — no upstream URL/host in config. */
+  if (f.restMode === "inbound_hook") {
+    return {
+      rest_mode: "inbound_hook",
+      method: "POST",
+      timeout_seconds: 30,
+      use_tls: true,
+    };
+  }
+
   const port = num(f.port, f.useTls ? 443 : 80);
   const scheme = f.useTls ? "https" : "http";
   let path = f.path.trim() || "/";
   if (!path.startsWith("/")) path = `/${path}`;
   const url = `${scheme}://${f.host.trim()}${port ? `:${port}` : ""}${path}`;
   return {
-    rest_mode: f.restMode,
+    rest_mode: "polling",
     url,
     method: (f.method || "GET").toUpperCase(),
     timeout_seconds: num(f.timeoutSeconds, 30),
@@ -291,6 +322,7 @@ export function webSocketFieldsToConfig(f: WebSocketFields): Record<string, unkn
 export function normalizeProtocol(p: string): IngestProtocol {
   const x = (p || "http").toLowerCase();
   if (x === "https") return "http";
+  if (x === "rest") return "http";
   if (x === "file") return "http";
   if (x === "ws" || x === "wss" || x === "socket") return "websocket";
   if (INGEST_PROTOCOLS.includes(x as IngestProtocol)) return x as IngestProtocol;
@@ -336,4 +368,17 @@ export function buildConfigFromFields(
     default:
       return httpFieldsToConfig(http);
   }
+}
+
+/**
+ * Re-parse stored `device_endpoints.config` and re-emit the shape the editors produce.
+ * Ignores unknown or legacy top-level keys (e.g. alternate `host` vs `broker_host`) so
+ * “structure must match” checks compare like-for-like with {@link buildConfigFromFields}.
+ */
+export function canonicalConfigFromStored(
+  protocol: string,
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const parsed = parseConfigToFields(protocol, config ?? {});
+  return buildConfigFromFields(parsed.protocol, parsed.http, parsed.mqtt, parsed.coap, parsed.websocket);
 }

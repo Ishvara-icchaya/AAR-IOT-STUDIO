@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import { useAlertsModal } from "@/contexts/AlertsModalContext";
 import type { MonitoringIncident } from "@/types/monitoring";
 
 const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
@@ -20,11 +20,13 @@ function sevColor(s: string) {
 }
 
 export function MonitoringIncidentTable({ items }: { items: MonitoringIncident[] }) {
+  const { openDetail } = useAlertsModal();
+
   if (!items.length) {
     return <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>No recent incidents in alert history.</p>;
   }
   return (
-    <div style={{ overflow: "auto" }}>
+    <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
       <table style={tbl}>
         <thead>
           <tr>
@@ -45,9 +47,21 @@ export function MonitoringIncidentTable({ items }: { items: MonitoringIncident[]
               <td style={{ ...td, color: sevColor(r.severity), fontWeight: 600 }}>{r.severity}</td>
               <td style={td}>{r.message}</td>
               <td style={td}>
-                <Link to={`/alerts/${r.alert_id}`} style={{ color: "var(--color-accent)" }}>
+                <button
+                  type="button"
+                  onClick={() => openDetail(r.alert_id)}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    color: "var(--color-accent)",
+                    cursor: "pointer",
+                    font: "inherit",
+                    textDecoration: "underline",
+                  }}
+                >
                   View
-                </Link>
+                </button>
               </td>
             </tr>
           ))}

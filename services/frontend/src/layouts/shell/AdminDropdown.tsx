@@ -1,8 +1,9 @@
+import { Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ADMIN_NAV_ITEMS, isAdminSectionActive } from "./navigation";
 
-export function AdminDropdown() {
+export function AdminDropdown({ iconOnly }: { iconOnly?: boolean }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
@@ -28,12 +29,20 @@ export function AdminDropdown() {
     <div className="shell-dropdown shell-dropdown--toolbar" ref={rootRef}>
       <button
         type="button"
-        className={`shell-toolbar-btn shell-dropdown__trigger${open || adminActive ? " shell-dropdown__trigger--active" : ""}`}
+        className={`shell-toolbar-btn shell-dropdown__trigger${iconOnly ? " shell-dropdown__trigger--icon" : ""}${open || adminActive ? " shell-dropdown__trigger--active" : ""}`}
         aria-expanded={open}
         aria-haspopup="true"
+        title="Administration"
+        aria-label="Administration"
         onClick={() => setOpen((o) => !o)}
       >
-        Administration <span aria-hidden>▾</span>
+        {iconOnly ? (
+          <Settings size={18} strokeWidth={2} aria-hidden />
+        ) : (
+          <>
+            Administration <span aria-hidden>▾</span>
+          </>
+        )}
       </button>
       {open ? (
         <div className="shell-dropdown__panel shell-dropdown__panel--toolbar" role="menu">

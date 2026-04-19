@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useAlertsModal } from "@/contexts/AlertsModalContext";
 import { fetchMonitoringServiceDetail } from "@/api/monitoring";
 import type { MonitoringServiceDetail } from "@/types/monitoring";
 import { MonitoringStatusBadge } from "./MonitoringStatusBadge";
@@ -43,6 +43,7 @@ export function MonitoringServiceDetailDrawer({
   serviceName: string | null;
   onClose: () => void;
 }) {
+  const { openDetail } = useAlertsModal();
   const [row, setRow] = useState<MonitoringServiceDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -187,9 +188,21 @@ export function MonitoringServiceDetailDrawer({
                   <li key={i.alert_id} style={{ marginBottom: "0.35rem" }}>
                     <small style={{ color: "var(--color-text-muted)" }}>{new Date(i.time).toLocaleString()}</small>{" "}
                     <span style={{ textTransform: "capitalize" }}>{i.severity}</span> — {i.message}{" "}
-                    <Link to={`/alerts/${i.alert_id}`} style={{ color: "var(--color-accent)" }}>
+                    <button
+                      type="button"
+                      onClick={() => openDetail(i.alert_id)}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        padding: 0,
+                        color: "var(--color-accent)",
+                        cursor: "pointer",
+                        font: "inherit",
+                        textDecoration: "underline",
+                      }}
+                    >
                       View
-                    </Link>
+                    </button>
                   </li>
                 ))}
               </ul>

@@ -185,7 +185,8 @@ export function DashboardLiveRenderer({
   /** Enterprise landing: enables map side panel (object counts by site). */
   enterpriseMode?: boolean;
 }) {
-  const byId = Object.fromEntries(widgets.map((w) => [w.widget_id, w])) as Record<string, DashboardLiveWidgetDTO>;
+  const list = Array.isArray(widgets) ? widgets : [];
+  const byId = Object.fromEntries(list.map((w) => [w.widget_id, w])) as Record<string, DashboardLiveWidgetDTO>;
   const rows = parseRows(layout);
   const runtime: DashboardLiveRuntimeValue = {
     ...buildRuntimeFromDashboard(dashboard),
@@ -206,9 +207,7 @@ export function DashboardLiveRenderer({
     <DashboardLiveProvider value={runtime}>
       <div className="dash-live">
         {renderedAt && (
-          <p className="dash-live__meta dash-widget__muted" style={{ marginBottom: "0.75rem" }}>
-            Rendered {renderedAt}
-          </p>
+          <p className="dash-live__meta dash-widget__muted">Rendered {renderedAt}</p>
         )}
         {rows.map((row, ri) => (
           <div key={row.rowId || `row-${ri}`} className="dash-row">

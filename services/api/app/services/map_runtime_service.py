@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import json
 import uuid
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.data_object import DataObject
+from app.services.data_object_query import as_of_timestamp
+from app.services.workflow_result_query import (
+    as_of_timestamp as result_object_as_of_timestamp,
+    order_by_metadata_recency as order_result_objects_by_recency,
+)
 from app.models.workflow_result_object import WorkflowResultObject
 from app.services.map_eligibility import map_eligible_data_object, map_eligible_result_object
 from app.services.map_object_kpi_timescale import query_map_kpi_recent
@@ -52,19 +58,25 @@ def list_eligible_map_objects(
             lon_field=lon_field,
         ):
             continue
+        as_of = as_of_timestamp(row)
         out.append(
             {
                 "source_type": "data_object",
                 "source_id": str(row.id),
                 "name": row.name,
                 "lifecycle_status": row.lifecycle_status,
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "updated_at": as_of.isoformat() if as_of else None,
+                "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
             }
         )
 
-    stmt_ro = select(WorkflowResultObject).where(
-        WorkflowResultObject.customer_id == customer_id,
-        WorkflowResultObject.site_id == site_id,
+    stmt_ro = (
+        select(WorkflowResultObject)
+        .where(
+            WorkflowResultObject.customer_id == customer_id,
+            WorkflowResultObject.site_id == site_id,
+        )
+        .order_by(order_result_objects_by_recency())
     )
     for row in db.scalars(stmt_ro).all():
         payload = dict(row.payload_json or {})
@@ -72,13 +84,15 @@ def list_eligible_map_objects(
             payload["health_status"] = row.health_status
         if not map_eligible_result_object(payload=payload, lat_field=lat_field, lon_field=lon_field):
             continue
+        as_ro = result_object_as_of_timestamp(row)
         out.append(
             {
                 "source_type": "result_object",
                 "source_id": str(row.id),
                 "name": row.result_object_name,
                 "lifecycle_status": "published",
-                "updated_at": row.created_at.isoformat() if row.created_at else None,
+                "updated_at": as_ro.isoformat() if as_ro else None,
+                "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
             }
         )
     return out
@@ -150,6 +164,23 @@ def _apply_kpi_fields(marker: dict[str, Any], kpi_fields: list[str]) -> dict[str
     return marker
 
 
+def _marker_passes_device_filter(
+    st_raw: dict[str, Any],
+    source_type: str,
+    allowed_device_ids: set[uuid.UUID] | None,
+) -> bool:
+    if not allowed_device_ids:
+        return True
+    did = st_raw.get("device_id")
+    if did:
+        try:
+            return uuid.UUID(str(did)) in allowed_device_ids
+        except ValueError:
+            return False
+    # No device on snapshot: hide data_object when filtering; keep result_object (may lack device)
+    return source_type != "data_object"
+
+
 def markers_with_redis_first(
     db: Session,
     *,
@@ -161,15 +192,16 @@ def markers_with_redis_first(
     excluded: set[str],
     title_field: str | None,
     health_field: str | None,
-    pg_markers_fn,
+    allowed_device_ids: set[uuid.UUID] | None = None,
+    pg_markers_fn: Callable[..., list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    """Try Redis snapshot markers; fall back to PG builder (must return same marker shape)."""
+    """Try Redis snapshot markers (batched GET); fall back to PG builder (must return same marker shape)."""
     r = redis_client()
     if r is not None:
         try:
             members = list_site_object_keys(r, site_id)
             if members:
-                markers: list[dict[str, Any]] = []
+                pending: list[tuple[str, str, str]] = []
                 for m in members:
                     parsed = parse_member(m)
                     if not parsed:
@@ -178,14 +210,29 @@ def markers_with_redis_first(
                     sid_s = str(sid)
                     if sid_s in excluded:
                         continue
-                    st_raw = load_state_json(r, state_key(customer_id, st, sid_s))
-                    if not st_raw:
-                        continue
-                    mk = dict(st_raw)
-                    mk = _apply_kpi_fields(mk, kpi_fields)
-                    markers.append(mk)
-                if markers:
-                    return markers
+                    pending.append((st, sid_s, state_key(customer_id, st, sid_s)))
+                if pending:
+                    pipe = r.pipeline()
+                    for _, _, rk in pending:
+                        pipe.get(rk)
+                    raw_vals = pipe.execute()
+                    markers: list[dict[str, Any]] = []
+                    for (st, _sid_s, _), raw in zip(pending, raw_vals):
+                        if not raw:
+                            continue
+                        try:
+                            st_raw = json.loads(raw)
+                        except Exception:
+                            continue
+                        if not isinstance(st_raw, dict):
+                            continue
+                        if not _marker_passes_device_filter(st_raw, st, allowed_device_ids):
+                            continue
+                        mk = dict(st_raw)
+                        mk = _apply_kpi_fields(mk, kpi_fields)
+                        markers.append(mk)
+                    if markers:
+                        return markers
         finally:
             try:
                 r.close()
@@ -202,6 +249,7 @@ def markers_with_redis_first(
         excluded=excluded,
         title_field=title_field,
         health_field=health_field,
+        allowed_device_ids=allowed_device_ids,
     )
 
 

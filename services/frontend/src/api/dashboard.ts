@@ -105,6 +105,7 @@ export type ResultObjectSourceItem = {
   result_object_name: string;
   site_id: string;
   created_at: string;
+  latest_seen_at?: string | null;
 };
 
 export async function listDashboardDataObjectSources(siteId: string) {

@@ -8,3 +8,13 @@ export function patchCustomerName(name: string) {
     json: { name },
   });
 }
+
+export type TenantOperationalDataClearResponse = { deleted_counts: Record<string, number> };
+
+/** Removes devices, raw/data objects, workflows (incl. result objects), dashboards, etc. Sites and users are kept. Admin only. */
+export function clearOperationalData(password: string, confirmation_phrase: string) {
+  return apiFetch<TenantOperationalDataClearResponse>("/administration/clear-operational-data", {
+    method: "POST",
+    json: { password, confirmation_phrase },
+  });
+}

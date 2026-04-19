@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.site import Site
     from app.models.workflow import Workflow
     from app.models.workflow_execution import WorkflowExecution
+    from app.models.workflow_result_object_detail import WorkflowResultObjectDetail
 
 
 class WorkflowResultObject(Base):
@@ -43,6 +44,25 @@ class WorkflowResultObject(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    latest_detail_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_result_object_details.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    latest_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     workflow: Mapped["Workflow"] = relationship()
     execution: Mapped["WorkflowExecution"] = relationship(back_populates="result_objects")
+    details: Mapped[list["WorkflowResultObjectDetail"]] = relationship(
+        "WorkflowResultObjectDetail",
+        back_populates="result_object",
+        foreign_keys="WorkflowResultObjectDetail.workflow_result_object_id",
+        cascade="all, delete-orphan",
+        overlaps="latest_detail",
+    )
+    latest_detail: Mapped["WorkflowResultObjectDetail | None"] = relationship(
+        "WorkflowResultObjectDetail",
+        foreign_keys=[latest_detail_id],
+        post_update=True,
+        overlaps="details",
+    )

@@ -215,7 +215,8 @@ services:
   # Default broker is the mosquitto service;
   # set MQTT_BROKER_HOST to a LAN IP to use an external broker instead (you can omit mosquitto).
   # Register devices whose name matches payload device_id and sites whose name matches site_id.
-  # CoAP (UDP), WebSocket outbound clients, REST polling — optional profile "ingress".
+  # CoAP (UDP) + WebSocket outbound clients — optional profile "ingress".
+  # REST polling: worker-rest-poller is enabled in the default stack (outbound GET/POST polls device_endpoints).
   # Set COAP_LISTENER_DEPLOYED / WEBSOCKET_INGEST_DEPLOYED / REST_POLLER_DEPLOYED=true on api
   # and publish UDP ${COAP_LISTENER_PUBLISH_PORT:-5683} for sensors.
   worker-coap-listener:
@@ -288,7 +289,6 @@ services:
         condition: service_healthy
 
   worker-rest-poller:
-    profiles: ["ingress"]
     build:
       context: ./services/workers
       dockerfile: Dockerfile
@@ -316,6 +316,27 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      redis:
+        condition: service_healthy
+
+  worker-device-liveness:
+    build:
+      context: ./services/workers
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.device_liveness"]
+    environment:
+      METADATA_DATABASE_URL: ${WORKER_METADATA_DATABASE_URL:-postgresql://aar:aar_dev_change_me@postgres:5432/aar_metadata}
+      REDIS_URL: ${API_REDIS_URL:-redis://redis:6379/0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PYTHONUNBUFFERED: "1"
+      DEVICE_LIVENESS_SCAN_SECONDS: ${DEVICE_LIVENESS_SCAN_SECONDS:-15}
+      DEVICE_LIVENESS_BATCH_SIZE: ${DEVICE_LIVENESS_BATCH_SIZE:-500}
+      DEVICE_LIVENESS_ALERT_ON_LATE: ${DEVICE_LIVENESS_ALERT_ON_LATE:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
 

@@ -67,7 +67,7 @@ export function ChartWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         X: {xLabel} (time) · Y: {yLabel}
         {twLabel ? ` · ${twLabel}` : ""}
       </p>
-      <div ref={ref} style={{ height: 260, width: "100%" }} />
+      <div ref={ref} className="dash-widget__chart-canvas" style={{ height: 260, width: "100%" }} />
     </div>
   );
 }

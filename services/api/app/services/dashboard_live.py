@@ -18,6 +18,8 @@ from app.core.dashboard_runtime import merge_layout_settings
 from app.schemas.dashboard_layout import iter_widgets
 from app.services.dashboard_health import derive_blink_mode, extract_health_fields
 from app.services.map_eligibility import map_eligible_data_object, map_eligible_result_object
+from app.services.data_object_query import as_of_timestamp
+from app.services.workflow_result_query import as_of_timestamp as result_object_as_of_timestamp
 from app.services.map_runtime_service import (
     compute_map_init_from_markers,
     lighten_map_markers,
@@ -162,14 +164,14 @@ def _load_source_record(
             payload["health_status"] = row.health_status
         if row.health_message:
             payload["health_message"] = row.health_message
-        return payload, row.updated_at, row.name
+        return payload, as_of_timestamp(row), row.name
     row = db.get(WorkflowResultObject, source_id)
     if not row or row.customer_id != customer_id:
         return None, None, None
     p = dict(row.payload_json or {})
     if row.health_status:
         p["health_status"] = row.health_status
-    return p, row.created_at, row.result_object_name
+    return p, result_object_as_of_timestamp(row), row.result_object_name
 
 
 def _table_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -398,6 +400,23 @@ def _aggregate_alerts_site(
     }
 
 
+def _parse_map_device_ids(config: dict[str, Any]) -> set[uuid.UUID] | None:
+    raw = config.get("map_device_ids") or config.get("mapDeviceIds")
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        raw = [x.strip() for x in raw.split(",") if x.strip()]
+    if not isinstance(raw, list) or len(raw) == 0:
+        return None
+    out: set[uuid.UUID] = set()
+    for x in raw:
+        try:
+            out.add(uuid.UUID(str(x).strip()))
+        except ValueError:
+            continue
+    return out if out else None
+
+
 def _site_summary(
     db: Session, *, customer_id: uuid.UUID, site_id: uuid.UUID
 ) -> dict[str, Any]:
@@ -430,6 +449,7 @@ def _map_markers_site(
     excluded: set[str],
     title_field: str | None,
     health_field: str | None,
+    allowed_device_ids: set[uuid.UUID] | None = None,
 ) -> list[dict[str, Any]]:
     markers: list[dict[str, Any]] = []
     stmt_do = select(DataObject).where(
@@ -439,6 +459,8 @@ def _map_markers_site(
     for row in db.scalars(stmt_do).all():
         sid = str(row.id)
         if sid in excluded:
+            continue
+        if allowed_device_ids and row.device_id not in allowed_device_ids:
             continue
         payload = dict(row.payload or {})
         payload["_kpi"] = dict(row.kpi_json or {})
@@ -484,6 +506,7 @@ def _map_markers_site(
             if tv is not None:
                 title = str(tv)
         hmsg = row.health_message or payload.get("health_message")
+        as_of = as_of_timestamp(row)
         markers.append(
             {
                 "source_type": "data_object",
@@ -497,7 +520,8 @@ def _map_markers_site(
                 "health_status": hf.get("health_status") or row.health_status,
                 "health_message": str(hmsg) if hmsg else None,
                 "blink_mode": blink,
-                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "updated_at": as_of.isoformat() if as_of else None,
+                "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
             }
         )
 
@@ -613,6 +637,7 @@ def build_map_marker_for_source(
             if tv is not None:
                 title = str(tv)
         hmsg = row.health_message or payload.get("health_message")
+        as_of = as_of_timestamp(row)
         return {
             "source_type": "data_object",
             "source_id": str(row.id),
@@ -625,7 +650,8 @@ def build_map_marker_for_source(
             "health_status": hf.get("health_status") or row.health_status,
             "health_message": str(hmsg) if hmsg else None,
             "blink_mode": blink,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "updated_at": as_of.isoformat() if as_of else None,
+            "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
         }
 
     if st == "result_object":
@@ -668,7 +694,8 @@ def build_map_marker_for_source(
             "health_status": hf.get("health_status") or row.health_status,
             "health_message": str(hmsg) if hmsg else None,
             "blink_mode": blink,
-            "updated_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": result_object_as_of_timestamp(row).isoformat(),
+            "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
         }
     return None
 
@@ -768,6 +795,7 @@ def resolve_widget_data(
         latf = str(_bget(binding, "latitude_field", "latitudeField") or "gps.lat")
         lonf = str(_bget(binding, "longitude_field", "longitudeField") or "gps.lon")
         auto = bool(_cget(config, "auto_include_gps_objects", "autoIncludeGpsObjects", True))
+        allowed_devices = _parse_map_device_ids(config if isinstance(config, dict) else {})
         excluded_raw = config.get("excluded_source_ids") or config.get("excludedSourceIds") or []
         excluded = {str(x) for x in excluded_raw}
         kpi_fields = binding.get("kpi_fields") or binding.get("kpiFields") or []
@@ -834,6 +862,7 @@ def resolve_widget_data(
                 excluded=excluded,
                 title_field=title_field,
                 health_field=health_field,
+                allowed_device_ids=allowed_devices,
                 pg_markers_fn=_map_markers_site,
             )
             light = lighten_map_markers(markers)

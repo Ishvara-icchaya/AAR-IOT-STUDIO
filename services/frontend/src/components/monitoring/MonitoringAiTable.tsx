@@ -69,7 +69,10 @@ export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
       >
         <OpsSummary ops={data.ops} />
       </div>
-      <div style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", marginBottom: "1.5rem" }}>
+      <div
+        className="table-scroll-sticky"
+        style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", marginBottom: "1.5rem" }}
+      >
         <table style={tbl}>
           <thead>
             <tr>
@@ -105,7 +108,7 @@ export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
       {data.recent_ai_issues.length === 0 ? (
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>None recorded.</p>
       ) : (
-        <div style={{ overflow: "auto" }}>
+        <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
           <table style={tbl}>
             <thead>
               <tr>

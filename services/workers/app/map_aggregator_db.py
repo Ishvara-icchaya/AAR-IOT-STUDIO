@@ -57,7 +57,8 @@ def fetch_data_object_row(data_object_id: str) -> dict[str, Any] | None:
 
 def fetch_result_object_row(result_object_id: str) -> dict[str, Any] | None:
     sql = """
-    SELECT id, customer_id, site_id, result_object_name, payload_json, health_status, created_at
+    SELECT id, customer_id, site_id, result_object_name, payload_json, health_status, created_at,
+           latest_seen_at
     FROM workflow_result_objects WHERE id = %s::uuid
     """
     conn = psycopg2.connect(_metadata_url())
@@ -75,6 +76,7 @@ def fetch_result_object_row(result_object_id: str) -> dict[str, Any] | None:
                 "payload_json": row[4] if isinstance(row[4], dict) else {},
                 "health_status": row[5],
                 "created_at": row[6],
+                "latest_seen_at": row[7],
             }
     finally:
         conn.close()

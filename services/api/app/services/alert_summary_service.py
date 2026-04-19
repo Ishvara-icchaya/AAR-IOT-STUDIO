@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 from app.access_control import allowed_site_ids_for_user
 from app.core.redis_sync import get_redis
 from app.models.alert import Alert
+from app.models.device import Device
 from app.models.user import User
 from app.schemas.alert import AlertUnacknowledgedSummary
 
 
 def unacknowledged_summary(db: Session, user: User) -> AlertUnacknowledgedSummary:
     allowed = allowed_site_ids_for_user(db, user)
+    effective_site = func.coalesce(Device.site_id, Alert.site_id)
     filt: list = [
         Alert.customer_id == user.customer_id,
         Alert.acknowledged.is_(False),
@@ -31,13 +33,17 @@ def unacknowledged_summary(db: Session, user: User) -> AlertUnacknowledgedSummar
                 has_critical=False,
                 critical_recent_count=0,
             )
-        filt.append(Alert.site_id.in_(allowed))
+        filt.append(effective_site.in_(allowed))
 
-    total = int(db.scalar(select(func.count()).select_from(Alert).where(*filt)) or 0)
+    unacked_from = Alert.__table__.outerjoin(Device.__table__, Device.id == Alert.device_id)
+    total = int(db.scalar(select(func.count()).select_from(unacked_from).where(*filt)) or 0)
 
     by_site: dict[str, int] = {}
     site_rows = db.execute(
-        select(Alert.site_id, func.count()).where(*filt).group_by(Alert.site_id)
+        select(effective_site, func.count())
+        .select_from(unacked_from)
+        .where(*filt)
+        .group_by(effective_site)
     ).all()
     for sid, cnt in site_rows:
         key = str(sid) if sid else "_none"
@@ -46,7 +52,7 @@ def unacknowledged_summary(db: Session, user: User) -> AlertUnacknowledgedSummar
     def _count_sev(sev: str) -> int:
         return int(
             db.scalar(
-                select(func.count()).select_from(Alert).where(*filt, Alert.severity == sev)
+                select(func.count()).select_from(unacked_from).where(*filt, Alert.severity == sev)
             )
             or 0
         )

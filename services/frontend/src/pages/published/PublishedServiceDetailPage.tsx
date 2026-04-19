@@ -59,7 +59,10 @@ export function PublishedServiceDetailPage() {
             </Link>
           </div>
           <h2 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Delivery logs</h2>
-          <div style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)" }}>
+          <div
+            className="table-scroll-sticky"
+            style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)" }}
+          >
             <table style={tbl}>
               <thead>
                 <tr>

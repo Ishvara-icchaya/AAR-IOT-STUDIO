@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { ExternalLink, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useAlertsModal } from "@/contexts/AlertsModalContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +11,7 @@ import { AlarmStrip } from "../components/AlarmStrip";
 import { MOCK_ALARMS, MOCK_KPIS } from "../mockData";
 
 export function IotRightPanel() {
+  const { openList } = useAlertsModal();
   const critical = MOCK_ALARMS.filter((a) => a.severity === "critical").length;
 
   return (
@@ -67,14 +69,18 @@ export function IotRightPanel() {
               <CardTitle className="text-sm">Quick links</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <Button variant="secondary" size="sm" className="justify-between" asChild>
-                <Link to="/alerts">
-                  Unified alerts
-                  <ExternalLink className="size-3.5 opacity-70" />
-                </Link>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="justify-between"
+                type="button"
+                onClick={() => openList()}
+              >
+                Unified alerts
+                <ExternalLink className="size-3.5 opacity-70" aria-hidden />
               </Button>
               <Button variant="secondary" size="sm" className="justify-between" asChild>
-                <Link to="/devices/manage">
+                <Link to="/devices/register">
                   Device registry
                   <ExternalLink className="size-3.5 opacity-70" />
                 </Link>

@@ -10,4 +10,6 @@ export type ResultObjectV1 = {
   payload_json: Record<string, unknown>;
   health_status: string | null;
   created_at: string;
+  latest_detail_id?: string | null;
+  latest_seen_at?: string | null;
 };

@@ -3,9 +3,11 @@ from app.models.llm_config import LlmConfig
 from app.models.alert import Alert
 from app.models.customer import Customer
 from app.models.data_object import DataObject
+from app.models.data_object_detail import DataObjectDetail
 from app.models.dashboard import Dashboard
 from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.device import Device
+from app.models.health_threshold_reference import HealthThresholdReference
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.device_object import DeviceObject
 from app.models.monitoring_config import MonitoringConfig
@@ -24,6 +26,7 @@ from app.models.workflow_execution import WorkflowExecution
 from app.models.workflow_node import WorkflowNode
 from app.models.workflow_node_output import WorkflowNodeOutput
 from app.models.workflow_result_object import WorkflowResultObject
+from app.models.workflow_result_object_detail import WorkflowResultObjectDetail
 
 __all__ = [
     "AiQuery",
@@ -32,9 +35,11 @@ __all__ = [
     "Alert",
     "Customer",
     "DataObject",
+    "DataObjectDetail",
     "Dashboard",
     "DashboardUserPreference",
     "Device",
+    "HealthThresholdReference",
     "DeviceEndpoint",
     "DeviceObject",
     "MonitoringConfig",
@@ -54,4 +59,5 @@ __all__ = [
     "WorkflowNode",
     "WorkflowNodeOutput",
     "WorkflowResultObject",
+    "WorkflowResultObjectDetail",
 ]

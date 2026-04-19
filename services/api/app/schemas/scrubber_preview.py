@@ -26,6 +26,7 @@ class ScrubberPreviewResult(BaseModel):
     health_code: str
     health_message: str
     scrubber_version: str | None = None
+    health_details: dict[str, Any] | None = None
 
 
 class ScrubberPreviewResponse(BaseModel):
