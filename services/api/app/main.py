@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AAR-IoT-Studio API",
-    version="5.0.0",
+    version="6.0.0",
     lifespan=lifespan,
 )
 app.state.settings = settings
