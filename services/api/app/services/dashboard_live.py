@@ -706,6 +706,8 @@ def resolve_widget_data(
     customer_id: uuid.UUID,
     widget: dict[str, Any],
     dashboard_site_id: uuid.UUID | None = None,
+    allowed_site_ids: list[uuid.UUID] | None = None,
+    resolved_since: datetime | None = None,
 ) -> dict[str, Any]:
     wtype = str(widget.get("type") or "")
     title = str(widget.get("title") or "")
@@ -720,6 +722,62 @@ def resolve_widget_data(
             "title": title,
             "data": {"body": config.get("body") or config.get("text") or ""},
         }
+
+    if wtype == "ops_overview_kpis":
+        from app.services.dashboard_ops_data import build_ops_overview_kpis_data
+
+        data = build_ops_overview_kpis_data(
+            db, customer_id=customer_id, allowed_site_ids=allowed_site_ids
+        )
+        return {"widget_id": wid, "type": wtype, "title": title, "data": data}
+
+    if wtype == "ops_device_table":
+        from app.services.dashboard_ops_data import build_ops_device_table_data
+
+        lim = int(_cget(config, "limit", "limit", 20) or 20)
+        data = build_ops_device_table_data(
+            db, customer_id=customer_id, allowed_site_ids=allowed_site_ids, limit=lim
+        )
+        return {"widget_id": wid, "type": wtype, "title": title, "data": data}
+
+    if wtype == "ops_recent_activity":
+        from app.services.dashboard_ops_data import build_ops_recent_activity_data
+
+        lim = int(_cget(config, "limit", "limit", 5) or 5)
+        data = build_ops_recent_activity_data(
+            db,
+            customer_id=customer_id,
+            allowed_site_ids=allowed_site_ids,
+            limit_each=lim,
+            since=resolved_since,
+        )
+        return {"widget_id": wid, "type": wtype, "title": title, "data": data}
+
+    if wtype == "ops_recent_alerts":
+        from app.services.dashboard_ops_data import build_ops_recent_alerts_data
+
+        lim = int(_cget(config, "limit", "limit", 5) or 5)
+        data = build_ops_recent_alerts_data(
+            db,
+            customer_id=customer_id,
+            allowed_site_ids=allowed_site_ids,
+            limit=lim,
+            since=resolved_since,
+        )
+        return {"widget_id": wid, "type": wtype, "title": title, "data": data}
+
+    if wtype == "ops_alert_trends":
+        from app.services.dashboard_ops_data import build_ops_alert_trends_data
+
+        nd = int(_cget(config, "num_days", "numDays", 7) or 7)
+        data = build_ops_alert_trends_data(
+            db,
+            customer_id=customer_id,
+            allowed_site_ids=allowed_site_ids,
+            since=resolved_since,
+            num_days=nd,
+        )
+        return {"widget_id": wid, "type": wtype, "title": title, "data": data}
 
     if wtype == "health_summary":
         if not dashboard_site_id:
@@ -791,7 +849,8 @@ def resolve_widget_data(
     st = _bget(binding, "source_type", "sourceType")
     sid_raw = _bget(binding, "source_id", "sourceId")
 
-    if wtype == "map":
+    if wtype in ("map", "fleet_map"):
+        fleet_profile = wtype == "fleet_map"
         latf = str(_bget(binding, "latitude_field", "latitudeField") or "gps.lat")
         lonf = str(_bget(binding, "longitude_field", "longitudeField") or "gps.lon")
         auto = bool(_cget(config, "auto_include_gps_objects", "autoIncludeGpsObjects", True))
@@ -832,10 +891,14 @@ def resolve_widget_data(
                 "mode": "multi",
                 "latitude_field": latf,
                 "longitude_field": lonf,
-                "markers": light,
                 "manual_sources": True,
                 "site_id": str(dashboard_site_id),
                 "map_controls": _map_controls_dict(config),
+                "kpi_fields": kpi_fields,
+                "title_field": title_field,
+                "health_field": health_field,
+                "included_sources": list(included_raw) if isinstance(included_raw, list) else [],
+                "map_profile": "fleet" if fleet_profile else "site",
             }
             if mi:
                 data_ms["map_init"] = mi
@@ -871,10 +934,16 @@ def resolve_widget_data(
                 "mode": "multi",
                 "latitude_field": latf,
                 "longitude_field": lonf,
-                "markers": light,
                 "site_id": str(dashboard_site_id),
                 "map_controls": _map_controls_dict(config),
+                "kpi_fields": kpi_fields,
+                "excluded_source_ids": sorted(excluded),
+                "title_field": title_field,
+                "health_field": health_field,
+                "map_profile": "fleet" if fleet_profile else "site",
             }
+            if allowed_devices is not None:
+                data["device_ids"] = [str(x) for x in sorted(allowed_devices)]
             if mi:
                 data["map_init"] = mi
             if len(markers) == 0:
@@ -940,6 +1009,12 @@ def resolve_widget_data(
             "updated_at": updated_at.isoformat() if updated_at else None,
             "site_id": str(dashboard_site_id) if dashboard_site_id else None,
             "map_controls": _map_controls_dict(config),
+            "latitude_field": latf,
+            "longitude_field": lonf,
+            "kpi_fields": kpi_fields,
+            "title_field": title_field,
+            "health_field": health_field,
+            "map_profile": "fleet" if fleet_profile else "site",
         }
         if lat is not None and lon is not None:
             try:
@@ -1164,17 +1239,22 @@ def build_live_payload(
     layout: dict[str, Any],
     dashboard_meta: dict[str, Any],
     dashboard_site_id: uuid.UUID | None = None,
+    allowed_site_ids: list[uuid.UUID] | None = None,
+    resolved_since: datetime | None = None,
 ) -> dict[str, Any]:
     widgets_out: list[dict[str, Any]] = []
     for w in iter_widgets(layout):
-        widgets_out.append(
-            resolve_widget_data(
-                db,
-                customer_id=customer_id,
-                widget=w,
-                dashboard_site_id=dashboard_site_id,
-            )
+        out = resolve_widget_data(
+            db,
+            customer_id=customer_id,
+            widget=w,
+            dashboard_site_id=dashboard_site_id,
+            allowed_site_ids=allowed_site_ids,
+            resolved_since=resolved_since,
         )
+        cfg = w.get("config") if isinstance(w.get("config"), dict) else {}
+        out["config"] = cfg
+        widgets_out.append(out)
     merged_meta = {**dashboard_meta, "settings": merge_layout_settings(layout)}
     return {
         "dashboard": merged_meta,

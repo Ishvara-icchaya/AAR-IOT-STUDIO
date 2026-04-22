@@ -5,7 +5,6 @@ export type AIChatRequest = {
   site_ids?: string[] | null;
   time_range?: string | null;
   use_llm?: boolean;
-  debug_raw?: boolean;
 };
 
 export type AIChatResponse = {

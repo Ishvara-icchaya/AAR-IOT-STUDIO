@@ -1,9 +1,12 @@
-import type { CSSProperties, FormEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { BrushCleaning } from "lucide-react";
 import { apiFetch } from "@/api/client";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
+import "./device-register-page.css";
 
 type DeviceRow = { id: string; name: string; site_id: string };
 
@@ -62,123 +65,118 @@ export function ScrubberRawSelectPage() {
   }
 
   const latest = rows[0];
+  const returnTo = "/scrubber/raw-select";
+
+  const columns = useMemo<PlainOperationalColumn<RawRow>[]>(() => {
+    return [
+      {
+        id: "id",
+        header: "Raw ID",
+        cell: (r) => <code style={{ fontSize: "0.75rem" }}>{r.id ? `${r.id.slice(0, 8)}…` : "—"}</code>,
+      },
+      {
+        id: "ingested_at",
+        header: "Ingested",
+        cell: (r) => new Date(r.ingested_at).toLocaleString(),
+      },
+      {
+        id: "size_bytes",
+        header: "Size",
+        cell: (r) => String(r.size_bytes ?? "—"),
+      },
+      {
+        id: "protocol_source",
+        header: "Protocol",
+        cell: (r) => String(r.protocol_source ?? "—"),
+      },
+      { id: "verify_status", header: "Verify", cell: (r) => r.verify_status },
+      {
+        id: "studio",
+        header: "",
+        cell: (r) => (
+          <div className="dm-act-grid" style={{ justifyContent: "flex-start" }}>
+            <Link
+              className="dm-act-grid__btn"
+              to={`/scrubber/create?rawId=${encodeURIComponent(r.id)}&deviceId=${encodeURIComponent(
+                deviceId,
+              )}&returnTo=${encodeURIComponent(returnTo)}`}
+              title="Open Scrubber Studio"
+              aria-label="Open Scrubber Studio for this raw sample"
+            >
+              <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+            </Link>
+          </div>
+        ),
+      },
+    ];
+  }, [deviceId]);
 
   return (
-    <PageShell title="Scrubber — pick raw sample">
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        Choose a device and a recent archived <code>raw_data_object</code>, then open <strong>Scrubber Studio</strong>. The
-        studio preview uses the same <code>POST /scrubber/preview</code> path as production workers; raw bytes in MinIO are
-        never modified.
-      </p>
-      <p style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        Compiled outputs are listed under{" "}
-        <Link to="/scrubber/data-objects">View Data Objects</Link>.
-      </p>
-      {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <form onSubmit={onRefresh} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-        <label style={lbl}>
-          Device
-          <select
-            value={deviceId}
-            onChange={(e) => setDeviceId(e.target.value)}
-            style={{ ...inp, minWidth: "220px" }}
-          >
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" style={btn}>
-          Refresh list
-        </button>
-        {latest && (
-          <Link
-            style={{ alignSelf: "flex-end", fontSize: "0.9rem" }}
-            to={`/scrubber/create?rawId=${encodeURIComponent(latest.id)}&deviceId=${encodeURIComponent(
-              deviceId,
-            )}&returnTo=${encodeURIComponent("/scrubber/raw-select")}`}
-          >
-            Open studio with latest raw →
-          </Link>
-        )}
-      </form>
-      <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-        <table style={tbl}>
-          <thead>
-            <tr>
-              <th style={th}>Raw ID</th>
-              <th style={th}>Ingested</th>
-              <th style={th}>Size</th>
-              <th style={th}>Protocol</th>
-              <th style={th}>Verify</th>
-              <th style={th} />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td style={td}>
-                  <code style={{ fontSize: "0.75rem" }}>{r.id.slice(0, 8)}…</code>
-                </td>
-                <td style={td}>{new Date(r.ingested_at).toLocaleString()}</td>
-                <td style={td}>{r.size_bytes ?? "—"}</td>
-                <td style={td}>{r.protocol_source ?? "—"}</td>
-                <td style={td}>{r.verify_status}</td>
-                <td style={td}>
-                  <Link
-                    to={`/scrubber/create?rawId=${encodeURIComponent(r.id)}&deviceId=${encodeURIComponent(
-                      deviceId,
-                    )}&returnTo=${encodeURIComponent("/scrubber/raw-select")}`}
-                  >
-                    Open studio
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {rows.length === 0 && deviceId && (
-          <p style={{ color: "var(--color-text-muted)", marginTop: "0.5rem" }}>No raw objects for this device.</p>
-        )}
+    <PageShell variant="list" className="scrubber-raw-select-page device-manage-page">
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-page-hero__title">Pick raw sample</h1>
+              <p className="dm-page-hero__subtitle">
+                Choose a device and a recent archived raw object, then open Scrubber Studio. Raw bytes in storage are never
+                modified.
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <section className="dm-filter-panel" aria-label="Filters">
+          <form noValidate onSubmit={onRefresh} className="dm-controls-form__row">
+            <label className="dm-filter-field">
+              <span className="dm-filter-field__label">Device</span>
+              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+                {devices.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="dm-btn dm-btn--primary">
+              Refresh list
+            </button>
+            {latest ? (
+              <Link
+                className="dm-btn dm-btn--outline"
+                style={{ alignSelf: "flex-end", textDecoration: "none" }}
+                to={`/scrubber/create?rawId=${encodeURIComponent(latest.id)}&deviceId=${encodeURIComponent(
+                  deviceId,
+                )}&returnTo=${encodeURIComponent("/scrubber/raw-select")}`}
+              >
+                Open studio (latest)
+              </Link>
+            ) : null}
+            <span className="dm-inline-summary" style={{ margin: 0, alignSelf: "center" }}>
+              <Link to="/scrubber/data-objects" className="dm-name-link">
+                Data objects
+              </Link>
+            </span>
+          </form>
+        </section>
+
+        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
+
+        <div className="dm-table-wrap">
+          <div className="dm-device-table-shell">
+            <div className="dm-table-scroll">
+              <PlainOperationalTable<RawRow>
+                rows={rows}
+                columns={columns}
+                getRowId={(r) => r.id}
+                bordered
+                emptyMessage={deviceId ? "No raw objects for this device." : "Select a device."}
+                resetPageKey={deviceId}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </PageShell>
   );
 }
-
-const lbl: CSSProperties = {
-  display: "grid",
-  gap: "0.25rem",
-  fontSize: "0.85rem",
-  color: "var(--color-text-muted)",
-};
-
-const inp: CSSProperties = {
-  padding: "0.5rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-  fontFamily: "inherit",
-};
-
-const btn: CSSProperties = {
-  padding: "0.55rem 0.85rem",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "var(--color-accent)",
-  color: "var(--btn-on-accent)",
-  fontFamily: "inherit",
-  fontWeight: 600,
-  cursor: "pointer",
-  alignSelf: "flex-end",
-};
-
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  borderBottom: "1px solid var(--color-border)",
-  padding: "0.4rem",
-};
-const td: CSSProperties = { borderBottom: "1px solid var(--color-border)", padding: "0.4rem" };

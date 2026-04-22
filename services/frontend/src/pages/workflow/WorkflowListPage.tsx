@@ -1,42 +1,66 @@
-import type { CSSProperties, FormEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { apiFetch } from "@/api/client";
-import * as wfApi from "@/api/workflow";
-import { PageStatus } from "@/components/PageStatus";
-import { useOpsShell } from "@/contexts/OpsShellContext";
-import { useResourceInUse } from "@/contexts/ResourceInUseContext";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
 import { PageShell } from "@/layouts/PageShell";
+import { PageStatus } from "@/components/PageStatus";
+import { apiFetch } from "@/api/client";
 import type { WorkflowListItemDTO } from "@/types/workflow";
+import {
+  Activity,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Pencil,
+  Rocket,
+  Search,
+  Trash2,
+} from "lucide-react";
+import "../device-register-page.css";
 
-type SiteRow = { id: string; name: string };
+type SiteOpt = { id: string; name: string };
+
+const PAGE_SIZE = 25;
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
+function workflowLifecycleTone(status: string): DmTableStatusTone {
+  const s = (status || "").toLowerCase();
+  if (s.includes("error") || s.includes("fail")) return "error";
+  if (s.includes("publish") || s.includes("live") || s.includes("active")) return "online";
+  if (s.includes("draft") || s.includes("idle")) return "muted";
+  return "degraded";
+}
 
 export function WorkflowListPage() {
-  const { tryHandleResourceInUseError } = useResourceInUse();
-  const { siteId: opsSiteId, refreshToken } = useOpsShell();
-  const [sites, setSites] = useState<SiteRow[]>([]);
+  const navigate = useNavigate();
+  const [sites, setSites] = useState<SiteOpt[]>([]);
   const [siteId, setSiteId] = useState("");
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState<WorkflowListItemDTO[]>([]);
-  const [err, setErr] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setErr(null);
-    try {
-      const data = await wfApi.listWorkflows({
-        site_id: siteId || undefined,
-        q: q.trim() || undefined,
-      });
-      setItems(data?.items ?? []);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "List failed");
-    }
-  }, [siteId, q]);
+  const [items, setItems] = useState<WorkflowListItemDTO[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [appliedQ, setAppliedQ] = useState("");
+  const [lifecycleContains, setLifecycleContains] = useState("");
+  const [publishedFilter, setPublishedFilter] = useState<"all" | "published" | "draft">("all");
+  const [page, setPage] = useState(0);
+
+  const sitesById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of sites) m.set(s.id, s.name);
+    return m;
+  }, [sites]);
 
   useEffect(() => {
     void (async () => {
       try {
-        const data = await apiFetch<SiteRow[]>("/administration/sites");
+        const data = await apiFetch<SiteOpt[]>("/administration/sites");
         setSites(data ?? []);
       } catch {
         setSites([]);
@@ -44,182 +68,392 @@ export function WorkflowListPage() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (opsSiteId) setSiteId(opsSiteId);
-  }, [opsSiteId]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (siteId) params.set("site_id", siteId);
+      if (appliedQ.trim()) params.set("q", appliedQ.trim());
+      const qs = params.toString();
+      const path = qs ? `/workflows?${qs}` : "/workflows";
+      const data = await apiFetch<{ items: WorkflowListItemDTO[] }>(path);
+      const rows = data?.items;
+      setItems(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load workflows");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [siteId, appliedQ]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const filtered = useMemo(() => {
+    const lc = lifecycleContains.trim().toLowerCase();
+    return items.filter((w) => {
+      if (publishedFilter === "published" && !w.is_published) return false;
+      if (publishedFilter === "draft" && w.is_published) return false;
+      if (lc) {
+        const hay = `${w.lifecycle_status || ""} ${w.name || ""}`.toLowerCase();
+        if (!hay.includes(lc)) return false;
+      }
+      return true;
+    });
+  }, [items, lifecycleContains, publishedFilter]);
+
+  const kpis = useMemo(() => {
+    const total = filtered.length;
+    const published = filtered.filter((w) => w.is_published).length;
+    const draft = total - published;
+    const sitesSet = new Set(filtered.map((w) => w.site_id).filter(Boolean) as string[]);
+    const lastUpdated = filtered.reduce<string | null>((acc, w) => {
+      if (!w.updated_at) return acc;
+      if (!acc || w.updated_at > acc) return w.updated_at;
+      return acc;
+    }, null);
+    return { total, published, draft, siteCount: sitesSet.size, lastUpdated };
+  }, [filtered]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
   useEffect(() => {
-    if (refreshToken === 0) return;
-    void load();
-  }, [refreshToken, load]);
+    setPage(0);
+  }, [appliedQ, siteId, lifecycleContains, publishedFilter, items.length]);
 
-  async function onSearch(e: FormEvent) {
-    e.preventDefault();
-    await load();
-  }
+  useEffect(() => {
+    if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
+  }, [page, pageCount]);
 
-  async function onDup(id: string) {
-    setErr(null);
+  async function handlePublish(wf: WorkflowListItemDTO) {
+    const ok = window.confirm(`Publish workflow "${wf.name}"?`);
+    if (!ok) return;
     try {
-      const w = await wfApi.duplicateWorkflow(id);
-      if (w?.id) await load();
+      await apiFetch(`/workflows/${wf.id}/publish`, { method: "POST" });
+      await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Duplicate failed");
+      window.alert(e instanceof Error ? e.message : "Publish failed");
     }
   }
 
-  async function onDel(id: string) {
-    if (!confirm("Delete this workflow?")) return;
-    setErr(null);
+  async function handleStop(wf: WorkflowListItemDTO) {
+    const ok = window.confirm(`Stop published workflow "${wf.name}"?`);
+    if (!ok) return;
     try {
-      await wfApi.deleteWorkflow(id);
+      await apiFetch(`/workflows/${wf.id}/stop-publish`, { method: "POST" });
       await load();
     } catch (e) {
-      if (tryHandleResourceInUseError(e)) return;
-      setErr(e instanceof Error ? e.message : "Delete failed");
+      window.alert(e instanceof Error ? e.message : "Stop failed");
     }
   }
 
-  async function onPublish(id: string) {
-    setErr(null);
+  async function handleDuplicate(wf: WorkflowListItemDTO) {
+    const name = window.prompt("Name for duplicated workflow?", `${wf.name} (copy)`);
+    if (!name) return;
     try {
-      await wfApi.publishWorkflow(id);
+      const created = await apiFetch<{ id: string }>(`/workflows/${wf.id}/duplicate`, {
+        method: "POST",
+        json: { name },
+      });
       await load();
+      if (created?.id) navigate(`/workflow/${created.id}/edit`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Publish failed");
+      window.alert(e instanceof Error ? e.message : "Duplicate failed");
     }
   }
 
-  async function onStop(id: string) {
-    setErr(null);
+  async function handleDelete(wf: WorkflowListItemDTO) {
+    const ok = window.confirm(`Delete workflow "${wf.name}"? This cannot be undone.`);
+    if (!ok) return;
     try {
-      await wfApi.stopPublishWorkflow(id);
+      await apiFetch(`/workflows/${wf.id}`, { method: "DELETE" });
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Stop failed");
+      window.alert(e instanceof Error ? e.message : "Delete failed");
     }
   }
 
   return (
-    <PageShell title="Workflows">
-      <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        Published workflows consume <strong>published</strong> data_objects via worker-workflow (
-        <code>data_object.created</code>).
-      </p>
-      {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <form onSubmit={onSearch} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-        <label style={lbl}>
-          Site
-          <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={inp}>
-            <option value="">All permitted</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={lbl}>
-          Search
-          <input value={q} onChange={(e) => setQ(e.target.value)} style={inp} placeholder="Name" />
-        </label>
-        <button type="submit" style={btn}>
-          Search
-        </button>
-        <Link to="/workflow/create" style={{ ...btn, textDecoration: "none", alignSelf: "flex-end" }}>
-          Create workflow
-        </Link>
-      </form>
-      <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-        <table style={tbl}>
-          <thead>
-            <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Status</th>
-              <th style={th}>Version</th>
-              <th style={th}>Inputs</th>
-              <th style={th}>Terminate</th>
-              <th style={th}>Updated</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((w) => (
-              <tr key={w.id}>
-                <td style={td}>{w.name}</td>
-                <td style={td}>
-                  {w.lifecycle_status}
-                  {w.is_published ? " · live" : ""}
-                </td>
-                <td style={td}>{w.version}</td>
-                <td style={td}>{w.input_count}</td>
-                <td style={td}>{w.terminate_count}</td>
-                <td style={td}>{new Date(w.updated_at).toLocaleString()}</td>
-                <td style={td}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                    <Link to={`/workflow/${w.id}/edit`}>Edit</Link>
-                    <Link to={`/workflow/${w.id}/test`}>Test</Link>
-                    <Link to={`/workflow/${w.id}/live`}>Live</Link>
-                    {!w.is_published ? (
-                      <button type="button" style={linkBtn} onClick={() => void onPublish(w.id)}>
-                        Publish
-                      </button>
-                    ) : (
-                      <button type="button" style={linkBtn} onClick={() => void onStop(w.id)}>
-                        Stop
-                      </button>
-                    )}
-                    <button type="button" style={linkBtn} onClick={() => void onDup(w.id)}>
-                      Duplicate
-                    </button>
-                    <button type="button" style={linkBtn} onClick={() => void onDel(w.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {items.length === 0 && <p style={{ color: "var(--color-text-muted)" }}>No workflows.</p>}
+    <PageShell variant="list" className="workflow-list-page device-manage-page">
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-sr-only">Workflows</h1>
+            </div>
+          </div>
+        </header>
+
+        <section className="dm-kpi-row dm-kpi-row--equal-5" aria-label="Workflow summary">
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Matching</div>
+              <div className="dm-kpi__value">{kpis.total}</div>
+              <div className="dm-kpi__sub">After filters on this page</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Published</div>
+              <div className="dm-kpi__value">{kpis.published}</div>
+              <div className="dm-kpi__sub">Live pointer set</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Draft / not live</div>
+              <div className="dm-kpi__value">{kpis.draft}</div>
+              <div className="dm-kpi__sub">Unpublished or superseded</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Sites in view</div>
+              <div className="dm-kpi__value">{kpis.siteCount}</div>
+              <div className="dm-kpi__sub">Distinct site_id in list</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Newest update</div>
+              <div className="dm-kpi__value" style={{ fontSize: "0.95rem" }}>
+                {formatDateTime(kpis.lastUpdated)}
+              </div>
+              <div className="dm-kpi__sub">Max updated_at in list</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="dm-filter-panel" aria-label="Filters">
+          <div className="dm-controls-form__row">
+            <div className="dm-search-wrap">
+              <Search size={16} aria-hidden />
+              <input
+                className="dm-search-input"
+                placeholder="Search name (server)…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setAppliedQ(searchInput);
+                  }
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="dm-btn dm-btn--primary dm-btn--search"
+              onClick={() => setAppliedQ(searchInput)}
+            >
+              Search
+            </button>
+            <label className="dm-filter-field">
+              <span className="dm-filter-field__label">Site</span>
+              <select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                <option value="">All sites</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="dm-filter-field">
+              <span className="dm-filter-field__label">Published</span>
+              <select
+                value={publishedFilter}
+                onChange={(e) => setPublishedFilter(e.target.value as typeof publishedFilter)}
+              >
+                <option value="all">All</option>
+                <option value="published">Published only</option>
+                <option value="draft">Not published</option>
+              </select>
+            </label>
+            <label className="dm-filter-field dm-filter-field--grow">
+              <span className="dm-filter-field__label">Name or status contains</span>
+              <input
+                type="text"
+                value={lifecycleContains}
+                onChange={(e) => setLifecycleContains(e.target.value)}
+                placeholder="Client filter on name + lifecycle…"
+              />
+            </label>
+          </div>
+        </section>
+
+        {error ? <PageStatus variant="error">{error}</PageStatus> : null}
+
+        <div className="dm-table-wrap">
+          {loading && items.length === 0 ? (
+            <p className="dm-empty">Loading…</p>
+          ) : filtered.length === 0 ? (
+            <p className="dm-empty">
+              {loading && items.length > 0 ? "Updating list…" : "No workflows match the current filters."}
+            </p>
+          ) : (
+            <div className="dm-device-table-shell" aria-busy={loading}>
+              {loading && items.length > 0 ? <p className="dm-table-loading">Updating list…</p> : null}
+              <div className="dm-table-scroll">
+                <table className="dm-data-table">
+                  <thead>
+                    <tr>
+                      <th className="dm-data-table__th" scope="col">
+                        Name
+                      </th>
+                      <th className="dm-data-table__th" scope="col">
+                        Site
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Status
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Published
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Version
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Inputs
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Terminates
+                      </th>
+                      <th className="dm-data-table__th" scope="col">
+                        Updated
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageItems.map((wf) => {
+                      const siteLabel = wf.site_id ? sitesById.get(wf.site_id) || wf.site_id : "—";
+                      return (
+                        <tr key={wf.id} className="dm-data-table__row">
+                          <td className="dm-data-table__td">
+                            <Link className="dm-name-link" to={`/workflow/${wf.id}/edit`}>
+                              {wf.name}
+                            </Link>
+                          </td>
+                          <td className="dm-data-table__td">
+                            <small>{siteLabel}</small>
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--center">
+                            <DmTableStatusMetric
+                              label={wf.lifecycle_status}
+                              tone={workflowLifecycleTone(wf.lifecycle_status)}
+                            />
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--center">{wf.is_published ? "Yes" : "No"}</td>
+                          <td className="dm-data-table__td dm-data-table__td--center">{wf.version}</td>
+                          <td className="dm-data-table__td dm-data-table__td--center">{wf.input_count}</td>
+                          <td className="dm-data-table__td dm-data-table__td--center">{wf.terminate_count}</td>
+                          <td className="dm-data-table__td dm-data-table__td--muted">{formatDateTime(wf.updated_at)}</td>
+                          <td className="dm-data-table__td dm-data-table__td--actions">
+                            <div className="dm-act-grid">
+                              <Link
+                                className="dm-act-grid__btn"
+                                to={`/workflow/${wf.id}/edit`}
+                                title="Open editor"
+                                aria-label={`Open editor for ${wf.name}`}
+                              >
+                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <Link
+                                className="dm-act-grid__btn"
+                                to={`/workflow/${wf.id}/live`}
+                                title="Live runs and results"
+                                aria-label={`Live view for ${wf.name}`}
+                              >
+                                <Activity size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              {!wf.is_published ? (
+                                <button
+                                  type="button"
+                                  className="dm-act-grid__btn"
+                                  title="Publish workflow"
+                                  aria-label={`Publish ${wf.name}`}
+                                  onClick={() => void handlePublish(wf)}
+                                >
+                                  <Rocket size={16} strokeWidth={2} aria-hidden />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="dm-act-grid__btn"
+                                  title="Stop published workflow"
+                                  aria-label={`Stop published ${wf.name}`}
+                                  onClick={() => void handleStop(wf)}
+                                >
+                                  <Ban size={16} strokeWidth={2} aria-hidden />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn"
+                                title="Duplicate workflow"
+                                aria-label={`Duplicate ${wf.name}`}
+                                onClick={() => void handleDuplicate(wf)}
+                              >
+                                <Copy size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn dm-act-grid__btn--danger"
+                                title="Delete workflow"
+                                aria-label={`Delete ${wf.name}`}
+                                onClick={() => void handleDelete(wf)}
+                              >
+                                <Trash2 size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          <div className="dm-table-pager" role="navigation" aria-label="Pagination">
+            <span className="dm-table-pager__meta">
+              {filtered.length === 0
+                ? "0 workflows"
+                : `Showing ${safePage * PAGE_SIZE + 1}–${Math.min(filtered.length, (safePage + 1) * PAGE_SIZE)} of ${filtered.length}`}
+            </span>
+            <div className="dm-table-pager__controls">
+              <button
+                type="button"
+                className="dm-act-grid__btn dm-act-grid__btn--text"
+                disabled={safePage <= 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeft size={16} aria-hidden />
+                Prev
+              </button>
+              <span className="dm-table-pager__page">
+                Page {safePage + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                className="dm-act-grid__btn dm-act-grid__btn--text"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              >
+                Next
+                <ChevronRight size={16} aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </PageShell>
   );
 }
-
-const lbl: CSSProperties = { display: "grid", gap: "0.25rem", fontSize: "0.85rem", color: "var(--color-text-muted)" };
-const inp: CSSProperties = {
-  padding: "0.45rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-  minWidth: "160px",
-};
-const btn: CSSProperties = {
-  padding: "0.55rem 0.85rem",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "var(--color-accent)",
-  color: "var(--btn-on-accent)",
-  fontWeight: 600,
-  cursor: "pointer",
-  alignSelf: "flex-end",
-  textAlign: "center",
-};
-const linkBtn: CSSProperties = {
-  background: "none",
-  border: "none",
-  color: "var(--color-accent)",
-  cursor: "pointer",
-  padding: 0,
-  font: "inherit",
-  textDecoration: "underline",
-};
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = { textAlign: "left", borderBottom: "1px solid var(--color-border)", padding: "0.4rem" };
-const td: CSSProperties = { borderBottom: "1px solid var(--color-border)", padding: "0.4rem", verticalAlign: "top" };

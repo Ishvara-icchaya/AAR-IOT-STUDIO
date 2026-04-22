@@ -24,11 +24,7 @@
 }
 
 .shell--ops .shell__content {
-  background:
-    radial-gradient(ellipse 900px 480px at 10% 0%, color-mix(in oklab, var(--color-accent) 26%, transparent), transparent 58%),
-    radial-gradient(ellipse 800px 480px at 88% 12%, color-mix(in oklab, var(--color-accent) 14%, transparent), transparent 65%),
-    linear-gradient(165deg, var(--bg-grad-a) 0%, var(--bg-grad-b) 45%, var(--bg-grad-c) 100%);
-  background-attachment: fixed;
+  background: var(--color-bg);
 }
 
 .shell--ops .shell__pagebar {

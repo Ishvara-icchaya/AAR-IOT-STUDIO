@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { useAlertsModal } from "@/contexts/AlertsModalContext";
 
 export function MonitoringAlertsStrip() {
@@ -25,9 +26,13 @@ export function MonitoringAlertsStrip() {
           transition: "transform 0.15s ease",
           cursor: "pointer",
           fontFamily: "inherit",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "0.15rem",
         }}
       >
-        Open alerts →
+        Open alerts
+        <ChevronRight size={16} strokeWidth={2} aria-hidden />
       </button>
     </div>
   );

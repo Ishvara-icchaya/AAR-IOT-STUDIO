@@ -1,52 +1,39 @@
-import type { CSSProperties } from "react";
+import { useMemo } from "react";
 import type { MonitoringStorageRow } from "@/api/monitoring";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { MonitoringStatusBadge } from "./MonitoringStatusBadge";
 
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  color: "var(--color-text-muted)",
-};
-const td: CSSProperties = { padding: "0.5rem", borderBottom: "1px solid var(--color-border-subtle, #333)" };
-
 export function MonitoringStorageTable({ rows }: { rows: MonitoringStorageRow[] }) {
+  const columns = useMemo<PlainOperationalColumn<MonitoringStorageRow>[]>(() => {
+    return [
+      { id: "storage_layer", header: "Layer", cell: (r) => r.storage_layer },
+      {
+        id: "status",
+        header: "Status",
+        cell: (r) => <MonitoringStatusBadge status={r.status} />,
+      },
+      { id: "used_gb", header: "Used GB", cell: (r) => String(r.used_gb ?? "—") },
+      { id: "capacity_gb", header: "Capacity GB", cell: (r) => String(r.capacity_gb ?? "—") },
+      {
+        id: "last_check",
+        header: "Last check",
+        cell: (r) => {
+          const v = r.last_check;
+          return v ? new Date(v).toLocaleString() : "—";
+        },
+      },
+      { id: "notes", header: "Notes", cell: (r) => String(r.notes ?? "—") },
+    ];
+  }, []);
+
   return (
-    <div
-      className="table-scroll-sticky"
-      style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)" }}
-    >
-      <table style={tbl}>
-        <thead>
-          <tr>
-            <th style={th}>Layer</th>
-            <th style={th}>Status</th>
-            <th style={th}>Used GB</th>
-            <th style={th}>Capacity GB</th>
-            <th style={th}>Last check</th>
-            <th style={th}>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.storage_layer}>
-              <td style={td}>{r.storage_layer}</td>
-              <td style={td}>
-                <MonitoringStatusBadge status={r.status} />
-              </td>
-              <td style={td}>{r.used_gb ?? "—"}</td>
-              <td style={td}>{r.capacity_gb ?? "—"}</td>
-              <td style={td}>
-                <small>{r.last_check ? new Date(r.last_check).toLocaleString() : "—"}</small>
-              </td>
-              <td style={td}>
-                <small>{r.notes ?? "—"}</small>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="table-scroll-sticky" style={{ overflow: "auto", borderRadius: "var(--radius)" }}>
+      <PlainOperationalTable<MonitoringStorageRow>
+        rows={rows}
+        columns={columns}
+        getRowId={(r) => r.storage_layer}
+        bordered
+      />
     </div>
   );
 }

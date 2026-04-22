@@ -5,7 +5,6 @@ import { OpsShellProvider } from "@/contexts/OpsShellContext";
 import { dbg } from "@/lib/debug";
 import { FooterBar } from "./shell/FooterBar";
 import { HeaderBar } from "./shell/HeaderBar";
-import { PageMessageBar } from "./shell/PageMessageBar";
 import { ResourceInUseProvider } from "@/contexts/ResourceInUseContext";
 import { ShellMessageProvider } from "./shell/ShellMessageContext";
 import { titleFromPath } from "./shell/navigation";
@@ -13,6 +12,8 @@ import { titleFromPath } from "./shell/navigation";
 export function PlatformShell() {
   const { pathname } = useLocation();
   const headerTitle = titleFromPath(pathname);
+  /** Manage Devices renders its own title, scope controls, and actions to match the dashboard mock. */
+  const hideShellPageChrome = pathname === "/devices/register";
 
   useEffect(() => {
     dbg("PlatformShell mount", pathname);
@@ -25,12 +26,15 @@ export function PlatformShell() {
         <div className="shell shell--app shell--ops">
           <HeaderBar />
           <div className="shell__below-header">
-            <PageMessageBar />
             <div className="shell__main shell__main--with-footer">
-              <div className="shell__pagebar">
-                <strong className="shell__page-title">{headerTitle}</strong>
-              </div>
-              <OpsContextBar />
+              {!hideShellPageChrome ? (
+                <>
+                  <div className="shell__pagebar">
+                    <strong className="shell__page-title">{headerTitle}</strong>
+                  </div>
+                  <OpsContextBar />
+                </>
+              ) : null}
               <main className="shell__content">
                 <Outlet />
               </main>

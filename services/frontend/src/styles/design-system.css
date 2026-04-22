@@ -1,0 +1,664 @@
+/**
+ * Main-app design system (PlatformShell / PageShell).
+ * Uses existing CSS variables from index.css — no Tailwind here.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Layout primitives                                                          */
+/* -------------------------------------------------------------------------- */
+
+.app-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-gap-md, 0.75rem);
+  min-width: 0;
+}
+
+.app-section__title {
+  margin: 0;
+  font-size: var(--ds-section-title-size, 1rem);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.app-section__description {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.app-grid {
+  display: grid;
+  gap: var(--ds-gap-md, 0.75rem);
+  min-width: 0;
+}
+
+.app-grid--1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.app-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.app-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/** Tighter gaps for dense endpoint/config forms */
+.app-grid--tight {
+  gap: 0.45rem 0.5rem;
+}
+
+.app-grid--form-row-margin {
+  margin-top: 0.45rem;
+}
+
+/** Full-width field inside a multi-column AppGrid */
+.app-field--grid-span-full {
+  grid-column: 1 / -1;
+}
+
+/** Help / explainer paragraphs placed in AppGrid rows */
+.app-grid__help-span-2 {
+  grid-column: 2 / -1;
+  align-self: center;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.app-grid__help-span-full {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.app-grid__help-span-full--md {
+  font-size: 0.75rem;
+}
+
+/** Scrubber Studio: preserve 1:3 split (matches legacy `.scrubber-studio__row--top`) */
+.app-grid.app-grid--scrubber-top {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  align-items: stretch;
+  min-height: min(52vh, 520px);
+}
+
+@media (max-width: 1100px) {
+  .app-grid.app-grid--scrubber-top {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+}
+
+@media (max-width: 1100px) {
+  .app-grid--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .app-grid--2,
+  .app-grid--3,
+  .app-grid--4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Card                                                                       */
+/* -------------------------------------------------------------------------- */
+
+.app-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, var(--radius));
+  background: color-mix(in oklab, var(--color-surface) 92%, var(--color-bg) 8%);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--color-border) 40%, transparent);
+  min-width: 0;
+}
+
+.app-card--elevated {
+  background: var(--color-surface-elevated);
+  box-shadow: var(--shadow-soft, 0 8px 24px rgba(0, 0, 0, 0.2));
+}
+
+.app-card__header {
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.app-card__body {
+  padding: 0.65rem 0.85rem;
+}
+
+.app-card__body--flush {
+  padding: 0;
+}
+
+.app-card__body > :first-child {
+  margin-top: 0;
+}
+
+.app-card__body > :last-child {
+  margin-bottom: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Toolbar                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.app-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.65rem;
+  row-gap: 0.45rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.82rem;
+  min-width: 0;
+}
+
+.app-toolbar--flat {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0.75rem;
+}
+
+.app-toolbar__left,
+.app-toolbar__right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.app-toolbar__right {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tabs                                                                       */
+/* -------------------------------------------------------------------------- */
+
+.app-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+}
+
+.app-tabs--plain {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0.75rem;
+}
+
+.app-tab {
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.app-tab:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--color-surface-elevated) 80%, transparent);
+}
+
+.app-tab[aria-selected="true"] {
+  border-color: var(--color-accent);
+  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.app-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Buttons                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.app-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: var(--btn-min-height);
+  padding: var(--btn-padding-y) var(--btn-padding-x);
+  font-size: var(--btn-font-size);
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: var(--radius);
+  border: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.app-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-btn--primary {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--color-accent) 90%, #fff 10%),
+    color-mix(in oklab, var(--color-accent) 86%, #000 14%)
+  );
+  color: var(--btn-on-accent);
+}
+
+.app-btn--secondary {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.app-btn--ghost {
+  background: color-mix(in oklab, var(--color-surface-elevated) 94%, var(--color-bg) 6%);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.app-btn--icon {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0.35rem;
+}
+
+.app-btn--icon-primary {
+  border: 1px solid color-mix(in oklab, var(--color-accent) 55%, var(--color-border));
+  background: var(--color-accent);
+  color: var(--btn-on-accent, #fff);
+}
+
+.app-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Fields                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.app-field {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  min-width: 0;
+}
+
+.app-field--tight {
+  gap: 0.15rem;
+  margin-bottom: 0.35rem;
+}
+
+/** Label + control column (legacy workflow / device forms) */
+.app-field-row {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+  min-width: 0;
+}
+
+.app-field__label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.app-field--sm .app-field__label {
+  font-size: 0.72rem;
+}
+
+.app-field__hint {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.app-input,
+.app-select,
+.app-textarea,
+.app-control {
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.875rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.app-control--mono {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.app-input--sm,
+.app-select--sm,
+.app-textarea--sm {
+  padding: 0.35rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+.app-textarea--mono {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.app-input:focus-visible,
+.app-select:focus-visible,
+.app-textarea:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--color-accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.app-input:disabled,
+.app-select:disabled,
+.app-textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Badge                                                                      */
+/* -------------------------------------------------------------------------- */
+
+.app-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius);
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-elevated);
+  color: var(--color-text-muted);
+}
+
+.app-badge--accent {
+  border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-border));
+  color: var(--color-accent);
+  background: color-mix(in oklab, var(--color-accent) 10%, transparent);
+}
+
+.app-badge--success {
+  border-color: var(--page-status-success-border);
+  color: var(--page-status-success-fg);
+  background: var(--page-status-success-bg);
+}
+
+.app-badge--warning {
+  border-color: var(--page-status-warn-border);
+  color: var(--page-status-warn-fg);
+  background: var(--page-status-warn-bg);
+}
+
+.app-badge--error {
+  border-color: var(--page-status-error-border);
+  color: var(--page-status-error-fg);
+  background: var(--page-status-error-bg);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tables                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.app-kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  margin-top: 0.35rem;
+  background: transparent;
+}
+
+.app-kv-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 0.35rem 0.5rem 0.35rem 0;
+  vertical-align: top;
+  width: 42%;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+}
+
+.app-kv-table td {
+  padding: 0.35rem 0;
+  vertical-align: top;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+  word-break: break-word;
+}
+
+.app-data-table-wrap {
+  width: 100%;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+}
+
+/* shadcn-style Table — works outside #iot-dashboard-root (Tailwind important scope) */
+.app-shadcn-table-scroll {
+  position: relative;
+  width: 100%;
+  overflow: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.app-shadcn-table {
+  border-collapse: collapse;
+  background: var(--color-bg);
+}
+
+.app-shadcn-table__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 2.25rem;
+  padding: 0 0.65rem;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-surface-elevated);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-shadcn-table__cell {
+  padding: 0.45rem 0.65rem;
+  vertical-align: middle;
+  font-size: 0.75rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+}
+
+.app-shadcn-table__row:hover .app-shadcn-table__cell {
+  background: color-mix(in oklab, var(--color-surface-elevated) 45%, var(--color-bg) 55%);
+}
+
+.app-shadcn-table tbody tr:last-child .app-shadcn-table__cell {
+  border-bottom: none;
+}
+
+.app-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: var(--color-bg);
+}
+
+.app-data-table th {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--color-surface-elevated);
+}
+
+.app-data-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 65%, transparent);
+  vertical-align: top;
+  background: var(--color-bg);
+}
+
+.app-data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.app-data-table tbody tr:hover td {
+  background: color-mix(in oklab, var(--color-surface-elevated) 38%, var(--color-bg) 62%);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Empty state                                                                */
+/* -------------------------------------------------------------------------- */
+
+.app-empty-state {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--color-surface-elevated);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.app-empty-state__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.app-empty-state__body {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dashboard live frame                                                       */
+/* -------------------------------------------------------------------------- */
+
+.app-dash-frame {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, var(--radius));
+  background: color-mix(in oklab, var(--color-surface) 88%, var(--color-bg) 12%);
+  padding: 0.65rem 0.75rem;
+  min-width: 0;
+}
+
+.page-card.dash-live-page .app-dash-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.app-dash-frame__toolbar {
+  margin: -0.65rem -0.75rem 0.65rem;
+  padding: 0 0.75rem;
+}
+
+.page-card.dash-live-page .app-dash-frame__toolbar {
+  margin: 0 0 0.35rem;
+  padding: 0;
+}
+
+/* Workflow palette (replaces inline palette button styles) */
+.app-palette-stack {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  overflow: auto;
+}
+
+.app-palette-stack__title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.app-palette-btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--color-text);
+  background: color-mix(in oklab, var(--color-surface-elevated) 94%, var(--color-bg) 6%);
+  border: 1px solid var(--color-border);
+}
+
+.app-palette-btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--color-surface) 88%, var(--color-accent) 12%);
+  border-color: color-mix(in oklab, var(--color-border) 65%, var(--color-accent) 35%);
+}
+
+.app-palette-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.workflow-editor__toolbar.app-toolbar--flat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.device-endpoint-drawer-toolbar.app-toolbar {
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.5rem;
+}

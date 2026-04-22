@@ -150,10 +150,7 @@ export function PublishedServiceFormPage({ mode }: { mode: "create" | "edit" }) 
   }
 
   return (
-    <PageShell
-      title={mode === "create" ? "Create published service" : "Edit published service"}
-      style={{ maxWidth: "640px", margin: "0 auto" }}
-    >
+    <PageShell style={{ maxWidth: "640px", margin: "0 auto" }}>
       <p>
         <Link to="/published-services" style={{ color: "var(--color-accent)" }}>
           ← Published services

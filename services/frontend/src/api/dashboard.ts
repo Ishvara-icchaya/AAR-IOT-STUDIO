@@ -78,8 +78,27 @@ export async function previewDashboard(id: string, body?: { layout?: Record<stri
   });
 }
 
+export type ResolvedDashboardQuery = {
+  siteId?: string | null;
+  /** Filter recent alerts/activity to the past N hours (synthetic path). */
+  hours?: number;
+};
+
+/** Resolved view: valid primary frozen dashboard, or synthetic Operations Overview. */
+export async function getResolvedDashboard(opts?: ResolvedDashboardQuery) {
+  const qs = new URLSearchParams();
+  if (opts?.siteId) qs.set("site_id", opts.siteId);
+  if (opts?.hours != null && opts.hours > 0) qs.set("hours", String(opts.hours));
+  const q = qs.toString();
+  return apiFetch<DashboardLiveDTO>(`/dashboards/resolved-live${q ? `?${q}` : ""}`);
+}
+
 export async function getEnterpriseDashboard() {
-  return apiFetch<DashboardLiveDTO>("/enterprise-dashboard");
+  return getResolvedDashboard();
+}
+
+export async function resetDashboardDefaultLayout(id: string) {
+  return apiFetch<DashboardReadDTO>(`/dashboards/${id}/reset-default-layout`, { method: "POST" });
 }
 
 export async function getEnterpriseSiteObjectCounts(params?: { page?: number; page_size?: number }) {
@@ -152,6 +171,36 @@ export async function getMapRuntimeMarkers(params: {
   qs.set("light", params.light === false ? "false" : "true");
   return apiFetch<{ markers: Record<string, unknown>[] }>(`/dashboards/map-runtime/markers?${qs.toString()}`, {
     cache: "no-store",
+  });
+}
+
+/** POST unified marker query — dashboard map widgets must use this instead of embedded markers in live payloads. */
+export type MapMarkersQueryBody = {
+  site_id: string;
+  latitude_field?: string;
+  longitude_field?: string;
+  kpi_fields?: string[];
+  excluded_source_ids?: string[];
+  device_ids?: string[];
+  title_field?: string | null;
+  health_field?: string | null;
+  light?: boolean;
+  mode: "auto" | "manual" | "single";
+  included_sources?: unknown[] | null;
+  single_source_type?: string | null;
+  single_source_id?: string | null;
+};
+
+export type MapMarkersQueryResponse = {
+  markers: Record<string, unknown>[];
+  map_init: Record<string, unknown> | null;
+};
+
+export async function postMapMarkersQuery(body: MapMarkersQueryBody) {
+  return apiFetch<MapMarkersQueryResponse>(`/dashboards/map-runtime/markers/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 

@@ -1,4 +1,4 @@
-import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -38,6 +38,7 @@ import {
 } from "@/lib/workflowFormulaCodegen";
 import { useDocumentThemeLight } from "@/hooks/useDocumentThemeLight";
 import { PageShell } from "@/layouts/PageShell";
+import { AppButton, AppToolbar, appButtonClassName } from "@/components/app";
 
 const PALETTE: { type: string; label: string }[] = [
   { type: "input", label: "Input" },
@@ -310,18 +311,15 @@ function WorkflowFlowCanvas({
 
   return (
     <div className="workflow-editor__grid">
-      <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", padding: "0.5rem", overflow: "auto" }}>
-        <div className="workflow-palette-heading" style={{ fontWeight: 600, marginBottom: "0.5rem", fontSize: "0.85rem" }}>
-          Palette
-        </div>
+      <div className="app-palette-stack">
+        <div className="workflow-palette-heading app-palette-stack__title">Palette</div>
         {PALETTE.map((p) => (
           <button
             key={p.type}
             type="button"
-            className="workflow-palette-btn"
+            className="workflow-palette-btn app-palette-btn"
             disabled={published}
             onClick={() => addNode(p.type)}
-            style={palBtn}
           >
             {p.label}
           </button>
@@ -755,7 +753,7 @@ export function WorkflowEditorPage() {
   }, [workflowId, selectedNode, nodes, edges]);
 
   if (!workflowId) {
-    return <PageShell title="Edit workflow">Missing id.</PageShell>;
+    return <PageShell>Missing id.</PageShell>;
   }
 
   const showIncomingPanel =
@@ -810,38 +808,36 @@ export function WorkflowEditorPage() {
     );
 
   return (
-    <PageShell title={`Workflow: ${name || "…"}`} className="workflow-editor-page workflow-editor-page--full">
-      <div
-        className="workflow-editor__toolbar"
-        style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem", alignItems: "center", flexShrink: 0 }}
-      >
+    <PageShell className="workflow-editor-page workflow-editor-page--full">
+      <AppToolbar variant="flat" className="workflow-editor__toolbar">
         <Link to="/workflow/list">← List</Link>
-        <label style={{ display: "flex", gap: "0.35rem", alignItems: "center", fontSize: "0.85rem" }}>
+        <label className="app-field-row" style={{ marginBottom: 0, display: "inline-flex", flexDirection: "row", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
           Name
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={published}
-            style={inp}
+            className="app-control"
+            style={{ width: "14rem" }}
           />
         </label>
         <span style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>
           {status}
           {published ? " · editing locked" : ""}
         </span>
-        <button type="button" style={btn} disabled={published} onClick={() => void save()}>
+        <AppButton variant="primary" disabled={published} onClick={() => void save()}>
           Save
-        </button>
-        <button type="button" style={btnSec} onClick={() => void validate()}>
+        </AppButton>
+        <AppButton variant="secondary" onClick={() => void validate()}>
           Validate
-        </button>
-        <Link to={`/workflow/${workflowId}/test`} style={{ ...btnSec, textDecoration: "none", display: "inline-block" }}>
+        </AppButton>
+        <Link to={`/workflow/${workflowId}/test`} className={appButtonClassName("secondary")} style={{ textDecoration: "none", display: "inline-block" }}>
           Test
         </Link>
-        <Link to={`/workflow/${workflowId}/live`} style={{ ...btnSec, textDecoration: "none", display: "inline-block" }}>
+        <Link to={`/workflow/${workflowId}/live`} className={appButtonClassName("secondary")} style={{ textDecoration: "none", display: "inline-block" }}>
           Live
         </Link>
-      </div>
+      </AppToolbar>
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       {ok ? <PageStatus variant="success">{ok}</PageStatus> : null}
       {valErrs.length > 0 ? (
@@ -878,19 +874,19 @@ export function WorkflowEditorPage() {
         {!selectedNode && <span style={{ color: "var(--color-text-muted)" }}>Select a node on the canvas</span>}
         {selectedNode && (
           <>
-              <label style={lbl2}>
+              <label className="app-field-row">
                 Display name
-                <input value={nameEdit} onChange={(e) => setNameEdit(e.target.value)} style={inp} disabled={published} />
+                <input value={nameEdit} onChange={(e) => setNameEdit(e.target.value)} className="app-control" disabled={published} />
               </label>
               {selectedNode.data.nodeType === "input" && (
                 <>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Device
                     <select
                       value={String((selectedNode.data.configJson as { data_object_id?: string }).data_object_id ?? "")}
                       disabled={published}
                       onChange={(e) => patchSelectedConfig({ data_object_id: e.target.value })}
-                      style={inp}
+                      className="app-control"
                     >
                       <option value="">— Select —</option>
                       {inputDeviceOptions.map((o) => (
@@ -914,9 +910,9 @@ export function WorkflowEditorPage() {
                     payload when samples exist.
                   </p>
                   {availableFields.length > 0 ? (
-                    <label style={lbl2}>
+                    <label className="app-field-row">
                       Available fields
-                      <select style={inp} disabled>
+                      <select className="app-control" disabled>
                         {availableFields.map((f) => (
                           <option key={f}>{f}</option>
                         ))}
@@ -927,13 +923,13 @@ export function WorkflowEditorPage() {
               )}
               {selectedNode.data.nodeType === "static" && (
                 <>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Static ingestion
                     <select
                       value={String((selectedNode.data.configJson as { static_ingestion_id?: string }).static_ingestion_id ?? "")}
                       disabled={published}
                       onChange={(e) => patchSelectedConfig({ static_ingestion_id: e.target.value })}
-                      style={inp}
+                      className="app-control"
                     >
                       <option value="">— Select —</option>
                       {staticSources.map((s) => (
@@ -948,9 +944,9 @@ export function WorkflowEditorPage() {
                     <code style={{ fontSize: "0.7rem" }}>payload_json</code> for this node (no incoming edges).
                   </p>
                   {availableFields.length > 0 ? (
-                    <label style={lbl2}>
+                    <label className="app-field-row">
                       Payload fields
-                      <select style={inp} disabled>
+                      <select className="app-control" disabled>
                         {availableFields.map((f) => (
                           <option key={f}>{f}</option>
                         ))}
@@ -961,13 +957,13 @@ export function WorkflowEditorPage() {
               )}
               {selectedNode.data.nodeType === "filter" && (
                 <>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Rule logic
                     <select
                       value={String((selectedNode.data.configJson as { logic?: string }).logic ?? "AND")}
                       disabled={published}
                       onChange={(e) => patchSelectedConfig({ logic: e.target.value })}
-                      style={inp}
+                      className="app-control"
                     >
                       <option value="AND">AND</option>
                       <option value="OR">OR</option>
@@ -977,7 +973,7 @@ export function WorkflowEditorPage() {
                     <div key={idx} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius)", padding: "0.35rem", marginBottom: "0.35rem" }}>
                       <div style={{ display: "grid", gap: "0.25rem" }}>
                         <select
-                          style={inp}
+                          className="app-control"
                           value={r.field}
                           disabled={published}
                           onChange={(e) => {
@@ -990,7 +986,7 @@ export function WorkflowEditorPage() {
                           {availableFields.map((f) => <option key={f} value={f}>{f}</option>)}
                         </select>
                         <select
-                          style={inp}
+                          className="app-control"
                           value={r.op}
                           disabled={published}
                           onChange={(e) => {
@@ -1002,7 +998,7 @@ export function WorkflowEditorPage() {
                           {FILTER_OPS.map((op) => <option key={op} value={op}>{op}</option>)}
                         </select>
                         <input
-                          style={inp}
+                          className="app-control"
                           value={r.value}
                           disabled={published}
                           onChange={(e) => {
@@ -1015,19 +1011,17 @@ export function WorkflowEditorPage() {
                       </div>
                     </div>
                   )) ?? (
-                    <button
-                      type="button"
-                      style={btnSec}
+                    <AppButton
+                      variant="secondary"
                       disabled={published}
                       onClick={() => patchSelectedConfig({ rules: [{ field: availableFields[0] ?? "", op: "eq", value: "" }] })}
                     >
                       Add first rule
-                    </button>
+                    </AppButton>
                   )}
                   {Array.isArray((selectedNode.data.configJson as { rules?: unknown }).rules) ? (
-                    <button
-                      type="button"
-                      style={btnSec}
+                    <AppButton
+                      variant="secondary"
                       disabled={published}
                       onClick={() => {
                         const rules = [...
@@ -1038,16 +1032,16 @@ export function WorkflowEditorPage() {
                       }}
                     >
                       Add rule
-                    </button>
+                    </AppButton>
                   ) : null}
                 </>
               )}
               {selectedNode.data.nodeType === "join" && (
                 <>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Left input
                     <select
-                      style={inp}
+                      className="app-control"
                       value={String((selectedNode.data.configJson as { left_input?: string }).left_input ?? parentNodes[0]?.id ?? "")}
                       disabled={published}
                       onChange={(e) => patchSelectedConfig({ left_input: e.target.value })}
@@ -1057,10 +1051,10 @@ export function WorkflowEditorPage() {
                       ))}
                     </select>
                   </label>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Right input
                     <select
-                      style={inp}
+                      className="app-control"
                       value={String((selectedNode.data.configJson as { right_input?: string }).right_input ?? parentNodes[1]?.id ?? "")}
                       disabled={published}
                       onChange={(e) => patchSelectedConfig({ right_input: e.target.value })}
@@ -1070,17 +1064,17 @@ export function WorkflowEditorPage() {
                       ))}
                     </select>
                   </label>
-                  <label style={lbl2}>Left key<input style={inp} value={String((selectedNode.data.configJson as { left_key?: string }).left_key ?? "")} onChange={(e) => patchSelectedConfig({ left_key: e.target.value })} disabled={published} /></label>
-                  <label style={lbl2}>Right key<input style={inp} value={String((selectedNode.data.configJson as { right_key?: string }).right_key ?? "")} onChange={(e) => patchSelectedConfig({ right_key: e.target.value })} disabled={published} /></label>
-                  <label style={lbl2}>
+                  <label className="app-field-row">Left key<input className="app-control" value={String((selectedNode.data.configJson as { left_key?: string }).left_key ?? "")} onChange={(e) => patchSelectedConfig({ left_key: e.target.value })} disabled={published} /></label>
+                  <label className="app-field-row">Right key<input className="app-control" value={String((selectedNode.data.configJson as { right_key?: string }).right_key ?? "")} onChange={(e) => patchSelectedConfig({ right_key: e.target.value })} disabled={published} /></label>
+                  <label className="app-field-row">
                     Join type
-                    <select style={inp} value={String((selectedNode.data.configJson as { join_type?: string }).join_type ?? "inner")} onChange={(e) => patchSelectedConfig({ join_type: e.target.value })} disabled={published}>
+                    <select className="app-control" value={String((selectedNode.data.configJson as { join_type?: string }).join_type ?? "inner")} onChange={(e) => patchSelectedConfig({ join_type: e.target.value })} disabled={published}>
                       <option value="inner">inner</option><option value="left">left</option><option value="right">right</option><option value="full">full</option>
                     </select>
                   </label>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Output handling
-                    <select style={inp} value={String((selectedNode.data.configJson as { output_mode?: string }).output_mode ?? "prefix")} onChange={(e) => patchSelectedConfig({ output_mode: e.target.value })} disabled={published}>
+                    <select className="app-control" value={String((selectedNode.data.configJson as { output_mode?: string }).output_mode ?? "prefix")} onChange={(e) => patchSelectedConfig({ output_mode: e.target.value })} disabled={published}>
                       <option value="prefix">Prefix fields</option><option value="retain">Retain names</option>
                     </select>
                   </label>
@@ -1088,10 +1082,10 @@ export function WorkflowEditorPage() {
               )}
               {selectedNode.data.nodeType === "formula" && (
                 <>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Mode
                     <select
-                      style={inp}
+                      className="app-control"
                       value={inferFormulaPanel(selectedNode.data.configJson ?? {})}
                       onChange={(e) => {
                         const v = e.target.value as "visual" | "python" | "legacy";
@@ -1219,16 +1213,17 @@ export function WorkflowEditorPage() {
                         </details>
                       </div>
                       <textarea
-                        style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
+                        className="app-control app-control--mono"
+                        style={{ width: "100%" }}
                         rows={10}
                         value={String((selectedNode.data.configJson as { python_code?: string }).python_code ?? "def transform(payload):\n    return {}")}
                         onChange={(e) => patchSelectedConfig({ python_code: e.target.value, mode: "python", formula_panel: "python" })}
                         disabled={published}
                       />
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center", marginTop: "0.35rem" }}>
-                        <button type="button" style={btnSec} disabled={published || formulaValidateBusy} onClick={() => void validateFormulaPython()}>
+                        <AppButton variant="secondary" disabled={published || formulaValidateBusy} onClick={() => void validateFormulaPython()}>
                           {formulaValidateBusy ? "Validating…" : "Validate formula"}
-                        </button>
+                        </AppButton>
                         <span style={{ fontSize: "0.7rem", color: "var(--color-text-muted)" }}>
                           Checks <code>def transform(payload)</code>, then runs a server test (saved workflow + published sample).
                         </span>
@@ -1251,17 +1246,18 @@ export function WorkflowEditorPage() {
                           {formulaValidateMsg}
                         </div>
                       ) : null}
-                      <label style={{ ...lbl2, marginTop: "0.5rem" }}>
+                      <label className="app-field-row" style={{ marginTop: "0.5rem" }}>
                         Timeout ms
-                        <input style={inp} type="number" value={Number((selectedNode.data.configJson as { timeout_ms?: number }).timeout_ms ?? 300)} onChange={(e) => patchSelectedConfig({ timeout_ms: Number(e.target.value || 300) })} disabled={published} />
+                        <input className="app-control" type="number" value={Number((selectedNode.data.configJson as { timeout_ms?: number }).timeout_ms ?? 300)} onChange={(e) => patchSelectedConfig({ timeout_ms: Number(e.target.value || 300) })} disabled={published} />
                       </label>
                     </>
                   ) : null}
                   {inferFormulaPanel(selectedNode.data.configJson ?? {}) === "legacy" ? (
-                    <label style={lbl2}>
+                    <label className="app-field-row">
                       Literal map (JSON object)
                       <textarea
-                        style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
+                        className="app-control app-control--mono"
+                        style={{ width: "100%" }}
                         rows={5}
                         value={JSON.stringify((selectedNode.data.configJson as { set?: JsonObj }).set ?? {}, null, 2)}
                         onChange={(e) => {
@@ -1305,23 +1301,23 @@ export function WorkflowEditorPage() {
               )}
               {selectedNode.data.nodeType === "terminate" && (
                 <>
-                  <label style={lbl2}>
+                  <label className="app-field-row">
                     Result object name
-                    <input style={inp} value={terminateName} disabled={published} onChange={(e) => patchSelectedConfig({ terminate_name: e.target.value })} />
+                    <input className="app-control" value={terminateName} disabled={published} onChange={(e) => patchSelectedConfig({ terminate_name: e.target.value })} />
                   </label>
                   {terminateNameDup ? <PageStatus variant="error">Terminate name must be unique in this workflow.</PageStatus> : null}
                 </>
               )}
               <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap" }}>
-                <button type="button" style={btn} disabled={published} onClick={applySelectionEdits}>
+                <AppButton variant="primary" disabled={published} onClick={applySelectionEdits}>
                   Apply node name
-                </button>
+                </AppButton>
               </div>
               <details style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
                 <summary style={{ cursor: "pointer", fontWeight: 600, color: "var(--color-text)" }}>
                   Expert: edit raw config JSON
                 </summary>
-                <label style={{ ...lbl2, marginTop: "0.5rem" }}>
+                <label className="app-field-row" style={{ marginTop: "0.5rem" }}>
                   config_json
                   <textarea
                     value={cfgText}
@@ -1331,12 +1327,13 @@ export function WorkflowEditorPage() {
                     }}
                     disabled={published}
                     rows={8}
-                    style={{ ...inp, fontFamily: "monospace", fontSize: "0.75rem", width: "100%" }}
+                    className="app-control app-control--mono"
+                    style={{ width: "100%" }}
                   />
                 </label>
-                <button type="button" style={btnSec} disabled={published} onClick={applySelectionEdits}>
+                <AppButton variant="secondary" disabled={published} onClick={applySelectionEdits}>
                   Apply JSON
-                </button>
+                </AppButton>
               </details>
               {showIncomingPanel ? (
                 <div
@@ -1392,38 +1389,3 @@ export function WorkflowEditorPage() {
   );
 }
 
-const inp: CSSProperties = {
-  padding: "0.35rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-};
-const btn: CSSProperties = {
-  minHeight: "var(--btn-min-height)",
-  padding: "var(--btn-padding-y) var(--btn-padding-x)",
-  fontSize: "var(--btn-font-size)",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "linear-gradient(180deg, color-mix(in oklab, var(--color-accent) 90%, #fff 10%), color-mix(in oklab, var(--color-accent) 86%, #000 14%))",
-  color: "var(--btn-on-accent)",
-  fontWeight: 600,
-  cursor: "pointer",
-  boxSizing: "border-box",
-};
-const btnSec: CSSProperties = { ...btn, background: "var(--color-border)", color: "var(--color-text)" };
-const palBtn: CSSProperties = {
-  display: "block",
-  width: "100%",
-  marginBottom: "0.35rem",
-  padding: "0.4rem 0.5rem",
-  borderRadius: "var(--radius)",
-  cursor: "pointer",
-  fontSize: "0.8rem",
-  fontFamily: "inherit",
-  fontWeight: 600,
-  color: "var(--color-text)",
-  background: "color-mix(in oklab, var(--color-surface-elevated) 94%, var(--color-bg) 6%)",
-  border: "1px solid var(--color-border)",
-};
-const lbl2: CSSProperties = { display: "grid", gap: "0.25rem", marginBottom: "0.5rem" };

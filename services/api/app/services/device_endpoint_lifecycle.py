@@ -17,8 +17,13 @@ def _norm_protocol_source(ps: str) -> str:
 
 
 def touch_after_archived_success(db: Session, *, device_id: uuid.UUID, protocol_source: str) -> None:
-    """First/last payload timestamps, activation from is_active, clear last_error."""
-    ps = _norm_protocol_source(protocol_source)
+    """First/last payload timestamps, activation from is_active, clear last_error.
+
+    One endpoint row per device: always touch that row on successful archive. Matching
+    ingest protocol_source to endpoint.protocol was brittle (e.g. modbus, future adapters)
+    and left last_payload_at stale while raw rows existed — breaking liveness + UI.
+    """
+    _ = _norm_protocol_source(protocol_source)
     db.execute(
         text(
             """
@@ -28,18 +33,9 @@ def touch_after_archived_success(db: Session, *, device_id: uuid.UUID, protocol_
               last_error = NULL,
               activation_status = CASE WHEN is_active THEN 'active' ELSE 'inactive' END
             WHERE device_id = CAST(:did AS uuid)
-            AND (
-              (LOWER(CAST(:ps AS text)) = 'mqtt' AND LOWER(protocol) = 'mqtt')
-              OR (LOWER(CAST(:ps AS text)) = 'coap' AND LOWER(protocol) = 'coap')
-              OR (LOWER(CAST(:ps AS text)) = 'websocket' AND LOWER(protocol) = 'websocket')
-              OR (
-                LOWER(CAST(:ps AS text)) IN ('rest_poll', 'rest', 'upload')
-                AND LOWER(protocol) IN ('http', 'https', 'rest')
-              )
-            )
             """
         ),
-        {"did": str(device_id), "ps": ps},
+        {"did": str(device_id)},
     )
     db.execute(
         text(
@@ -60,7 +56,7 @@ def record_ingest_failure(
     protocol_source: str,
     message: str,
 ) -> None:
-    ps = _norm_protocol_source(protocol_source)
+    _ = _norm_protocol_source(protocol_source)
     msg = (message or "")[:2000]
     db.execute(
         text(
@@ -73,18 +69,9 @@ def record_ingest_failure(
                 ELSE 'active'
               END
             WHERE device_id = CAST(:did AS uuid)
-            AND (
-              (LOWER(CAST(:ps AS text)) = 'mqtt' AND LOWER(protocol) = 'mqtt')
-              OR (LOWER(CAST(:ps AS text)) = 'coap' AND LOWER(protocol) = 'coap')
-              OR (LOWER(CAST(:ps AS text)) = 'websocket' AND LOWER(protocol) = 'websocket')
-              OR (
-                LOWER(CAST(:ps AS text)) IN ('rest_poll', 'rest', 'upload')
-                AND LOWER(protocol) IN ('http', 'https', 'rest')
-              )
-            )
             """
         ),
-        {"did": str(device_id), "ps": ps, "msg": msg},
+        {"did": str(device_id), "msg": msg},
     )
 
 

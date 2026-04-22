@@ -7,6 +7,7 @@ import { useDashboardBuilderStore } from "@/stores/dashboardBuilderStore";
 
 export function DashboardRowBuilder({ row, readOnly }: { row: DashboardRowModel; readOnly?: boolean }) {
   const applyRowPreset = useDashboardBuilderStore((s) => s.applyRowPreset);
+  const setRowHeightWeight = useDashboardBuilderStore((s) => s.setRowHeightWeight);
   const addColumn = useDashboardBuilderStore((s) => s.addColumn);
   const removeRow = useDashboardBuilderStore((s) => s.removeRow);
   const status = useDashboardBuilderStore((s) => s.status);
@@ -39,6 +40,19 @@ export function DashboardRowBuilder({ row, readOnly }: { row: DashboardRowModel;
       )}
       <div className="dash-builder-row__body">
         <div className="dash-builder-row__controls">
+          <label>
+            Row height share
+            <input
+              type="number"
+              min={0.25}
+              max={40}
+              step={0.25}
+              disabled={frozen || readOnly}
+              value={row.heightWeight ?? 1}
+              title="Relative height of this row on live / preview (larger = more vertical space)."
+              onChange={(e) => setRowHeightWeight(row.rowId, Number(e.target.value) || 1)}
+            />
+          </label>
           <label>
             Row layout
             <select

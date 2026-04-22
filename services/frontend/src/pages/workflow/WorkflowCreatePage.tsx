@@ -48,7 +48,7 @@ export function WorkflowCreatePage() {
   }
 
   return (
-    <PageShell title="Create workflow">
+    <PageShell>
       <form onSubmit={submit} style={{ display: "grid", gap: "0.75rem", maxWidth: "420px" }}>
         {err ? <PageStatus variant="error">{err}</PageStatus> : null}
         <label style={lbl}>

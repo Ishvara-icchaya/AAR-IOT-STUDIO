@@ -1,5 +1,5 @@
 import type { CSSProperties, FormEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   createStaticIngestion,
@@ -10,9 +10,11 @@ import {
   type StaticIngestionListItem,
 } from "@/api/staticIngestion";
 import { apiFetch } from "@/api/client";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
+import "./device-register-page.css";
 
 type Row = {
   device_id: string;
@@ -324,257 +326,225 @@ export function ScrubberStaleIngestionPage() {
     reader.readAsText(f);
   }
 
+  const staleColumns = useMemo<PlainOperationalColumn<Row>[]>(() => {
+    const returnTo = "/scrubber/stale-ingestion";
+    return [
+      { id: "device_name", header: "Device", cell: (r) => r.device_name },
+      { id: "site_name", header: "Site", cell: (r) => r.site_name },
+      {
+        id: "scrubber_version",
+        header: "Draft v",
+        cell: (r) => String(r.scrubber_version ?? "—"),
+      },
+      { id: "raw_object_count", header: "Raw count", cell: (r) => String(r.raw_object_count) },
+      {
+        id: "latest_raw_ingested_at",
+        header: "Last raw ingest",
+        cell: (r) => fmt(r.latest_raw_ingested_at),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: (r) => {
+          if (!r.latest_raw_id) return <span style={{ color: "var(--color-text-muted)" }}>No raw yet</span>;
+          return (
+            <Link
+              to={`/scrubber/create?rawId=${encodeURIComponent(r.latest_raw_id)}&deviceId=${encodeURIComponent(
+                r.device_id,
+              )}&returnTo=${encodeURIComponent(returnTo)}`}
+              style={{ fontSize: "0.8rem" }}
+            >
+              Open scrubber
+            </Link>
+          );
+        },
+      },
+    ];
+  }, []);
+
+  const staticColumns = useMemo<PlainOperationalColumn<StaticIngestionListItem>[]>(() => {
+    return [
+      { id: "name", header: "Name", cell: (r) => r.name },
+      {
+        id: "description",
+        header: "Description",
+        cell: (r) => String(r.description ?? "—"),
+      },
+      {
+        id: "end_at",
+        header: "End",
+        cell: (r) => fmt(r.end_at),
+      },
+      {
+        id: "updated_at",
+        header: "Updated",
+        cell: (r) => fmt(r.updated_at),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: (r) => (
+          <button
+            type="button"
+            disabled={modalLoading}
+            onClick={() => void openEditModal(r.id)}
+            style={{
+              padding: "0.25rem 0.5rem",
+              fontSize: "0.8rem",
+              borderRadius: "var(--radius)",
+              border: "1px solid var(--color-border)",
+              background: "var(--color-surface-elevated)",
+              color: "var(--color-accent)",
+              fontWeight: 600,
+              cursor: modalLoading ? "wait" : "pointer",
+            }}
+          >
+            Edit
+          </button>
+        ),
+      },
+    ];
+  }, [modalLoading, openEditModal]);
+
   return (
-    <PageShell title="Scrubber — stale mapping & static ingestion">
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap", alignItems: "center" }}>
-        <button
-          type="button"
-          onClick={() => setTab("devices")}
-          style={tabBtn(tab === "devices")}
-        >
-          Mapping without ingestion
-        </button>
-        <button type="button" onClick={() => setTab("static")} style={tabBtn(tab === "static")}>
-          Static JSON ingestion
-        </button>
-      </div>
+    <PageShell variant="list" className="scrubber-stale-page device-manage-page">
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-page-hero__title">Stale ingestion</h1>
+              <p className="dm-page-hero__subtitle">
+                Draft mappings without recent raw, or static JSON schedules per site.
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <section className="dm-filter-panel" aria-label="View mode">
+          <div className="dm-controls-form__row">
+            <button
+              type="button"
+              className={tab === "devices" ? "dm-btn dm-btn--primary" : "dm-btn dm-btn--outline"}
+              onClick={() => setTab("devices")}
+            >
+              Devices without raw
+            </button>
+            <button
+              type="button"
+              className={tab === "static" ? "dm-btn dm-btn--primary" : "dm-btn dm-btn--outline"}
+              onClick={() => setTab("static")}
+            >
+              Static JSON
+            </button>
+            <span className="dm-inline-summary" style={{ margin: 0, alignSelf: "center" }}>
+              <Link to="/scrubber/data-objects" className="dm-name-link">
+                Data objects
+              </Link>
+              {" · "}
+              <Link to="/scrubber/raw-select" className="dm-name-link">
+                Pick raw sample
+              </Link>
+            </span>
+          </div>
+        </section>
 
       {tab === "devices" ? (
         <>
-          <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem", maxWidth: "52rem" }}>
-            Lists devices that have a non-empty <code>scrubberStudio</code> draft but no archived raw in the freshness window
-            (default 24 hours). Use this to find mappings that are ready while telemetry is missing or delayed.
-          </p>
-          <p style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>
-            <Link to="/scrubber/data-objects">View Data Objects</Link>
-            {" · "}
-            <Link to="/scrubber/raw-select">Pick raw sample</Link>
-          </p>
           {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-          <form
-            noValidate
-            onSubmit={onRefreshDevices}
-            style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem", alignItems: "flex-end" }}
-          >
-            <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
-              Stale if no raw within (hours)
-              <input
-                type="number"
-                min={0.5}
-                max={8760}
-                step={0.5}
-                value={Number.isFinite(hours) ? hours : 24}
-                onChange={(e) => {
-                  const n = parseFloat(e.target.value);
-                  if (!Number.isFinite(n)) return;
-                  setHours(Math.min(8760, Math.max(0.5, n)));
-                }}
-                style={{
-                  padding: "0.45rem",
-                  borderRadius: "var(--radius)",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--color-bg)",
-                  color: "var(--color-text)",
-                  width: "7rem",
-                }}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void onRefreshDevices()}
-              aria-label="Refresh stale mapping list"
-              style={{
-                padding: "0.45rem 0.85rem",
-                borderRadius: "var(--radius)",
-                border: "none",
-                background: "var(--color-accent)",
-                color: "var(--btn-on-accent)",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Refresh
-            </button>
-          </form>
-          <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "0.85rem",
-              }}
-            >
-              <thead>
-                <tr>
-                  <th style={th}>Device</th>
-                  <th style={th}>Site</th>
-                  <th style={th}>Draft v</th>
-                  <th style={th}>Raw count</th>
-                  <th style={th}>Last raw ingest</th>
-                  <th style={th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.device_id}>
-                    <td style={td}>{r.device_name}</td>
-                    <td style={td}>{r.site_name}</td>
-                    <td style={td}>{r.scrubber_version ?? "—"}</td>
-                    <td style={td}>{r.raw_object_count}</td>
-                    <td style={td}>{fmt(r.latest_raw_ingested_at)}</td>
-                    <td style={td}>
-                      {r.latest_raw_id ? (
-                        <Link
-                          to={`/scrubber/create?rawId=${encodeURIComponent(r.latest_raw_id)}&deviceId=${encodeURIComponent(
-                            r.device_id,
-                          )}&returnTo=${encodeURIComponent("/scrubber/stale-ingestion")}`}
-                          style={{ fontSize: "0.8rem" }}
-                        >
-                          Open scrubber
-                        </Link>
-                      ) : (
-                        <span style={{ color: "var(--color-text-muted)" }}>No raw yet</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {rows.length === 0 && !err ? (
-              <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>No devices match (or all have recent raw).</p>
-            ) : null}
+          <section className="dm-filter-panel" aria-label="Stale window">
+            <form noValidate onSubmit={onRefreshDevices} className="dm-controls-form__row">
+              <label className="dm-filter-field">
+                <span className="dm-filter-field__label">Stale if no raw (hours)</span>
+                <input
+                  type="number"
+                  min={0.5}
+                  max={8760}
+                  step={0.5}
+                  value={Number.isFinite(hours) ? hours : 24}
+                  onChange={(e) => {
+                    const n = parseFloat(e.target.value);
+                    if (!Number.isFinite(n)) return;
+                    setHours(Math.min(8760, Math.max(0.5, n)));
+                  }}
+                />
+              </label>
+              <button type="button" className="dm-btn dm-btn--primary" onClick={() => void onRefreshDevices()} aria-label="Refresh stale mapping list">
+                Refresh
+              </button>
+            </form>
+          </section>
+          <div className="dm-table-wrap">
+            <div className="dm-device-table-shell">
+              <div className="dm-table-scroll">
+            <PlainOperationalTable<Row>
+              rows={rows}
+              columns={staleColumns}
+              getRowId={(r) => r.device_id}
+              bordered
+              emptyMessage={err ? undefined : "No devices match (or all have recent raw)."}
+              resetPageKey={hours}
+            />
+              </div>
+            </div>
           </div>
         </>
       ) : (
         <>
-          <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem", maxWidth: "52rem" }}>
-            Store validated JSON payloads with a schedule and end time. These definitions appear in the workflow editor as{" "}
-            <strong>Static</strong> source nodes (per site).
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "1rem", alignItems: "flex-end" }}>
-            <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
-              Site
-              <select
-                value={siteId}
-                onChange={(e) => setSiteId(e.target.value)}
-                style={{
-                  padding: "0.45rem",
-                  minWidth: "12rem",
-                  borderRadius: "var(--radius)",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--color-bg)",
-                  color: "var(--color-text)",
-                }}
-              >
-                <option value="">— Select site —</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: "grid", gap: "0.25rem", fontSize: "0.82rem", color: "var(--color-text-muted)" }}>
-              Search name / description
-              <input
-                value={staticQ}
-                onChange={(e) => setStaticQ(e.target.value)}
-                onBlur={() => void loadStatic()}
-                placeholder="Filter…"
-                style={{
-                  padding: "0.45rem",
-                  width: "14rem",
-                  borderRadius: "var(--radius)",
-                  border: "1px solid var(--color-border)",
-                  background: "var(--color-bg)",
-                  color: "var(--color-text)",
-                }}
-              />
-            </label>
-            <button
-              type="button"
-              disabled={!siteId}
-              onClick={() => void loadStatic()}
-              style={{
-                padding: "0.45rem 0.85rem",
-                borderRadius: "var(--radius)",
-                border: "none",
-                background: "var(--color-border)",
-                color: "var(--color-text)",
-                fontWeight: 600,
-                cursor: siteId ? "pointer" : "not-allowed",
-              }}
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              disabled={!siteId}
-              onClick={openCreateModal}
-              style={{
-                padding: "0.45rem 0.85rem",
-                borderRadius: "var(--radius)",
-                border: "none",
-                background: "var(--color-accent)",
-                color: "var(--btn-on-accent)",
-                fontWeight: 600,
-                cursor: siteId ? "pointer" : "not-allowed",
-              }}
-            >
-              Create
-            </button>
-          </div>
+          <section className="dm-filter-panel" aria-label="Static ingestions">
+            <div className="dm-controls-form__row">
+              <label className="dm-filter-field">
+                <span className="dm-filter-field__label">Site</span>
+                <select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                  <option value="">— Select site —</option>
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="dm-filter-field">
+                <span className="dm-filter-field__label">Search</span>
+                <input
+                  value={staticQ}
+                  onChange={(e) => setStaticQ(e.target.value)}
+                  onBlur={() => void loadStatic()}
+                  placeholder="Name or description…"
+                />
+              </label>
+              <button type="button" className="dm-btn dm-btn--outline" disabled={!siteId} onClick={() => void loadStatic()}>
+                Search
+              </button>
+              <button type="button" className="dm-btn dm-btn--primary" disabled={!siteId} onClick={openCreateModal}>
+                Create
+              </button>
+            </div>
+          </section>
           {staticErr ? <PageStatus variant="error">{staticErr}</PageStatus> : null}
-          <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-              <thead>
-                <tr>
-                  <th style={th}>Name</th>
-                  <th style={th}>Description</th>
-                  <th style={th}>End</th>
-                  <th style={th}>Updated</th>
-                  <th style={th}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staticRows.map((r) => (
-                  <tr key={r.id}>
-                    <td style={td}>{r.name}</td>
-                    <td style={td}>{r.description ?? "—"}</td>
-                    <td style={td}>{fmt(r.end_at)}</td>
-                    <td style={td}>{fmt(r.updated_at)}</td>
-                    <td style={td}>
-                      <button
-                        type="button"
-                        disabled={modalLoading}
-                        onClick={() => void openEditModal(r.id)}
-                        style={{
-                          padding: "0.25rem 0.5rem",
-                          fontSize: "0.8rem",
-                          borderRadius: "var(--radius)",
-                          border: "1px solid var(--color-border)",
-                          background: "var(--color-surface-elevated)",
-                          color: "var(--color-accent)",
-                          fontWeight: 600,
-                          cursor: modalLoading ? "wait" : "pointer",
-                        }}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {siteId && staticRows.length === 0 && !staticErr ? (
-              <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>No static ingestions yet — create one.</p>
-            ) : null}
-            {!siteId ? (
-              <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>Select a site to list static ingestions.</p>
-            ) : null}
+          <div className="dm-table-wrap">
+            <div className="dm-device-table-shell">
+              <div className="dm-table-scroll">
+                {siteId ? (
+                  <PlainOperationalTable<StaticIngestionListItem>
+                    rows={staticRows}
+                    columns={staticColumns}
+                    getRowId={(r) => r.id}
+                    bordered
+                    emptyMessage={staticErr ? undefined : "No static ingestions yet — create one."}
+                    resetPageKey={`${siteId}|${staticQ}|${staticRows.length}`}
+                  />
+                ) : (
+                  <p className="dm-inline-summary" style={{ margin: "0.75rem 0 0" }}>
+                    Select a site to list static ingestions.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </>
       )}
+
+      </div>
 
       {modalOpen ? (
         <div
@@ -813,29 +783,6 @@ export function ScrubberStaleIngestionPage() {
   );
 }
 
-function tabBtn(active: boolean): CSSProperties {
-  return {
-    padding: "0.4rem 0.75rem",
-    borderRadius: "var(--radius)",
-    border: `1px solid var(--color-border)`,
-    background: active ? "var(--color-accent)" : "var(--color-surface-elevated)",
-    color: active ? "#fff" : "var(--color-text)",
-    fontWeight: 600,
-    cursor: "pointer",
-  };
-}
-
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.45rem 0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-surface-elevated)",
-};
-const td: CSSProperties = {
-  padding: "0.45rem 0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  verticalAlign: "top",
-};
 const formGrid: CSSProperties = {
   display: "flex",
   flexDirection: "column",

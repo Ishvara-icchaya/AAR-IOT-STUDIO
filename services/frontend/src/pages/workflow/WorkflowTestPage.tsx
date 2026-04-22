@@ -27,11 +27,11 @@ export function WorkflowTestPage() {
   }
 
   if (!workflowId) {
-    return <PageShell title="Test workflow">Missing id.</PageShell>;
+    return <PageShell>Missing id.</PageShell>;
   }
 
   return (
-    <PageShell title="Test workflow">
+    <PageShell>
       <div style={{ marginBottom: "0.75rem" }}>
         <Link to={`/workflow/${workflowId}/edit`}>← Editor</Link>
       </div>

@@ -69,6 +69,14 @@ class DashboardLiveResponse(BaseModel):
     widgets: list[dict[str, Any]]
     rendered_at: str
     primary_dashboard_id: uuid.UUID | None = None
+    is_default_dashboard: bool = Field(
+        default=False,
+        description="Synthetic Operations Overview when no valid primary exists.",
+    )
+    command_center: dict[str, Any] | None = Field(
+        default=None,
+        description="Command-center enrichment for synthetic default dashboard only.",
+    )
 
 
 class DataObjectSourceRow(BaseModel):

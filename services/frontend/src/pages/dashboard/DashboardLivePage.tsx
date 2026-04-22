@@ -39,21 +39,16 @@ export function DashboardLivePage() {
     return () => window.clearInterval(t);
   }, [paused, load, refreshSec, dashboardId]);
 
-  if (!dashboardId) return <PageShell title="Live">Missing id.</PageShell>;
+  if (!dashboardId) return <PageShell>Missing id.</PageShell>;
 
   const layout = payload?.dashboard && typeof payload.dashboard === "object"
     ? (payload.dashboard as Record<string, unknown>).layout
     : undefined;
 
-  const dashName =
-    payload?.dashboard && typeof payload.dashboard === "object"
-      ? String((payload.dashboard as Record<string, unknown>).name ?? "Live dashboard")
-      : "Live dashboard";
-
   return (
     <PageShell
-      title={dashName}
       className="dash-live-page"
+      variant="list"
       actions={<Link to={`/dashboard/${dashboardId}/edit`}>Edit layout</Link>}
     >
       {err ? (

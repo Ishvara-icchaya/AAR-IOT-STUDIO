@@ -1,15 +1,7 @@
-import type { CSSProperties } from "react";
+import { useMemo } from "react";
 import { useAlertsModal } from "@/contexts/AlertsModalContext";
 import type { MonitoringIncident } from "@/types/monitoring";
-
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  color: "var(--color-text-muted)",
-};
-const td: CSSProperties = { padding: "0.5rem", borderBottom: "1px solid var(--color-border-subtle, #333)" };
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 
 function sevColor(s: string) {
   const x = s.toLowerCase();
@@ -22,51 +14,58 @@ function sevColor(s: string) {
 export function MonitoringIncidentTable({ items }: { items: MonitoringIncident[] }) {
   const { openDetail } = useAlertsModal();
 
-  if (!items.length) {
-    return <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>No recent incidents in alert history.</p>;
-  }
+  const columns = useMemo<PlainOperationalColumn<MonitoringIncident>[]>(() => {
+    return [
+      {
+        id: "time",
+        header: "Time",
+        cell: (r) => {
+          const v = r.time;
+          return v ? new Date(v).toLocaleString() : "—";
+        },
+      },
+      { id: "component", header: "Component", cell: (r) => r.component },
+      {
+        id: "severity",
+        header: "Severity",
+        cell: (r) => (
+          <span style={{ color: sevColor(r.severity), fontWeight: 600 }}>{r.severity}</span>
+        ),
+      },
+      { id: "message", header: "Message", cell: (r) => r.message },
+      {
+        id: "action",
+        header: "Action",
+        cell: (r) => (
+          <button
+            type="button"
+            onClick={() => openDetail(r.alert_id)}
+            style={{
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: "var(--color-accent)",
+              cursor: "pointer",
+              font: "inherit",
+              textDecoration: "underline",
+            }}
+          >
+            View
+          </button>
+        ),
+      },
+    ];
+  }, [openDetail]);
+
   return (
     <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-      <table style={tbl}>
-        <thead>
-          <tr>
-            <th style={th}>Time</th>
-            <th style={th}>Component</th>
-            <th style={th}>Severity</th>
-            <th style={th}>Message</th>
-            <th style={th}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((r) => (
-            <tr key={r.alert_id}>
-              <td style={td}>
-                <small>{new Date(r.time).toLocaleString()}</small>
-              </td>
-              <td style={td}>{r.component}</td>
-              <td style={{ ...td, color: sevColor(r.severity), fontWeight: 600 }}>{r.severity}</td>
-              <td style={td}>{r.message}</td>
-              <td style={td}>
-                <button
-                  type="button"
-                  onClick={() => openDetail(r.alert_id)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    padding: 0,
-                    color: "var(--color-accent)",
-                    cursor: "pointer",
-                    font: "inherit",
-                    textDecoration: "underline",
-                  }}
-                >
-                  View
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <PlainOperationalTable<MonitoringIncident>
+        rows={items}
+        columns={columns}
+        getRowId={(r) => r.alert_id}
+        bordered
+        emptyMessage="No recent incidents in alert history."
+      />
     </div>
   );
 }

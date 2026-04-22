@@ -9,14 +9,14 @@ type Props = {
 
 export function PortsActions({ saving, testing, restarting, onSave, onTest, onRestart }: Props) {
   return (
-    <div className="admin-actions">
-      <button type="button" className="admin-btn" disabled={saving} onClick={onSave}>
+    <div className="dm-controls-form__row" style={{ marginTop: "0.35rem", flexWrap: "wrap" }}>
+      <button type="button" className="dm-btn dm-btn--primary" disabled={saving} onClick={onSave}>
         {saving ? "Saving…" : "Save configuration"}
       </button>
-      <button type="button" className="admin-btn admin-btn--secondary" disabled={testing} onClick={onTest}>
+      <button type="button" className="dm-btn dm-btn--outline" disabled={testing} onClick={onTest}>
         {testing ? "Testing…" : "Test ports"}
       </button>
-      <button type="button" className="admin-btn admin-btn--secondary" disabled={restarting} onClick={onRestart}>
+      <button type="button" className="dm-btn dm-btn--outline" disabled={restarting} onClick={onRestart}>
         {restarting ? "Requesting…" : "Restart services"}
       </button>
     </div>

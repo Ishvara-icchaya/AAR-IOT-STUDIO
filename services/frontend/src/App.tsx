@@ -26,6 +26,7 @@ import { DashboardBuilderPage } from "./pages/dashboard/DashboardBuilderPage";
 import { DashboardListPage } from "./pages/dashboard/DashboardListPage";
 import { DashboardLivePage } from "./pages/dashboard/DashboardLivePage";
 import { EnterpriseDashboardPage } from "./pages/dashboard/EnterpriseDashboardPage";
+import { DashboardResolvedPage } from "./pages/dashboard/DashboardResolvedPage";
 const IotOperationsDashboardPage = lazy(() =>
   import("./features/iot-dashboard/IotOperationsDashboardPage").then((m) => ({ default: m.IotOperationsDashboardPage })),
 );
@@ -79,7 +80,7 @@ export default function App() {
               }
             />
             <Route element={<PlatformShell />}>
-              <Route path="/" element={<Navigate to="/enterprise-dashboard" replace />} />
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/devices/register" element={<DeviceRegisterPage />} />
               <Route path="/devices/manage" element={<DeviceManagePage />} />
               <Route path="/devices/raw" element={<DeviceRawDataPage />} />
@@ -101,6 +102,7 @@ export default function App() {
               <Route path="/workflow/:workflowId/edit" element={<WorkflowEditorPage />} />
               <Route path="/workflow/:workflowId/test" element={<WorkflowTestPage />} />
               <Route path="/workflow/:workflowId/live" element={<WorkflowLivePage />} />
+              <Route path="/dashboard" element={<DashboardResolvedPage />} />
               <Route path="/dashboard/list" element={<DashboardListPage />} />
               <Route path="/dashboard/create" element={<DashboardCreatePage />} />
               <Route path="/dashboard/:dashboardId/edit" element={<DashboardBuilderPage />} />
@@ -117,7 +119,7 @@ export default function App() {
             </Route>
           </Route>
         </Route>
-        <Route path="*" element={<Navigate to="/enterprise-dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         <UnifiedAlertsModal />
       </>

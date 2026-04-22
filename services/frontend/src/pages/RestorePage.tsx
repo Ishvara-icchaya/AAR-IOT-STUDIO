@@ -26,7 +26,7 @@ export function RestorePage() {
   }
 
   return (
-    <PageShell title="Restore to Default">
+    <PageShell>
       <p style={{ marginBottom: "1rem", color: "var(--color-text-muted)" }}>
         Phase 1: <strong>full deployment reset</strong> only (§0.7). Requires password + exact phrase{" "}
         <code>{PHRASE}</code>. Backend orchestration is not implemented yet — expect 501 after phrase

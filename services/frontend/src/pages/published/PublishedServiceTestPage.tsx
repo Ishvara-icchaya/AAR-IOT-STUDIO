@@ -26,7 +26,7 @@ export function PublishedServiceTestPage() {
   }
 
   return (
-    <PageShell title="Test publish" style={{ maxWidth: "720px", margin: "0 auto" }}>
+    <PageShell style={{ maxWidth: "720px", margin: "0 auto" }}>
       <p>
         <Link to="/published-services" style={{ color: "var(--color-accent)" }}>
           ← Published services

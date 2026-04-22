@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -12,12 +13,14 @@ from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant,
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.services.dashboard_live import _map_markers_site
+from app.services.dashboard_live import _map_markers_site, build_map_marker_for_source
 from app.services.map_runtime_service import (
+    compute_map_init_from_markers,
     internal_aggregator_visibility,
     list_eligible_map_objects,
     map_marker_detail,
     map_marker_to_light,
+    markers_manual_sources,
     markers_with_redis_first,
 )
 
@@ -38,6 +41,29 @@ class MapEligibleResponse(BaseModel):
 
 class MapMarkersResponse(BaseModel):
     markers: list[dict]
+
+
+class MapMarkersQueryBody(BaseModel):
+    """Unified marker fetch for dashboard map widgets (auto / manual / single). Replaces embedding markers in live payloads."""
+
+    site_id: uuid.UUID
+    latitude_field: str = "gps.lat"
+    longitude_field: str = "gps.lon"
+    kpi_fields: list[str] = []
+    excluded_source_ids: list[str] = []
+    device_ids: list[uuid.UUID] | None = None
+    title_field: str | None = None
+    health_field: str | None = None
+    light: bool = True
+    mode: str = "auto"
+    included_sources: list[dict[str, Any]] | None = None
+    single_source_type: str | None = None
+    single_source_id: uuid.UUID | None = None
+
+
+class MapMarkersQueryResponse(BaseModel):
+    markers: list[dict]
+    map_init: dict | None = None
 
 
 class MapDetailResponse(BaseModel):
@@ -136,6 +162,93 @@ def map_markers(
     if light:
         markers = [map_marker_to_light(m) for m in markers]
     return MapMarkersResponse(markers=markers)
+
+
+@router.post("/markers/query", response_model=MapMarkersQueryResponse)
+def map_markers_query(
+    body: MapMarkersQueryBody,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Resolve markers for dashboard map widgets without embedding large arrays in live widget payloads."""
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, body.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+
+    mode = (body.mode or "auto").strip().lower()
+    excluded = {str(x).strip() for x in body.excluded_source_ids if str(x).strip()}
+    kpi_list = [str(k) for k in body.kpi_fields]
+    allowed_devices: set[uuid.UUID] | None = None
+    if body.device_ids:
+        allowed_devices = set(body.device_ids)
+        if not allowed_devices:
+            allowed_devices = None
+
+    markers: list[dict[str, Any]]
+
+    if mode == "single":
+        if not body.single_source_type or not body.single_source_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "single mode requires single_source_type and single_source_id",
+            )
+        included = [
+            {
+                "source_type": str(body.single_source_type),
+                "source_id": str(body.single_source_id),
+            }
+        ]
+        markers = markers_manual_sources(
+            db,
+            customer_id=user.customer_id,
+            site_id=body.site_id,
+            included=included,
+            lat_field=body.latitude_field,
+            lon_field=body.longitude_field,
+            kpi_fields=kpi_list,
+            title_field=body.title_field,
+            health_field=body.health_field,
+            pg_single_marker_fn=build_map_marker_for_source,
+        )
+    elif mode == "manual":
+        raw = body.included_sources or []
+        if not raw:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "manual mode requires included_sources")
+        markers = markers_manual_sources(
+            db,
+            customer_id=user.customer_id,
+            site_id=body.site_id,
+            included=list(raw),
+            lat_field=body.latitude_field,
+            lon_field=body.longitude_field,
+            kpi_fields=kpi_list,
+            title_field=body.title_field,
+            health_field=body.health_field,
+            pg_single_marker_fn=build_map_marker_for_source,
+        )
+    else:
+        markers = markers_with_redis_first(
+            db,
+            customer_id=user.customer_id,
+            site_id=body.site_id,
+            lat_field=body.latitude_field,
+            lon_field=body.longitude_field,
+            kpi_fields=kpi_list,
+            excluded=excluded,
+            title_field=body.title_field,
+            health_field=body.health_field,
+            allowed_device_ids=allowed_devices,
+            pg_markers_fn=_map_markers_site,
+        )
+
+    if body.light:
+        markers = [map_marker_to_light(m) for m in markers]
+
+    mi = compute_map_init_from_markers(markers) if markers else None
+    return MapMarkersQueryResponse(markers=markers, map_init=mi)
 
 
 @router.get("/detail", response_model=MapDetailResponse)

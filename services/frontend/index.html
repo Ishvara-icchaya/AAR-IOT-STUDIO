@@ -16,10 +16,10 @@
     <script>
       (function () {
         try {
-          var t = localStorage.getItem("aar-theme");
-          if (t) document.documentElement.dataset.theme = t;
-          var f = localStorage.getItem("aar-font");
-          if (f) document.documentElement.dataset.font = f;
+          document.documentElement.dataset.theme = "dark";
+          localStorage.setItem("aar-theme", "dark");
+          document.documentElement.removeAttribute("data-font");
+          localStorage.removeItem("aar-font");
         } catch (e) {}
       })();
     </script>

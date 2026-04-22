@@ -25,7 +25,13 @@ export type DeviceRead = {
   is_active: boolean;
   polling_enabled: boolean;
   last_seen_at?: string | null;
+  /** Liveness FSM; worker may update less often than ingest — UI uses displayLivenessState. */
   current_liveness_state?: string;
+  last_state_changed_at?: string | null;
+  expected_interval_seconds?: number;
+  /** Same fields as device_liveness worker thresholds (defaults 120 / 300). */
+  late_threshold_seconds?: number;
+  offline_threshold_seconds?: number;
   endpoint: DeviceEndpointList;
 };
 

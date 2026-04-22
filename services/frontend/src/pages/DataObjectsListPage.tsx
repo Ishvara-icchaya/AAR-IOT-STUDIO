@@ -1,12 +1,15 @@
 import type { CSSProperties } from "react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { BrushCleaning, ChevronDown, ChevronUp } from "lucide-react";
 import { apiFetch } from "@/api/client";
-import type { DataObjectDetailListDTO } from "@/api/scrubber";
+import type { DataObjectDetailDTO, DataObjectDetailListDTO } from "@/api/scrubber";
 import { listDataObjectDetails } from "@/api/scrubber";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { listDevices, type DeviceRead } from "@/api/devices";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
+import "./device-register-page.css";
 
 type DataObjectRow = {
   id: string;
@@ -72,34 +75,43 @@ function DataObjectObservedHistory({ dataObjectId }: { dataObjectId: string }) {
     return <p style={{ fontSize: "0.8rem", color: "var(--color-text-muted)" }}>No detail rows yet.</p>;
   }
   return (
+    <DataObjectObservedHistoryGrid data={data} />
+  );
+}
+
+function DataObjectObservedHistoryGrid({ data }: { data: DataObjectDetailListDTO }) {
+  const columns = useMemo<PlainOperationalColumn<DataObjectDetailDTO>[]>(
+    () => [
+      {
+        id: "observed_at",
+        header: "Observed",
+        cell: (r) => new Date(r.observed_at).toLocaleString(),
+      },
+      {
+        id: "health_status",
+        header: "Health",
+        cell: (r) => String(r.health_status ?? "—"),
+      },
+      {
+        id: "id",
+        header: "detail id",
+        cell: (r) => <code style={{ fontSize: "0.68rem" }}>{r.id}</code>,
+      },
+    ],
+    [],
+  );
+  return (
     <div style={{ marginTop: "0.75rem" }}>
       <div style={{ fontWeight: 600, fontSize: "0.82rem", marginBottom: "0.35rem" }}>
         Observed history ({data.total} sample{data.total === 1 ? "" : "s"}) — page {data.page}
       </div>
-      <table style={{ width: "100%", fontSize: "0.75rem", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>Observed</th>
-            <th style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>Health</th>
-            <th style={{ textAlign: "left", borderBottom: "1px solid var(--color-border)" }}>detail id</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.items.map((it) => (
-            <tr key={it.id}>
-              <td style={{ borderBottom: "1px solid var(--color-border)", padding: "0.25rem 0" }}>
-                {new Date(it.observed_at).toLocaleString()}
-              </td>
-              <td style={{ borderBottom: "1px solid var(--color-border)", padding: "0.25rem 0" }}>
-                {it.health_status ?? "—"}
-              </td>
-              <td style={{ borderBottom: "1px solid var(--color-border)", padding: "0.25rem 0" }}>
-                <code style={{ fontSize: "0.68rem" }}>{it.id}</code>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <PlainOperationalTable<DataObjectDetailDTO>
+        rows={data.items}
+        columns={columns}
+        getRowId={(r) => r.id}
+        maxHeight="min(40vh, 320px)"
+        bordered
+      />
     </div>
   );
 }
@@ -189,42 +201,67 @@ export function DataObjectsListPage() {
   }, [rows]);
 
   return (
-    <PageShell title="View Data Objects">
-      {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem", alignItems: "flex-end" }}>
-        <label style={lbl}>
-          Device
-          <select
-            value={deviceFilter}
-            onChange={(e) => setDeviceFilterAndUrl(e.target.value)}
-            style={{ ...inp, minWidth: "240px" }}
-            disabled={devicesLoading}
-          >
-            <option value="">All registered devices</option>
-            {devices.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" style={btn} disabled={loading} onClick={() => void load()}>
-          {loading ? "Loading…" : "Refresh"}
-        </button>
-      </div>
-      <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-        <table style={tbl}>
-          <thead>
-            <tr>
-              <th style={th}>Device</th>
-              <th style={th}>Archived payload</th>
-              <th style={th}>Data object</th>
-              <th style={th}>Lifecycle</th>
-              <th style={th}>Health</th>
-              <th style={th}>Updated</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
+    <PageShell variant="list" className="data-objects-list-page device-manage-page">
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-page-hero__title">Data objects</h1>
+              <p className="dm-page-hero__subtitle">Scrubber outputs by registered device.</p>
+            </div>
+          </div>
+        </header>
+
+        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
+
+        <section className="dm-filter-panel" aria-label="Device filter">
+          <div className="dm-controls-form__row">
+            <label className="dm-filter-field dm-filter-field--grow">
+              <span className="dm-filter-field__label">Device</span>
+              <select value={deviceFilter} onChange={(e) => setDeviceFilterAndUrl(e.target.value)} disabled={devicesLoading}>
+                <option value="">All registered devices</option>
+                {devices.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="dm-btn dm-btn--primary" disabled={loading} onClick={() => void load()}>
+              {loading ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+        </section>
+
+        <div className="dm-table-wrap">
+          <div className="dm-device-table-shell">
+            <div className="dm-table-scroll">
+              <table className="dm-data-table">
+                <thead>
+                  <tr>
+                    <th className="dm-data-table__th" scope="col">
+                      Device
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Archived payload
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Data object
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Lifecycle
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Health
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Updated
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
           <tbody>
             {devicesInScope.map((d) => {
               const objs = objectsByDevice.get(d.id) ?? [];
@@ -232,14 +269,14 @@ export function DataObjectsListPage() {
               if (objs.length === 0) {
                 return (
                   <tr key={d.id}>
-                    <td style={td}>
+                    <td className="dm-data-table__td">
                       <strong>{d.name}</strong>
                     </td>
-                    <td style={td}>{scrubberEnabled ? "Yes" : "No"}</td>
-                    <td style={{ ...td, color: "var(--color-text-muted)" }} colSpan={4}>
+                    <td className="dm-data-table__td">{scrubberEnabled ? "Yes" : "No"}</td>
+                    <td className="dm-data-table__td" style={{ color: "var(--color-text-muted)" }} colSpan={4}>
                       No data objects for this device yet.
                     </td>
-                    <td style={td}>
+                    <td className="dm-data-table__td">
                       <span style={{ color: "var(--color-text-muted)", fontSize: "0.82rem" }}>
                         {scrubberEnabled ? "—" : "Scrubber unlocks after the first payload is archived."}
                       </span>
@@ -252,9 +289,9 @@ export function DataObjectsListPage() {
                   {objs.map((r, idx) => (
                     <Fragment key={r.id}>
                       <tr>
-                        <td style={td}>{idx === 0 ? <strong>{d.name}</strong> : null}</td>
-                        <td style={td}>{idx === 0 ? (scrubberEnabled ? "Yes" : "No") : null}</td>
-                        <td style={td}>
+                        <td className="dm-data-table__td">{idx === 0 ? <strong>{d.name}</strong> : null}</td>
+                        <td className="dm-data-table__td">{idx === 0 ? (scrubberEnabled ? "Yes" : "No") : null}</td>
+                        <td className="dm-data-table__td">
                           <strong>{r.name}</strong>
                           {r.error_message ? (
                             <div style={{ fontSize: "0.75rem", color: "#c62828", marginTop: "0.2rem" }}>
@@ -262,10 +299,10 @@ export function DataObjectsListPage() {
                             </div>
                           ) : null}
                         </td>
-                        <td style={td}>
+                        <td className="dm-data-table__td">
                           <code>{r.lifecycle_status}</code>
                         </td>
-                        <td style={{ ...td, color: healthColor(r.health_status), fontWeight: 600 }}>
+                        <td className="dm-data-table__td" style={{ color: healthColor(r.health_status), fontWeight: 600 }}>
                           {r.health_status ?? "—"}
                           {r.health_code ? (
                             <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--color-text-muted)" }}>
@@ -273,7 +310,7 @@ export function DataObjectsListPage() {
                             </div>
                           ) : null}
                         </td>
-                        <td style={td}>
+                        <td className="dm-data-table__td">
                           <div>{new Date(r.updated_at).toLocaleString()}</div>
                           {r.latest_seen_at ? (
                             <div style={{ fontSize: "0.72rem", color: "var(--color-text-muted)" }}>
@@ -281,35 +318,57 @@ export function DataObjectsListPage() {
                             </div>
                           ) : null}
                         </td>
-                        <td style={td}>
-                          {scrubberEnabled && r.raw_data_object_id ? (
-                            <Link
-                              to={`/scrubber/create?rawId=${encodeURIComponent(
-                                r.raw_data_object_id,
-                              )}&deviceId=${encodeURIComponent(r.device_id)}&returnTo=${encodeURIComponent(
-                                "/scrubber/data-objects",
-                              )}`}
-                              style={{ marginRight: "0.5rem" }}
+                        <td className="dm-data-table__td dm-data-table__td--actions">
+                          <div className="dm-act-grid">
+                            {scrubberEnabled && r.raw_data_object_id ? (
+                              <Link
+                                className="dm-act-grid__btn"
+                                to={`/scrubber/create?rawId=${encodeURIComponent(
+                                  r.raw_data_object_id,
+                                )}&deviceId=${encodeURIComponent(r.device_id)}&returnTo=${encodeURIComponent(
+                                  "/scrubber/data-objects",
+                                )}`}
+                                title="Open Scrubber Studio"
+                                aria-label={`Open scrubber for ${r.name}`}
+                              >
+                                <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn dm-act-grid__btn--disabled"
+                                disabled
+                                title={
+                                  scrubberEnabled ? "No raw source linked for this row" : "Scrubber is locked for this tenant"
+                                }
+                                aria-label="Scrubber unavailable"
+                              >
+                                <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="dm-act-grid__btn dm-act-grid__btn--plain"
+                              title={expanded === r.id ? "Hide row details" : "Show row details"}
+                              aria-label={expanded === r.id ? "Hide details" : "Show details"}
+                              onClick={() => setExpanded((x) => (x === r.id ? null : r.id))}
                             >
-                              Edit scrubber
-                            </Link>
-                          ) : (
-                            <span style={{ color: "var(--color-text-muted)", marginRight: "0.5rem" }}>
-                              {scrubberEnabled ? "No raw source" : "Scrubber locked"}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            style={linkBtn}
-                            onClick={() => setExpanded((x) => (x === r.id ? null : r.id))}
-                          >
-                            {expanded === r.id ? "Hide" : "Details"}
-                          </button>
+                              {expanded === r.id ? (
+                                <ChevronUp size={16} strokeWidth={2} aria-hidden />
+                              ) : (
+                                <ChevronDown size={16} strokeWidth={2} aria-hidden />
+                              )}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                       {expanded === r.id ? (
                         <tr key={`${r.id}-detail`}>
-                          <td colSpan={7} style={{ ...td, background: "var(--color-bg)", verticalAlign: "top" }}>
+                          <td
+                            colSpan={7}
+                            className="dm-data-table__td"
+                            style={{ background: "var(--dm-surface-2, var(--color-bg))", verticalAlign: "top" }}
+                          >
                             <div style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }}>
                               <div>
                                 <strong>device</strong>: {d.name} (<code>{r.device_id}</code>)
@@ -355,64 +414,24 @@ export function DataObjectsListPage() {
               );
             })}
           </tbody>
-        </table>
-        {!devicesLoading && devicesInScope.length === 0 && !err && (
-          <p style={{ color: "var(--color-text-muted)", marginTop: "0.5rem" }}>No devices in scope.</p>
-        )}
-        {!loading && devicesInScope.length > 0 && rows.length === 0 && !deviceFilter && !err && (
-          <p style={{ color: "var(--color-text-muted)", marginTop: "0.5rem" }}>
-            No data objects yet for the devices shown.
-          </p>
-        )}
+              </table>
+              {!devicesLoading && devicesInScope.length === 0 && !err && (
+                <p className="dm-inline-summary" style={{ marginTop: "0.5rem" }}>
+                  No devices in scope.
+                </p>
+              )}
+              {!loading && devicesInScope.length > 0 && rows.length === 0 && !deviceFilter && !err && (
+                <p className="dm-inline-summary" style={{ marginTop: "0.5rem" }}>
+                  No data objects yet for the devices shown.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </PageShell>
   );
 }
-
-const lbl: CSSProperties = {
-  display: "grid",
-  gap: "0.25rem",
-  fontSize: "0.85rem",
-  color: "var(--color-text-muted)",
-};
-
-const inp: CSSProperties = {
-  padding: "0.5rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-  fontFamily: "inherit",
-};
-
-const btn: CSSProperties = {
-  padding: "0.55rem 0.85rem",
-  border: "none",
-  borderRadius: "var(--radius)",
-  background: "var(--color-accent)",
-  color: "var(--btn-on-accent)",
-  fontFamily: "inherit",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const linkBtn: CSSProperties = {
-  border: "none",
-  background: "none",
-  color: "var(--color-accent)",
-  cursor: "pointer",
-  padding: 0,
-  font: "inherit",
-  textDecoration: "underline",
-};
-
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  borderBottom: "1px solid var(--color-border)",
-  padding: "0.4rem",
-};
-const td: CSSProperties = { borderBottom: "1px solid var(--color-border)", padding: "0.4rem" };
 
 const detailHdr: CSSProperties = { fontWeight: 600, fontSize: "0.8rem", marginBottom: "0.25rem" };
 const pre: CSSProperties = {

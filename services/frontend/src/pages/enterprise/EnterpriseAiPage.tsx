@@ -1,8 +1,8 @@
-import type { CSSProperties } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/api/client";
 import {
   deleteAiSavedQuery,
+  getAiDatasets,
   getAiHealth,
   getAiRecentQueries,
   getAiSavedQueries,
@@ -10,7 +10,7 @@ import {
   postAiChat,
   postAiSaveQuery,
 } from "@/api/ai";
-import { useAuth } from "@/auth/AuthContext";
+import { useOpsShell, type OpsTimeRange } from "@/contexts/OpsShellContext";
 import { AiAnswerCard } from "@/components/enterprise-ai/AiAnswerCard";
 import { AiDegradedBanner } from "@/components/enterprise-ai/AiDegradedBanner";
 import { AiEvidencePanel } from "@/components/enterprise-ai/AiEvidencePanel";
@@ -22,35 +22,122 @@ import { AiResultsTable } from "@/components/enterprise-ai/AiResultsTable";
 import { AiSavedQueries } from "@/components/enterprise-ai/AiSavedQueries";
 import { AiSuggestedQueries } from "@/components/enterprise-ai/AiSuggestedQueries";
 import { PageStatus } from "@/components/PageStatus";
+import { AppTabs } from "@/components/app";
 import { PageShell } from "@/layouts/PageShell";
-import type { AIChatResponse, AIHealth, AIRecentQuery, AISavedQuery, AISuggestionItem } from "@/types/ai";
+import { useShellMessage } from "@/layouts/shell";
+import type { AIDatasetMeta, AIChatResponse, AIHealth, AIRecentQuery, AISavedQuery, AISuggestionItem } from "@/types/ai";
+
+import "../device-register-page.css";
+import "./enterprise-ai.css";
 
 type SiteRow = { id: string; name: string; description: string | null };
 
 type TabId = "answer" | "evidence" | "plan" | "results";
 
-const tabBar: CSSProperties = { display: "flex", gap: "0.35rem", flexWrap: "wrap", marginBottom: "0.75rem" };
+const RESULT_TABS: { id: TabId; label: string }[] = [
+  { id: "answer", label: "Answer" },
+  { id: "evidence", label: "Evidence" },
+  { id: "plan", label: "Plan" },
+  { id: "results", label: "Data" },
+];
+
+const CONCISE_ANSWER_MAX = 280;
+
+/** Same copy as `ai_service._structured_answer` when the query returns zero rows. */
+const NO_MATCHING_ROWS_MESSAGE = "No matching rows were found for your site scope and time range.";
+
+const DEGRADED_FOOTER_MESSAGE = "Structured data only — LLM unavailable or skipped.";
+
+function conciseAnswerPreview(text: string | undefined | null): string {
+  const t = (text ?? "").trim();
+  if (!t) return "";
+  if (t.length <= CONCISE_ANSWER_MAX) return t;
+  return `${t.slice(0, CONCISE_ANSWER_MAX).trim()}…`;
+}
+
+function formatRelative(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return "—";
+    const diff = Date.now() - t;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    return `${d}d ago`;
+  } catch {
+    return "—";
+  }
+}
+
+function formatRowCount(n: number | undefined): string {
+  if (n == null || Number.isNaN(n)) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function opsTimeRangeToAiPreset(tr: OpsTimeRange): string {
+  switch (tr) {
+    case "1h":
+    case "24h":
+      return "last_24_hours";
+    case "7d":
+      return "last_7_days";
+    case "30d":
+      return "last_30_days";
+    default:
+      return "last_24_hours";
+  }
+}
+
+/** API: omit site_ids for all permitted sites; single id when shell site is set. Saved-query overrides pass through. */
+function siteIdsForAsk(opsSiteId: string | null, override?: string[] | null): string[] | undefined {
+  if (override !== undefined && override !== null) {
+    return override.length ? override : undefined;
+  }
+  const id = opsSiteId?.trim();
+  return id ? [id] : undefined;
+}
+
+function healthScore(h: AIHealth | null): { pct: number; label: string } {
+  if (!h) return { pct: 0, label: "Unknown" };
+  let pct = 100;
+  if (!h.ollama_reachable) pct -= 28;
+  if (!h.model_configured) pct -= 12;
+  pct -= Math.min(22, (h.recent_llm_failures_estimate ?? 0) * 3);
+  pct = Math.max(0, Math.min(100, Math.round(pct)));
+  let label = "Operational";
+  if (pct < 72) label = "Degraded";
+  if (pct < 45) label = "At risk";
+  return { pct, label };
+}
 
 export function EnterpriseAiPage() {
-  const { me } = useAuth();
+  const { pushMessage } = useShellMessage();
+  const { siteId: opsSiteId, timeRange: opsTimeRange } = useOpsShell();
+  const aiTimePreset = useMemo(() => opsTimeRangeToAiPreset(opsTimeRange), [opsTimeRange]);
   const [sites, setSites] = useState<SiteRow[]>([]);
-  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
-  const [timeRange, setTimeRange] = useState("last_24_hours");
   const [useLlm, setUseLlm] = useState(true);
-  const [debugRaw, setDebugRaw] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [res, setRes] = useState<AIChatResponse | null>(null);
   const [tab, setTab] = useState<TabId>("answer");
   const [health, setHealth] = useState<AIHealth | null>(null);
+  const [datasets, setDatasets] = useState<AIDatasetMeta[]>([]);
   const [suggestions, setSuggestions] = useState<AISuggestionItem[]>([]);
   const [recent, setRecent] = useState<AIRecentQuery[]>([]);
   const [saved, setSaved] = useState<AISavedQuery[]>([]);
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const showDebug = Boolean(me?.is_superuser || me?.role === "admin");
+  /** Bumps on each successful `postAiChat` so footer notices fire once per response. */
+  const responseFooterGen = useRef(0);
+  const lastFooterGenHandled = useRef<number | null>(null);
 
   const loadSide = useCallback(async () => {
     try {
@@ -69,13 +156,39 @@ export function EnterpriseAiPage() {
     } catch {
       /* non-fatal */
     }
+    try {
+      const ds = await getAiDatasets();
+      setDatasets(ds?.items ?? []);
+    } catch {
+      setDatasets([]);
+    }
   }, []);
 
   useEffect(() => {
     void loadSide();
   }, [loadSide]);
 
-  async function runAsk(text: string) {
+  useEffect(() => {
+    if (!res) {
+      lastFooterGenHandled.current = null;
+      return;
+    }
+    const gen = responseFooterGen.current;
+    if (lastFooterGenHandled.current === gen) return;
+    lastFooterGenHandled.current = gen;
+
+    if (res.degraded) {
+      pushMessage("warning", DEGRADED_FOOTER_MESSAGE);
+    }
+    const answerTrim = (res.answer ?? "").trim();
+    if (answerTrim === NO_MATCHING_ROWS_MESSAGE || answerTrim.includes(NO_MATCHING_ROWS_MESSAGE)) {
+      pushMessage("info", NO_MATCHING_ROWS_MESSAGE);
+    }
+  }, [res, pushMessage]);
+
+  const kpiHealth = useMemo(() => healthScore(health), [health]);
+
+  async function runAsk(text: string, siteScopeOverride?: string[] | null, timeRangeOverride?: string | null) {
     const q = text.trim();
     if (!q) return;
     setErr(null);
@@ -84,13 +197,13 @@ export function EnterpriseAiPage() {
     try {
       const payload = {
         message: q,
-        site_ids: selectedSiteIds.length ? selectedSiteIds : undefined,
-        time_range: timeRange,
+        site_ids: siteIdsForAsk(opsSiteId, siteScopeOverride),
+        time_range: (timeRangeOverride?.trim() || aiTimePreset) || "last_24_hours",
         use_llm: useLlm,
-        debug_raw: showDebug && debugRaw,
       };
       const data = await postAiChat(payload);
       if (!data) throw new Error("Empty response");
+      responseFooterGen.current += 1;
       setRes(data);
       setTab("answer");
       void loadSide();
@@ -109,8 +222,8 @@ export function EnterpriseAiPage() {
       await postAiSaveQuery({
         name: saveName.trim(),
         question: message.trim(),
-        default_site_scope_json: selectedSiteIds,
-        default_time_range: timeRange,
+        default_site_scope_json: opsSiteId?.trim() ? [opsSiteId.trim()] : [],
+        default_time_range: aiTimePreset,
       });
       setSaveName("");
       void loadSide();
@@ -130,128 +243,112 @@ export function EnterpriseAiPage() {
     }
   }
 
-  function tabBtn(id: TabId, label: string) {
-    const active = tab === id;
-    return (
-      <button
-        type="button"
-        key={id}
-        onClick={() => setTab(id)}
-        style={{
-          padding: "0.35rem 0.65rem",
-          borderRadius: "var(--radius)",
-          border: `1px solid ${active ? "var(--color-accent)" : "var(--color-border)"}`,
-          background: active ? "rgba(255,255,255,0.08)" : "transparent",
-          color: "var(--color-text)",
-          cursor: "pointer",
-          fontSize: "0.85rem",
-        }}
-      >
-        {label}
-      </button>
-    );
-  }
+  const siteLabel = useMemo(() => {
+    const id = opsSiteId?.trim();
+    if (!id) return "All permitted sites";
+    return sites.find((s) => s.id === id)?.name ?? `${id.slice(0, 8)}…`;
+  }, [opsSiteId, sites]);
 
   return (
-    <PageShell title="Enterprise AI" className="enterprise-ai-page">
-      <div className="enterprise-ai-page__body">
-        <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)" }}>
-        Answers are grounded in approved platform datasets only. The LLM never executes SQL or sees raw user instructions
-        as code — it only summarizes structured rows already retrieved for your site scope.
-        </p>
-
-        {health && (
-          <div
-            style={{
-              fontSize: "0.82rem",
-              marginBottom: "1rem",
-              padding: "0.5rem 0.65rem",
-              borderRadius: "var(--radius)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            Ollama: {health.ollama_reachable ? "reachable" : "unreachable"}
-            {health.ollama_model ? ` · model ${health.ollama_model}` : ""}
-            {!health.ollama_reachable && health.ollama_error ? ` — ${health.ollama_error}` : ""}
+    <PageShell variant="list" className="enterprise-ai-page device-manage-page">
+      <div className="dm-root ea-root">
+        <section className="dm-kpi-row dm-kpi-row--equal-4" aria-label="Assistant metrics">
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Approved datasets</div>
+              <div className="dm-kpi__value">{datasets.length || "—"}</div>
+              <div className="dm-kpi__sub">Catalog entries</div>
+            </div>
           </div>
-        )}
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Rows (last retrieval)</div>
+              <div className="dm-kpi__value">{formatRowCount(res?.evidence.rows_returned)}</div>
+              <div className="dm-kpi__sub">Grounded in evidence</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Last activity</div>
+              <div className="dm-kpi__value">{formatRelative(recent[0]?.created_at)}</div>
+              <div className="dm-kpi__sub">{recent[0] ? "Recent query" : "No queries yet"}</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">System health</div>
+              <div className="dm-kpi__value">{health ? `${kpiHealth.pct}%` : "—"}</div>
+              <div className="dm-kpi__sub">{health ? `${kpiHealth.label} · ${siteLabel}` : "LLM status unknown"}</div>
+            </div>
+          </div>
+        </section>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
-            gap: "1.25rem",
-            alignItems: "start",
-          }}
-        >
-          <div>
-            <h2 style={{ fontSize: "1rem" }}>Ask</h2>
+        <div className="ea-main">
+          <section className="dm-filter-panel ea-stack ea-stack--scroll" aria-labelledby="ea-suggested-title">
+            <h2 id="ea-suggested-title" className="dm-section-heading">
+              Suggestions
+            </h2>
+            <AiSuggestedQueries items={suggestions} onPick={(p) => setMessage(p)} />
+            <p className="ea-disclaimer">AI may make mistakes. Verify important details in Evidence and Data.</p>
+          </section>
+
+          <section className="dm-filter-panel ea-stack ea-stack--scroll" aria-labelledby="ea-ask-title">
+            <h2 id="ea-ask-title" className="dm-section-heading">
+              Ask
+            </h2>
             <AiPromptBar
-              sites={sites}
-              selectedSiteIds={selectedSiteIds}
-              onSitesChange={setSelectedSiteIds}
-              timeRange={timeRange}
-              onTimeRangeChange={setTimeRange}
               useLlm={useLlm}
               onUseLlmChange={setUseLlm}
-              debugRaw={debugRaw}
-              onDebugRawChange={setDebugRaw}
-              showDebug={showDebug}
               message={message}
               onMessageChange={setMessage}
               onSubmit={() => void runAsk(message)}
               loading={loading}
             />
-            <h3 style={{ fontSize: "0.95rem" }}>Suggested</h3>
-            <AiSuggestedQueries items={suggestions} onPick={(p) => setMessage(p)} />
-          </div>
+          </section>
 
-          <div>
+          <section className="dm-filter-panel ea-stack ea-stack--results" aria-labelledby="ea-results-title">
+            <h2 id="ea-results-title" className="dm-section-heading">
+              Results
+            </h2>
+            {res?.answer?.trim() ? (
+              <div className="ea-concise-answer" role="region" aria-label="Answer preview">
+                <div className="ea-concise-answer__label">Response</div>
+                <p className="ea-concise-answer__text">{conciseAnswerPreview(res.answer)}</p>
+                {res.answer.trim().length > CONCISE_ANSWER_MAX ? (
+                  <button type="button" className="ea-concise-answer__more" onClick={() => setTab("answer")}>
+                    Open full answer
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
             <AiDegradedBanner res={res} />
             {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-            <div style={tabBar}>
-              {tabBtn("answer", "Answer")}
-              {tabBtn("evidence", "Evidence")}
-              {tabBtn("plan", "Plan")}
-              {tabBtn("results", "Results")}
+            <div className="ea-results-tabs">
+              <AppTabs tabs={RESULT_TABS} active={tab} onChange={setTab} plain ariaLabel="Result views" />
             </div>
-            <div
-              style={{
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius)",
-                padding: "1rem",
-                minHeight: "200px",
-              }}
-            >
-              {tab === "answer" && <AiAnswerCard res={res} />}
+            <div className="ea-results-body">
+              {tab === "answer" && <AiAnswerCard res={res} emptyStyle="hero" compact />}
               {tab === "evidence" && <AiEvidencePanel res={res} />}
               {tab === "plan" && <AiPlanSummary res={res} />}
               {tab === "results" && (
                 <div>
                   <AiResultsChart res={res} />
-                  <h4 style={{ fontSize: "0.9rem", marginTop: "1rem" }}>Sample rows</h4>
+                  <h4 className="ea-results-sample-heading">Sample rows</h4>
                   <AiResultsTable res={res} />
                 </div>
               )}
             </div>
-          </div>
+            <p className="ea-results-foot">Powered by approved platform datasets.</p>
+          </section>
         </div>
 
-        <div
-          style={{
-            marginTop: "2rem",
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))",
-            gap: "1.25rem",
-          }}
-        >
-          <div>
-            <h2 style={{ fontSize: "1rem" }}>Recent queries</h2>
+        <div className="ea-bottom">
+          <section className="dm-filter-panel ea-stack" id="ea-recent">
+            <h2 className="dm-section-heading">Recent queries</h2>
             <AiRecentQueries items={recent} onReuse={(q) => setMessage(q)} />
-          </div>
-          <div>
-            <h2 style={{ fontSize: "1rem" }}>Saved queries</h2>
+          </section>
+          <section className="dm-filter-panel ea-stack" id="ea-saved">
+            <h2 className="dm-section-heading">Saved queries</h2>
             <AiSavedQueries
               items={saved}
               saveName={saveName}
@@ -259,14 +356,12 @@ export function EnterpriseAiPage() {
               onSave={() => void handleSave()}
               onRun={(s) => {
                 setMessage(s.question);
-                setSelectedSiteIds(s.default_site_scope_json ?? []);
-                setTimeRange(s.default_time_range || "last_24_hours");
-                void runAsk(s.question);
+                void runAsk(s.question, s.default_site_scope_json ?? null, s.default_time_range || null);
               }}
               onDelete={(id) => void handleDeleteSaved(id)}
               saving={saving}
             />
-          </div>
+          </section>
         </div>
       </div>
     </PageShell>

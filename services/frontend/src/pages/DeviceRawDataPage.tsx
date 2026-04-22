@@ -2,6 +2,7 @@ import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
 
@@ -73,6 +74,14 @@ function aggregateByObjectName(rows: RawRow[]): AggregatedGroup[] {
   );
 }
 
+function fmtIso(iso: string) {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 function formatPayloadPreview(text: string, contentType: string | null): string {
   const ct = (contentType || "").toLowerCase();
   if (ct.includes("json") || (text.trim().startsWith("{") && text.trim().endsWith("}"))) {
@@ -83,6 +92,81 @@ function formatPayloadPreview(text: string, contentType: string | null): string 
     }
   }
   return text;
+}
+
+function RawActionsCell({
+  g,
+  busyPayload,
+  onOpenPayload,
+}: {
+  g: AggregatedGroup;
+  busyPayload: string | null;
+  onOpenPayload: (objectName: string, rawId: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
+      <button
+        type="button"
+        style={sbtn}
+        disabled={busyPayload !== null}
+        onClick={() => onOpenPayload(g.object_name, g.latest_raw_id)}
+      >
+        {busyPayload === g.latest_raw_id ? "Loading…" : "View payload"}
+      </button>
+      <Link
+        to={`/scrubber/create?rawId=${encodeURIComponent(
+          g.latest_raw_id,
+        )}&deviceId=${encodeURIComponent(g.device_id)}&returnTo=${encodeURIComponent("/devices/raw")}`}
+        style={{ fontSize: "0.8rem" }}
+      >
+        Scrubber
+      </Link>
+    </div>
+  );
+}
+
+function RawArchiveAggregateGrid({
+  groups,
+  busyPayload,
+  onOpenPayload,
+}: {
+  groups: AggregatedGroup[];
+  busyPayload: string | null;
+  onOpenPayload: (objectName: string, rawId: string) => void;
+}) {
+  const columns = useMemo<PlainOperationalColumn<AggregatedGroup>[]>(() => {
+    return [
+      { id: "object_name", header: "Object name", cell: (g) => g.object_name },
+      { id: "site_name", header: "Site", cell: (g) => g.site_name },
+      { id: "archive_count", header: "Archives", cell: (g) => String(g.archive_count) },
+      {
+        id: "latest_ingested_at",
+        header: "Latest ingested",
+        cell: (g) => fmtIso(g.latest_ingested_at),
+      },
+      {
+        id: "protocol_source",
+        header: "Protocol",
+        cell: (g) => String(g.protocol_source ?? "—"),
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: (g) => <RawActionsCell g={g} busyPayload={busyPayload} onOpenPayload={onOpenPayload} />,
+      },
+    ];
+  }, [busyPayload, onOpenPayload]);
+
+  return (
+    <PlainOperationalTable<AggregatedGroup>
+      rows={groups}
+      columns={columns}
+      getRowId={(g) => g.device_id}
+      bordered
+      emptyMessage="No rows."
+      maxHeight="min(60vh, 520px)"
+    />
+  );
 }
 
 export function DeviceRawDataPage() {
@@ -169,7 +253,7 @@ export function DeviceRawDataPage() {
   const manageDevicesHref = "/devices/register#registered-devices-table";
 
   return (
-    <PageShell title="Raw Data">
+    <PageShell>
       <nav style={backNav} aria-label="Back to manage devices">
         <Link to={manageDevicesHref} style={backLink}>
           ← Manage Devices
@@ -212,52 +296,7 @@ export function DeviceRawDataPage() {
         ) : null}
       </p>
       <div className="table-scroll-sticky" style={{ overflow: "auto", marginTop: "0.5rem" }}>
-        <table style={tbl}>
-          <thead>
-            <tr>
-              <th style={th}>Object name</th>
-              <th style={th}>Site</th>
-              <th style={th}>Archives</th>
-              <th style={th}>Latest ingested</th>
-              <th style={th}>Protocol</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <tr key={g.device_id}>
-                <td style={td}>{g.object_name}</td>
-                <td style={td}>{g.site_name}</td>
-                <td style={td}>{g.archive_count}</td>
-                <td style={td}>{fmt(g.latest_ingested_at)}</td>
-                <td style={td}>{g.protocol_source ?? "—"}</td>
-                <td style={td}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center" }}>
-                    <button
-                      type="button"
-                      style={sbtn}
-                      disabled={busyPayload !== null}
-                      onClick={() => void openPayload(g.object_name, g.latest_raw_id)}
-                    >
-                      {busyPayload === g.latest_raw_id ? "Loading…" : "View payload"}
-                    </button>
-                    <Link
-                      to={`/scrubber/create?rawId=${encodeURIComponent(
-                        g.latest_raw_id,
-                      )}&deviceId=${encodeURIComponent(g.device_id)}&returnTo=${encodeURIComponent("/devices/raw")}`}
-                      style={{ fontSize: "0.8rem" }}
-                    >
-                      Scrubber
-                    </Link>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {groups.length === 0 && (
-          <p style={{ marginTop: "0.75rem", color: "var(--color-text-muted)" }}>No rows.</p>
-        )}
+        <RawArchiveAggregateGrid groups={groups} busyPayload={busyPayload} onOpenPayload={(name, id) => void openPayload(name, id)} />
       </div>
 
       {payloadModal ? (
@@ -306,14 +345,6 @@ export function DeviceRawDataPage() {
   );
 }
 
-function fmt(iso: string) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
-}
-
 const backNav: CSSProperties = {
   marginBottom: "0.75rem",
 };
@@ -355,25 +386,6 @@ const sbtn: CSSProperties = {
   color: "var(--color-text)",
   cursor: "pointer",
   fontFamily: "inherit",
-};
-
-const tbl: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.82rem",
-};
-
-const th: CSSProperties = {
-  textAlign: "left",
-  borderBottom: "1px solid var(--color-border)",
-  padding: "0.4rem",
-  whiteSpace: "nowrap",
-};
-
-const td: CSSProperties = {
-  borderBottom: "1px solid var(--color-border)",
-  padding: "0.4rem",
-  verticalAlign: "top",
 };
 
 const modalBackdrop: CSSProperties = {

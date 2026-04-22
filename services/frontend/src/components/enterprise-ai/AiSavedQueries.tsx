@@ -24,43 +24,38 @@ export function AiSavedQueries({
   }
 
   return (
-    <div style={{ fontSize: "0.85rem" }}>
-      <form onSubmit={submitSave} style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-        <input
-          value={saveName}
-          onChange={(e) => onSaveName(e.target.value)}
-          placeholder="Name for saved query"
-          style={{ flex: "1 1 160px", padding: "0.35rem" }}
-        />
-        <button type="submit" disabled={saving || !saveName.trim()}>
-          Save current question
+    <div className="ea-saved-queries">
+      <form className="dm-controls-form__row ea-saved-queries__save" onSubmit={submitSave}>
+        <div className="dm-filter-field dm-filter-field--grow">
+          <label htmlFor="ea-saved-name">Save as</label>
+          <input
+            id="ea-saved-name"
+            type="text"
+            value={saveName}
+            onChange={(e) => onSaveName(e.target.value)}
+            placeholder="Name for saved query"
+            autoComplete="off"
+          />
+        </div>
+        <button type="submit" className="dm-btn dm-btn--primary" disabled={saving || !saveName.trim()}>
+          {saving ? "Saving…" : "Save"}
         </button>
       </form>
       {!items.length ? (
-        <p style={{ color: "var(--color-text-muted)" }}>No saved queries.</p>
+        <p className="dm-inline-summary">No saved queries.</p>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+        <ul className="ea-query-list">
           {items.map((s) => (
-            <li
-              key={s.id}
-              style={{
-                padding: "0.4rem 0",
-                borderBottom: "1px solid var(--color-border-subtle, #333)",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "0.5rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <strong>{s.name}</strong>
-                <div style={{ color: "var(--color-text-muted)" }}>{s.question}</div>
+            <li key={s.id} className="ea-query-list__row ea-query-list__row--saved">
+              <div className="ea-query-list__saved-body">
+                <strong className="ea-query-list__saved-name">{s.name}</strong>
+                <div className="ea-query-list__saved-q">{s.question}</div>
               </div>
-              <div style={{ display: "flex", gap: "0.35rem" }}>
-                <button type="button" onClick={() => onRun(s)}>
+              <div className="ea-query-list__actions">
+                <button type="button" className="dm-btn dm-btn--outline" onClick={() => onRun(s)}>
                   Run
                 </button>
-                <button type="button" onClick={() => onDelete(s.id)}>
+                <button type="button" className="dm-btn dm-btn--outline" onClick={() => onDelete(s.id)}>
                   Delete
                 </button>
               </div>

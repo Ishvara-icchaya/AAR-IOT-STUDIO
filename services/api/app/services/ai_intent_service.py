@@ -91,6 +91,20 @@ def classify_intent(message: str) -> dict[str, Any]:
         intent = "publish_delivery_trend"
     elif any(k in low for k in ("published service", "mqtt publish", "rest publish")):
         intent = "published_service_lookup"
+    elif any(
+        k in low
+        for k in (
+            "fleet",
+            "truck",
+            "trucks",
+            "fuel",
+            "fuel usage",
+            "vehicle",
+            "vehicles",
+        )
+    ) or ("summary" in low and "fleet" in low):
+        # Operational / telemetry questions map to KPI trends (Timescale kpi_history); domain terms are not executed as raw SQL.
+        intent = "kpi_trend"
     elif any(k in low for k in ("device", "endpoint", "polling")):
         intent = "device_lookup"
     elif "site" in low or "corridor" in low or "facility" in low:

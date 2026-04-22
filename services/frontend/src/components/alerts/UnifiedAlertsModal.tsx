@@ -1,8 +1,10 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ArrowLeft, X } from "lucide-react";
 import { apiFetch } from "@/api/client";
 import { acknowledgeAlert, acknowledgeAllAlerts, getAlert, listAlerts, type AlertRow } from "@/api/alerts";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { PageStatus } from "@/components/PageStatus";
 import { useAlertsModal } from "@/contexts/AlertsModalContext";
 import { useOpsShellOptional } from "@/contexts/OpsShellContext";
@@ -75,6 +77,85 @@ export function UnifiedAlertsModal() {
     const sid = a.platform_site_id ?? a.site_id;
     return sid ?? undefined;
   }
+
+  const alertColumns = useMemo<PlainOperationalColumn<AlertRow>[]>(() => {
+    return [
+      {
+        id: "severity",
+        header: "Severity",
+        cell: (a) => {
+          const s = a.severity ?? "";
+          return <span style={{ color: sevColor(s), fontWeight: 600 }}>{s}</span>;
+        },
+      },
+      { id: "category", header: "Category", cell: (a) => a.category },
+      {
+        id: "site",
+        header: "Site (platform)",
+        headerTitle: "Platform tenant site",
+        cell: (a) => (
+          <span title={platformSiteIdForTitle(a)}>{platformSiteLabel(a)}</span>
+        ),
+      },
+      {
+        id: "device_id",
+        header: "Device",
+        cell: (a) => {
+          const id = a.device_id;
+          return id ? `${id.slice(0, 8)}…` : "—";
+        },
+      },
+      { id: "title", header: "Title", cell: (a) => a.title },
+      {
+        id: "message",
+        header: "Message",
+        cell: (a) => (
+          <small style={{ display: "block", maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {a.message || "—"}
+          </small>
+        ),
+      },
+      {
+        id: "source_component",
+        header: "Source",
+        cell: (a) => String(a.source_component ?? "—"),
+      },
+      {
+        id: "created_at",
+        header: "Time",
+        cell: (a) => {
+          const v = a.created_at;
+          return v ? new Date(v).toLocaleString() : "—";
+        },
+      },
+      {
+        id: "acknowledged",
+        header: "Ack",
+        cell: (a) => (a.acknowledged ? "Yes" : "No"),
+      },
+      {
+        id: "view",
+        header: "",
+        cell: (a) => (
+          <button
+            type="button"
+            style={{
+              border: "none",
+              background: "none",
+              padding: 0,
+              color: "var(--color-accent)",
+              cursor: "pointer",
+              font: "inherit",
+              textDecoration: "underline",
+            }}
+            onClick={() => openDetail(a.id)}
+          >
+            View
+          </button>
+        ),
+      },
+    ];
+  }, [openDetail, sitesById]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -172,10 +253,10 @@ export function UnifiedAlertsModal() {
   }
 
   async function onAcknowledgeAll() {
-    if (ackFilter !== "open") return;
+    if (ackFilter === "acked") return;
     if (
       !window.confirm(
-        "Acknowledge all unacknowledged alerts that match the current Site, Severity, Category, and Search filters? Up to 500 alerts are processed per request.",
+        "Acknowledge up to 500 unacknowledged alerts that match the current Site, Severity, Category, and Search filters? (Already-acknowledged rows are skipped.)",
       )
     ) {
       return;
@@ -236,15 +317,16 @@ export function UnifiedAlertsModal() {
             {detailId ? row?.title ?? "Alert" : "Alerts"}
           </h2>
           <button type="button" style={closeBtn} onClick={handleClose} aria-label="Close alerts">
-            ×
+            <X size={22} strokeWidth={2} aria-hidden />
           </button>
         </div>
 
         {detailId ? (
           <div style={body}>
             <p style={{ marginTop: 0 }}>
-              <button type="button" style={linkBtn} onClick={backToList}>
-                ← Back to list
+              <button type="button" style={linkBtnWithIcon} onClick={backToList}>
+                <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+                Back to list
               </button>
             </p>
             {detailErr ? <PageStatus variant="error">{detailErr}</PageStatus> : null}
@@ -348,68 +430,33 @@ export function UnifiedAlertsModal() {
               <span style={{ fontSize: "0.85rem", color: "var(--color-text-muted)", alignSelf: "end" }}>
                 {total} total
               </span>
-              {ackFilter === "open" ? (
+              {ackFilter !== "acked" ? (
                 <button
                   type="button"
                   style={ackAllBtn}
                   disabled={ackingAll || total === 0}
                   title="Acknowledge every unacknowledged alert that matches the filters above (batch up to 500)"
-                  onClick={() => void onAcknowledgeAll()}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void onAcknowledgeAll();
+                  }}
                 >
                   {ackingAll ? "Acknowledging…" : "Acknowledge all"}
                 </button>
               ) : null}
             </div>
-            <div className="table-scroll-sticky" style={tableWrap}>
-              <table style={tbl}>
-                <thead>
-                  <tr>
-                    <th style={th}>Severity</th>
-                    <th style={th}>Category</th>
-                    <th style={th}>Site (platform)</th>
-                    <th style={th}>Device</th>
-                    <th style={th}>Title</th>
-                    <th style={th}>Message</th>
-                    <th style={th}>Source</th>
-                    <th style={th}>Time</th>
-                    <th style={th}>Ack</th>
-                    <th style={th} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((a) => (
-                    <tr key={a.id}>
-                      <td style={td}>
-                        <span style={{ color: sevColor(a.severity), fontWeight: 600 }}>{a.severity}</span>
-                      </td>
-                      <td style={td}>{a.category}</td>
-                      <td style={td} title={platformSiteIdForTitle(a)}>
-                        {platformSiteLabel(a)}
-                      </td>
-                      <td style={td}>{a.device_id ? a.device_id.slice(0, 8) + "…" : "—"}</td>
-                      <td style={td}>{a.title}</td>
-                      <td style={td}>
-                        <small style={{ display: "block", maxWidth: "280px", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {a.message || "—"}
-                        </small>
-                      </td>
-                      <td style={td}>
-                        <small>{a.source_component ?? "—"}</small>
-                      </td>
-                      <td style={td}>
-                        <small>{a.created_at ? new Date(a.created_at).toLocaleString() : "—"}</small>
-                      </td>
-                      <td style={td}>{a.acknowledged ? "Yes" : "No"}</td>
-                      <td style={td}>
-                        <button type="button" style={linkBtn} onClick={() => openDetail(a.id)}>
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {items.length === 0 && <p style={{ padding: "1rem", color: "var(--color-text-muted)" }}>No alerts.</p>}
+            <div className="table-scroll-sticky" style={{ overflow: "auto", borderRadius: "var(--radius)" }}>
+              <PlainOperationalTable<AlertRow>
+                rows={items}
+                columns={alertColumns}
+                getRowId={(a) => a.id}
+                maxHeight="min(55vh, 520px)"
+                bordered
+                emptyMessage="No alerts."
+                resetPageKey={`${siteId}|${ackFilter}|${severity}|${category}|${searchDebounced}|${items.length}`}
+                pagerAriaLabel="Alert list pages"
+              />
             </div>
           </div>
         )}
@@ -463,10 +510,13 @@ const closeBtn: CSSProperties = {
   border: "none",
   background: "transparent",
   color: "var(--color-text-muted)",
-  fontSize: "1.75rem",
   lineHeight: 1,
   cursor: "pointer",
-  padding: "0 0.35rem",
+  padding: "0.2rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "var(--radius)",
 };
 
 const body: CSSProperties = {
@@ -491,21 +541,6 @@ const inp: CSSProperties = {
   color: "var(--color-text)",
   minWidth: "160px",
 };
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-};
-const td: CSSProperties = { padding: "0.45rem 0.5rem", borderBottom: "1px solid var(--color-border)", verticalAlign: "top" };
-const tableWrap: CSSProperties = {
-  overflow: "auto",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  maxHeight: "min(55vh, 520px)",
-};
-
 const dl: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "140px 1fr",
@@ -540,4 +575,12 @@ const linkBtn: CSSProperties = {
   cursor: "pointer",
   font: "inherit",
   textDecoration: "underline",
+};
+
+const linkBtnWithIcon: CSSProperties = {
+  ...linkBtn,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  textDecoration: "none",
 };

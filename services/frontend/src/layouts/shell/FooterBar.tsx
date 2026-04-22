@@ -1,20 +1,11 @@
 import { LogOut } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { AdminDropdown } from "./AdminDropdown";
-import { AppearancePickers } from "./AppearancePickers";
 import { UserMenu } from "./UserMenu";
-import { userIsAdmin } from "./navigation";
-
-const FOOTER_LINKS: { label: string; to: string }[] = [
-  { label: "Ingest", to: "/devices/raw" },
-  { label: "Scrubber", to: "/scrubber/data-objects" },
-  { label: "Workflow", to: "/workflow/list" },
-  { label: "Publish", to: "/published-services" },
-  { label: "Dashboard", to: "/dashboard/list" },
-  { label: "AI", to: "/enterprise-ai" },
-  { label: "Monitoring", to: "/administration/monitoring" },
-];
+import { titleFromPath, userIsAdmin } from "./navigation";
+import { useShellMessage } from "./ShellMessageContext";
 
 const APP_VERSION = "0.1.0";
 
@@ -22,26 +13,42 @@ export function FooterBar() {
   const env = import.meta.env.MODE === "production" ? "production" : "development";
   const { me, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const showAdmin = userIsAdmin(me?.role, me?.is_superuser);
+  const { messages, clearMessages } = useShellMessage();
+  const pageLabel = titleFromPath(location.pathname);
+  const prevPathRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const p = location.pathname;
+    if (prevPathRef.current !== null && prevPathRef.current !== p) {
+      clearMessages();
+    }
+    prevPathRef.current = p;
+  }, [location.pathname, clearMessages]);
 
   return (
     <footer className="shell-footer" role="contentinfo">
       <div className="shell-footer__row shell-footer__row--split">
-        <div className="shell-footer__left">
-          <span className="shell-footer__label">Services:</span>
-          <nav className="shell-footer__nav" aria-label="Service areas">
-            {FOOTER_LINKS.map((l, i) => (
-              <span key={l.to} className="shell-footer__sep-wrap">
-                {i > 0 ? <span className="shell-footer__sep" aria-hidden> | </span> : null}
-                <NavLink to={l.to} className="shell-footer__link">
-                  {l.label}
-                </NavLink>
+        <div className="shell-footer__messages-col">
+          {messages.length > 0 ? (
+            <div className="shell-messages-panel" role="region" aria-label="Messages">
+              {messages.map((m) => (
+                <div key={m.id} className={`shell-message shell-message--${m.tone}`} role="status">
+                  <span className="shell-message__text">{m.text}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="shell-footer__page-context" role="status" aria-label="Current page">
+              <span className="shell-footer__page-context-title">{pageLabel}</span>
+              <span className="shell-footer__page-context-path" title={location.pathname}>
+                {location.pathname}
               </span>
-            ))}
-          </nav>
+            </div>
+          )}
         </div>
-        <div className="shell-footer__toolbar" aria-label="Session and appearance">
-          <AppearancePickers />
+        <div className="shell-footer__toolbar" aria-label="Session">
           {showAdmin ? <AdminDropdown iconOnly /> : null}
           <UserMenu iconOnly />
           <button

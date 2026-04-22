@@ -8,12 +8,6 @@ import { PageShell } from "@/layouts/PageShell";
 
 type SiteRow = { id: string; name: string };
 
-const emptyLayout = {
-  version: 1,
-  rows: [] as unknown[],
-  settings: { refreshIntervalSec: 30 },
-};
-
 const lbl: CSSProperties = { display: "grid", gap: "0.25rem", fontSize: "0.85rem", color: "var(--color-text-muted)" };
 const inp: CSSProperties = {
   padding: "0.45rem",
@@ -65,7 +59,6 @@ export function DashboardCreatePage() {
         site_id: siteId,
         name: name.trim(),
         description: description.trim() || null,
-        layout: emptyLayout,
       });
       if (d?.id) nav(`/dashboard/${d.id}/edit`, { replace: true });
     } catch (e) {
@@ -74,10 +67,10 @@ export function DashboardCreatePage() {
   }
 
   return (
-    <PageShell title="Create dashboard">
+    <PageShell>
       <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
-        New dashboards start as <strong>draft</strong>. Use the editor to add rows, widgets, and bindings, then freeze
-        for live use.
+        New dashboards start as <strong>draft</strong> with the default Operations Overview layout. Adjust in the
+        editor, then freeze for live use.
       </p>
       {err ? <PageStatus variant="error">{err}</PageStatus> : null}
       <form onSubmit={onSubmit} style={{ display: "grid", gap: "1rem", maxWidth: "28rem" }}>

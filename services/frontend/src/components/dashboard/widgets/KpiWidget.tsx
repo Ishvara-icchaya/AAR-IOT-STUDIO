@@ -1,4 +1,7 @@
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
+import { DashboardWidgetFrame } from "@/components/dashboard/DashboardWidgetFrame";
+import { adaptKpiWidget } from "@/lib/dashboard/adapters/widgetDataAdapters";
+import { formatDashboardValue, resolveWidgetPresentation } from "@/lib/widgetPresentation";
 import { blinkModeClass, healthColorVar } from "@/lib/healthBlink";
 
 function formatTs(iso: unknown): string | null {
@@ -9,36 +12,53 @@ function formatTs(iso: unknown): string | null {
 }
 
 export function KpiWidget({ block }: { block: DashboardLiveWidgetDTO }) {
-  const d = block.data ?? {};
-  const blink = blinkModeClass(d.blink_mode);
-  const v = d.value;
-  const metric = String(d.metric ?? "");
-  const deviceName =
-    typeof d.device_name === "string" && d.device_name.trim() ? d.device_name.trim() : "";
-  const updated = formatTs(d.updated_at);
+  const pres = resolveWidgetPresentation(block);
+  const vm = adaptKpiWidget(block);
+  const blink = blinkModeClass(vm.blinkMode);
+  const v = vm.value;
+  const metric = vm.metric;
+  const deviceName = vm.deviceName;
+  const updated = formatTs(vm.updatedAt);
+  const accent = healthColorVar(vm.healthStatus ?? undefined);
+
+  const parts: string[] = [];
+  if (pres.showSource && metric) parts.push(`Metric: ${metric}`);
+  if (pres.showSource && deviceName) parts.push(`Device: ${deviceName}`);
+  const sourceLine = parts.length ? parts.join(" · ") : null;
+
+  const display =
+    v === null || v === undefined ? "—" : formatDashboardValue(v, { decimalPlaces: pres.decimalPlaces, unit: pres.unit });
+
   return (
-    <div className={`dash-widget dash-widget--kpi ${blink}`} style={{ borderLeft: `4px solid ${healthColorVar(d.health_status)}` }}>
-      <h3 className="dash-widget__title">{block.title}</h3>
-      <div className="dash-widget__kpi-value">{v === null || v === undefined ? "—" : String(v)}</div>
-      {updated ? (
-        <div className="dash-widget__muted" style={{ fontSize: "0.72rem", marginTop: "0.2rem" }}>
-          Source updated {updated}
-        </div>
-      ) : null}
-      {(metric || deviceName) && (
-        <div className="dash-widget__kpi-meta">
-          {metric ? (
-            <div className="dash-widget__muted">
-              <em>{metric}</em>
-            </div>
-          ) : null}
-          {deviceName ? (
-            <div className="dash-widget__muted">
-              <em>{deviceName}</em>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
+    <DashboardWidgetFrame
+      block={block}
+      presentation={pres}
+      state="normal"
+      widgetKind="kpi"
+      className={blink}
+      accentBorderColor={accent}
+      accentBorderWidth={4}
+      sourceLine={sourceLine}
+      updatedAtLine={pres.showUpdatedAt && updated ? `Updated ${updated}` : null}
+      bodyFill={false}
+    >
+      <div className="dash-wf-kpi__main">
+        <div className="dash-widget__kpi-value">{display}</div>
+        {!pres.showSource && (metric || deviceName) ? (
+          <div className="dash-widget__kpi-meta">
+            {metric ? (
+              <div className="dash-widget__muted">
+                <em>{metric}</em>
+              </div>
+            ) : null}
+            {deviceName ? (
+              <div className="dash-widget__muted">
+                <em>{deviceName}</em>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </DashboardWidgetFrame>
   );
 }

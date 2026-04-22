@@ -31,6 +31,8 @@ export type DashboardLiveWidgetDTO = {
   type: string;
   title: string;
   data: Record<string, unknown>;
+  /** Layout widget config from builder (presentation, map options, etc.). */
+  config?: Record<string, unknown>;
 };
 
 export type DashboardLiveDTO = {
@@ -38,6 +40,10 @@ export type DashboardLiveDTO = {
   widgets: DashboardLiveWidgetDTO[];
   rendered_at: string;
   primary_dashboard_id?: string | null;
+  /** Synthetic Operations Overview when no valid primary. */
+  is_default_dashboard?: boolean;
+  /** Enrichment for default command-center UI only. */
+  command_center?: Record<string, unknown> | null;
 };
 
 export type EnterpriseSiteObjectCountRowDTO = {

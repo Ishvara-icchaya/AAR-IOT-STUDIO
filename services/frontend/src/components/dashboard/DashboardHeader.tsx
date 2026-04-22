@@ -89,6 +89,25 @@ export function DashboardHeader({ dashboardId }: Props) {
     }
   }
 
+  async function onResetDefaultLayout() {
+    if (
+      !confirm(
+        "Reset this dashboard to the default layout? This will remove all custom widgets. Dashboard name and ownership are kept.",
+      )
+    ) {
+      return;
+    }
+    setErr(null);
+    setMsg(null);
+    try {
+      const d = await dashApi.resetDashboardDefaultLayout(dashboardId);
+      useDashboardBuilderStore.getState().resetFromServer(d!);
+      setMsg("Layout reset to default template");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Reset failed");
+    }
+  }
+
   async function onDelete() {
     if (!confirm("Delete this dashboard?")) return;
     setErr(null);
@@ -157,6 +176,11 @@ export function DashboardHeader({ dashboardId }: Props) {
         <Link to={`/dashboard/${dashboardId}/live`} className="dash-btn dash-btn--link">
           Live
         </Link>
+        {!frozen ? (
+          <button type="button" className="dash-btn dash-btn--secondary" onClick={() => void onResetDefaultLayout()}>
+            Reset to default layout
+          </button>
+        ) : null}
         <button type="button" className="dash-btn dash-btn--danger" onClick={() => void onDelete()}>
           Delete
         </button>

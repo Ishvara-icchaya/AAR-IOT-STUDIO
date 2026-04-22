@@ -2,10 +2,15 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+
+/** Shell footer messages auto-clear after this interval. */
+export const SHELL_MESSAGE_TTL_MS = 10_000;
 
 export type ShellMessage = {
   id: string;
@@ -30,17 +35,39 @@ function nextId() {
 
 export function ShellMessageProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ShellMessage[]>([]);
+  const dismissTimersRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      for (const t of dismissTimersRef.current.values()) window.clearTimeout(t);
+      dismissTimersRef.current.clear();
+    };
+  }, []);
 
   const pushMessage = useCallback((tone: ShellMessage["tone"], text: string) => {
     const id = nextId();
     setMessages((m) => [...m, { id, tone, text }]);
+    const t = window.setTimeout(() => {
+      dismissTimersRef.current.delete(id);
+      setMessages((m) => m.filter((x) => x.id !== id));
+    }, SHELL_MESSAGE_TTL_MS);
+    dismissTimersRef.current.set(id, t);
   }, []);
 
   const dismissMessage = useCallback((id: string) => {
+    const existing = dismissTimersRef.current.get(id);
+    if (existing) {
+      window.clearTimeout(existing);
+      dismissTimersRef.current.delete(id);
+    }
     setMessages((m) => m.filter((x) => x.id !== id));
   }, []);
 
-  const clearMessages = useCallback(() => setMessages([]), []);
+  const clearMessages = useCallback(() => {
+    for (const t of dismissTimersRef.current.values()) window.clearTimeout(t);
+    dismissTimersRef.current.clear();
+    setMessages([]);
+  }, []);
 
   const value = useMemo(
     () => ({ messages, pushMessage, dismissMessage, clearMessages }),

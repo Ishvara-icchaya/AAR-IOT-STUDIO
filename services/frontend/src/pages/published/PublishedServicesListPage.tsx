@@ -1,6 +1,18 @@
-import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FlaskConical,
+  Pencil,
+  Play,
+  Plus,
+  RotateCw,
+  Search,
+  Square,
+  Trash2,
+} from "lucide-react";
 import {
   deletePublishedService,
   listPublishedServices,
@@ -10,29 +22,54 @@ import {
   type PublishedServiceRow,
 } from "@/api/publishedServices";
 import { apiFetch } from "@/api/client";
-import { PageStatus } from "@/components/PageStatus";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { PageShell } from "@/layouts/PageShell";
+import { PageStatus } from "@/components/PageStatus";
+import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
+import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
+import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
+import "../device-register-page.css";
 
 type SiteOpt = { id: string; name: string };
 
+const PAGE_SIZE = 25;
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
+function publishedServiceStatusTone(status: string): DmTableStatusTone {
+  const s = (status || "").toLowerCase();
+  if (s === "active") return "online";
+  if (s === "failed") return "error";
+  if (s === "stopped" || s === "inactive") return "muted";
+  if (s === "draft") return "degraded";
+  return "muted";
+}
+
 export function PublishedServicesListPage() {
   const { tryHandleResourceInUseError } = useResourceInUse();
+  const { pushMessage } = useShellMessage();
   const [items, setItems] = useState<PublishedServiceRow[]>([]);
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [siteId, setSiteId] = useState("");
   const [status, setStatus] = useState("");
   const [protocol, setProtocol] = useState("");
-  const [search, setSearch] = useState("");
-  const [searchDebounced, setSearchDebounced] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [objectContains, setObjectContains] = useState("");
+  const [errorContains, setErrorContains] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    const t = window.setTimeout(() => setSearchDebounced(search.trim()), 350);
-    return () => window.clearTimeout(t);
-  }, [search]);
+  useShellFeedback(err, null);
 
-  async function load() {
+  const load = useCallback(async () => {
+    setLoading(true);
     setErr(null);
     try {
       const [data, siteList] = await Promise.all([
@@ -40,7 +77,7 @@ export function PublishedServicesListPage() {
           site_id: siteId || undefined,
           status: status || undefined,
           publish_protocol: protocol || undefined,
-          search: searchDebounced || undefined,
+          search: appliedSearch.trim() || undefined,
         }),
         apiFetch<SiteOpt[]>("/administration/sites"),
       ]);
@@ -48,207 +85,442 @@ export function PublishedServicesListPage() {
       setSites(siteList ?? []);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to load");
+      setItems([]);
+    } finally {
+      setLoading(false);
     }
-  }
+  }, [siteId, status, protocol, appliedSearch]);
 
   useEffect(() => {
     void load();
-  }, [siteId, status, protocol, searchDebounced]);
+  }, [load]);
 
-  async function onStartStop(id: string, action: "start" | "stop" | "restart") {
-    try {
-      if (action === "start") await startPublishedService(id);
-      else if (action === "stop") await stopPublishedService(id);
-      else await restartPublishedService(id);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Action failed");
-    }
-  }
+  const sitesById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of sites) m.set(s.id, s.name);
+    return m;
+  }, [sites]);
 
-  async function onDelete(id: string) {
-    if (!confirm("Delete this published service?")) return;
-    try {
-      await deletePublishedService(id);
-      await load();
-    } catch (e) {
-      if (tryHandleResourceInUseError(e)) return;
-      setErr(e instanceof Error ? e.message : "Delete failed");
+  const filtered = useMemo(() => {
+    const oc = objectContains.trim().toLowerCase();
+    const ec = errorContains.trim().toLowerCase();
+    return items.filter((s) => {
+      if (oc) {
+        const hay = `${s.source_object_name || ""} ${s.name || ""}`.toLowerCase();
+        if (!hay.includes(oc)) return false;
+      }
+      if (ec) {
+        const msg = (s.last_error_message || "").toLowerCase();
+        if (!msg.includes(ec)) return false;
+      }
+      return true;
+    });
+  }, [items, objectContains, errorContains]);
+
+  const kpis = useMemo(() => {
+    const total = filtered.length;
+    let active = 0;
+    let stopped = 0;
+    let failed = 0;
+    let draft = 0;
+    let mqtt = 0;
+    let rest = 0;
+    for (const s of filtered) {
+      const st = (s.status || "").toLowerCase();
+      if (st === "active") active += 1;
+      else if (st === "stopped" || st === "inactive") stopped += 1;
+      else if (st === "failed") failed += 1;
+      else if (st === "draft") draft += 1;
+      const p = (s.publish_protocol || "").toLowerCase();
+      if (p === "mqtt") mqtt += 1;
+      if (p === "rest") rest += 1;
     }
-  }
+    return { total, active, stopped, failed, draft, mqtt, rest };
+  }, [filtered]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(0);
+  }, [siteId, status, protocol, appliedSearch, objectContains, errorContains, items.length]);
+
+  useEffect(() => {
+    if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
+  }, [page, pageCount]);
+
+  const onStartStop = useCallback(
+    async (id: string, action: "start" | "stop" | "restart") => {
+      try {
+        if (action === "start") await startPublishedService(id);
+        else if (action === "stop") await stopPublishedService(id);
+        else await restartPublishedService(id);
+        pushMessage(
+          "success",
+          `Service ${action === "start" ? "started" : action === "stop" ? "stopped" : "restarted"}.`,
+        );
+        await load();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Action failed");
+      }
+    },
+    [load, pushMessage],
+  );
+
+  const onDelete = useCallback(
+    async (id: string) => {
+      if (!confirm("Delete this published service?")) return;
+      try {
+        await deletePublishedService(id);
+        pushMessage("success", "Published service deleted.");
+        await load();
+      } catch (e) {
+        if (tryHandleResourceInUseError(e)) return;
+        setErr(e instanceof Error ? e.message : "Delete failed");
+      }
+    },
+    [load, pushMessage, tryHandleResourceInUseError],
+  );
 
   return (
     <PageShell
-      title="Published services"
-      className="published-services-page--full"
-      style={{ width: "100%", maxWidth: "none", flex: 1, minHeight: 0 }}
-      actions={
-        <Link to="/published-services/create" style={{ ...btn, textDecoration: "none", display: "inline-block" }}>
-          Create
-        </Link>
-      }
+      variant="list"
+      className="published-services-list-page published-services-page--full device-manage-page"
     >
-      {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-      >
-      <div style={{ flexShrink: 0, marginTop: "1rem", display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "end" }}>
-        <label style={lbl}>
-          Site
-          <select value={siteId} onChange={(e) => setSiteId(e.target.value)} style={inp}>
-            <option value="">All</option>
-            {sites.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={lbl}>
-          Status
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={inp}>
-            <option value="">All</option>
-            <option value="draft">draft</option>
-            <option value="active">active</option>
-            <option value="stopped">stopped</option>
-            <option value="failed">failed</option>
-            <option value="inactive">inactive</option>
-          </select>
-        </label>
-        <label style={lbl}>
-          Protocol
-          <select value={protocol} onChange={(e) => setProtocol(e.target.value)} style={inp}>
-            <option value="">All</option>
-            <option value="mqtt">mqtt</option>
-            <option value="rest">rest</option>
-          </select>
-        </label>
-        <label style={{ ...lbl, minWidth: "200px", flex: "1 1 200px" }}>
-          Search
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Service or object name"
-            style={inp}
-          />
-        </label>
-      </div>
-      <div
-        className="table-scroll-sticky"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: "auto",
-          marginTop: "1rem",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius)",
-        }}
-      >
-        <table style={tbl}>
-          <thead>
-            <tr>
-              <th style={th}>Name</th>
-              <th style={th}>Site</th>
-              <th style={th}>Source</th>
-              <th style={th}>Object</th>
-              <th style={th}>Protocol</th>
-              <th style={th}>Status</th>
-              <th style={th}>Last published</th>
-              <th style={th}>Last error</th>
-              <th style={th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((s) => (
-              <tr key={s.id}>
-                <td style={td}>{s.name}</td>
-                <td style={td}>
-                  <small>{s.site_id.slice(0, 8)}…</small>
-                </td>
-                <td style={td}>{s.source_type}</td>
-                <td style={td}>{s.source_object_name}</td>
-                <td style={td}>{s.publish_protocol}</td>
-                <td style={td}>{s.status}</td>
-                <td style={td}>
-                  <small>{s.last_published_at ? new Date(s.last_published_at).toLocaleString() : "—"}</small>
-                </td>
-                <td style={td}>
-                  <small style={{ color: s.last_error_message ? "#c62828" : undefined }}>
-                    {s.last_error_message ? s.last_error_message.slice(0, 80) : "—"}
-                  </small>
-                </td>
-                <td style={td}>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
-                    <Link to={`/published-services/${s.id}`} style={link}>
-                      View
-                    </Link>
-                    <button type="button" style={sbtn} onClick={() => void onStartStop(s.id, "start")}>
-                      Start
-                    </button>
-                    <button type="button" style={sbtn} onClick={() => void onStartStop(s.id, "stop")}>
-                      Stop
-                    </button>
-                    <button type="button" style={sbtn} onClick={() => void onStartStop(s.id, "restart")}>
-                      Restart
-                    </button>
-                    <Link to={`/published-services/${s.id}/edit`} style={link}>
-                      Edit
-                    </Link>
-                    <Link to={`/published-services/${s.id}/test`} style={link}>
-                      Test
-                    </Link>
-                    <button type="button" style={sbtn} onClick={() => void onDelete(s.id)}>
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {items.length === 0 && <p style={{ padding: "1rem", color: "var(--color-text-muted)" }}>No services.</p>}
-      </div>
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-page-hero__title">Published services</h1>
+              <p className="dm-page-hero__subtitle">
+                Start, stop, and inspect outbound publishing; KPIs reflect the filters below.
+              </p>
+            </div>
+            <div className="dm-page-hero__actions">
+              <Link to="/published-services/create" className="dm-btn dm-btn--primary">
+                <Plus size={16} strokeWidth={2} aria-hidden />
+                Create
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
+
+        <section className="dm-kpi-row dm-kpi-row--equal-6" aria-label="Published services summary">
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Matching</div>
+              <div className="dm-kpi__value">{kpis.total}</div>
+              <div className="dm-kpi__sub">After client filters</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--online" aria-hidden />
+                Active
+              </div>
+              <div className="dm-kpi__value">{kpis.active}</div>
+              <div className="dm-kpi__sub">status = active</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--offline" aria-hidden />
+                Stopped / inactive
+              </div>
+              <div className="dm-kpi__value">{kpis.stopped}</div>
+              <div className="dm-kpi__sub">Not delivering</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--error" aria-hidden />
+                Failed
+              </div>
+              <div className="dm-kpi__value">{kpis.failed}</div>
+              <div className="dm-kpi__sub">Needs attention</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">MQTT / REST</div>
+              <div className="dm-kpi__value">
+                {kpis.mqtt} / {kpis.rest}
+              </div>
+              <div className="dm-kpi__sub">Protocols in list</div>
+            </div>
+          </div>
+          <div className="dm-kpi">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">Draft</div>
+              <div className="dm-kpi__value">{kpis.draft}</div>
+              <div className="dm-kpi__sub">Not yet running</div>
+            </div>
+          </div>
+        </section>
+
+        <section className="dm-filter-panel" aria-label="Filters">
+          <div className="dm-controls-form__row">
+            <div className="dm-search-wrap">
+              <Search size={16} aria-hidden />
+              <input
+                className="dm-search-input"
+                placeholder="Search service or object (server)…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setAppliedSearch(searchInput);
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              className="dm-btn dm-btn--primary dm-btn--search"
+              onClick={() => setAppliedSearch(searchInput)}
+            >
+              Search
+            </button>
+            <label className="dm-filter-field">
+              <span className="dm-filter-field__label">Site</span>
+              <select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
+                <option value="">All</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="dm-filter-field">
+              <span className="dm-filter-field__label">Status</span>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">All</option>
+                <option value="draft">draft</option>
+                <option value="active">active</option>
+                <option value="stopped">stopped</option>
+                <option value="failed">failed</option>
+                <option value="inactive">inactive</option>
+              </select>
+            </label>
+            <label className="dm-filter-field">
+              <span className="dm-filter-field__label">Protocol</span>
+              <select value={protocol} onChange={(e) => setProtocol(e.target.value)}>
+                <option value="">All</option>
+                <option value="mqtt">mqtt</option>
+                <option value="rest">rest</option>
+              </select>
+            </label>
+            <label className="dm-filter-field dm-filter-field--grow">
+              <span className="dm-filter-field__label">Object or name contains</span>
+              <input
+                type="text"
+                value={objectContains}
+                onChange={(e) => setObjectContains(e.target.value)}
+                placeholder="Client filter on loaded rows…"
+              />
+            </label>
+            <label className="dm-filter-field dm-filter-field--grow">
+              <span className="dm-filter-field__label">Last error contains</span>
+              <input
+                type="text"
+                value={errorContains}
+                onChange={(e) => setErrorContains(e.target.value)}
+                placeholder="Substring in last_error_message…"
+              />
+            </label>
+          </div>
+        </section>
+
+        <div className="dm-table-wrap published-services-list__table">
+          <div className="dm-device-table-shell">
+            <div className="dm-table-scroll">
+              <table className="dm-data-table">
+                <thead>
+                  <tr>
+                    <th className="dm-data-table__th" scope="col">
+                      Name
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Site
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Source
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Object
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Protocol
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Status
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Last published
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Last error
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="dm-data-table__empty">
+                        Loading…
+                      </td>
+                    </tr>
+                  ) : pageItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="dm-data-table__empty">
+                        No services match the current filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    pageItems.map((s) => {
+                      const siteLabel = s.site_id
+                        ? sitesById.get(s.site_id) || `${s.site_id.slice(0, 8)}…`
+                        : "—";
+                      return (
+                        <tr key={s.id} className="dm-data-table__row">
+                          <td className="dm-data-table__td">
+                            <Link className="dm-name-link" to={`/published-services/${s.id}`}>
+                              {s.name}
+                            </Link>
+                          </td>
+                          <td className="dm-data-table__td">
+                            <small>{siteLabel}</small>
+                          </td>
+                          <td className="dm-data-table__td">{s.source_type}</td>
+                          <td className="dm-data-table__td">{s.source_object_name}</td>
+                          <td className="dm-data-table__td">{s.publish_protocol}</td>
+                          <td className="dm-data-table__td dm-data-table__td--center">
+                            <DmTableStatusMetric label={s.status} tone={publishedServiceStatusTone(s.status)} />
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--muted">{formatDateTime(s.last_published_at)}</td>
+                          <td className="dm-data-table__td dm-data-table__td--desc">
+                            {s.last_error_message ? (
+                              <span className="dm-inline-summary dm-inline-summary--error" style={{ fontSize: "0.75rem" }}>
+                                {s.last_error_message.length > 120
+                                  ? `${s.last_error_message.slice(0, 120)}…`
+                                  : s.last_error_message}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--actions">
+                            <div className="dm-act-grid">
+                              <Link
+                                className="dm-act-grid__btn"
+                                to={`/published-services/${s.id}`}
+                                title="View service"
+                                aria-label={`View ${s.name}`}
+                              >
+                                <Eye size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn"
+                                title="Start service"
+                                aria-label={`Start ${s.name}`}
+                                onClick={() => void onStartStop(s.id, "start")}
+                              >
+                                <Play size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn"
+                                title="Stop service"
+                                aria-label={`Stop ${s.name}`}
+                                onClick={() => void onStartStop(s.id, "stop")}
+                              >
+                                <Square size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn dm-act-grid__btn--plain"
+                                title="Restart service"
+                                aria-label={`Restart ${s.name}`}
+                                onClick={() => void onStartStop(s.id, "restart")}
+                              >
+                                <RotateCw size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                              <Link
+                                className="dm-act-grid__btn dm-act-grid__btn--plain"
+                                to={`/published-services/${s.id}/edit`}
+                                title="Edit service"
+                                aria-label={`Edit ${s.name}`}
+                              >
+                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <Link
+                                className="dm-act-grid__btn dm-act-grid__btn--plain"
+                                to={`/published-services/${s.id}/test`}
+                                title="Test service"
+                                aria-label={`Test ${s.name}`}
+                              >
+                                <FlaskConical size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn dm-act-grid__btn--danger"
+                                title="Delete service"
+                                aria-label={`Delete ${s.name}`}
+                                onClick={() => void onDelete(s.id)}
+                              >
+                                <Trash2 size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="dm-table-pager" role="navigation" aria-label="Pagination">
+            <span className="dm-table-pager__meta">
+              {filtered.length === 0
+                ? "0 services"
+                : `Showing ${safePage * PAGE_SIZE + 1}–${Math.min(filtered.length, (safePage + 1) * PAGE_SIZE)} of ${filtered.length}`}
+            </span>
+            <div className="dm-table-pager__controls">
+              <button
+                type="button"
+                className="dm-act-grid__btn dm-act-grid__btn--text"
+                disabled={safePage <= 0}
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+              >
+                <ChevronLeft size={16} aria-hidden />
+                Prev
+              </button>
+              <span className="dm-table-pager__page">
+                Page {safePage + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                className="dm-act-grid__btn dm-act-grid__btn--text"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+              >
+                Next
+                <ChevronRight size={16} aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </PageShell>
   );
 }
-
-const lbl: CSSProperties = { display: "grid", gap: "0.25rem", fontSize: "0.8rem", color: "var(--color-text-muted)" };
-const inp: CSSProperties = {
-  padding: "0.35rem 0.5rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-  minWidth: "200px",
-};
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-surface-elevated)",
-};
-const td: CSSProperties = { padding: "0.45rem 0.5rem", borderBottom: "1px solid var(--color-border)", verticalAlign: "top" };
-const btn: CSSProperties = {
-  padding: "0.45rem 0.75rem",
-  borderRadius: "var(--radius)",
-  background: "var(--color-accent)",
-  color: "var(--btn-on-accent)",
-  fontWeight: 600,
-};
-const link: CSSProperties = { color: "var(--color-accent)", fontSize: "0.8rem" };
-const sbtn: CSSProperties = {
-  padding: "0.2rem 0.35rem",
-  fontSize: "0.75rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface-elevated)",
-  cursor: "pointer",
-};

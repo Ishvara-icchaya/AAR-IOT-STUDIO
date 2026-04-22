@@ -24,9 +24,23 @@ ALLOWED_WIDGET_TYPES = frozenset(
         "alert_summary",
         "text",
         "site_summary",
+        "ops_overview_kpis",
+        "ops_device_table",
+        "ops_recent_activity",
+        "ops_recent_alerts",
+        "ops_alert_trends",
     }
 )
 SITE_AGGREGATE_WIDGETS = frozenset({"health_summary", "alert_summary", "site_summary"})
+OPS_BINDINGLESS_WIDGETS = frozenset(
+    {
+        "ops_overview_kpis",
+        "ops_device_table",
+        "ops_recent_activity",
+        "ops_recent_alerts",
+        "ops_alert_trends",
+    }
+)
 
 
 def _bget(b: dict[str, Any], snake: str, camel: str) -> Any:
@@ -98,6 +112,8 @@ def validate_layout_for_save(
         cfg = w.get("config") or {}
         if t == "text":
             continue
+        if t in OPS_BINDINGLESS_WIDGETS:
+            continue
         if t in SITE_AGGREGATE_WIDGETS:
             continue
         if t == "map":
@@ -131,6 +147,8 @@ def validate_widgets_for_freeze(*, layout: dict[str, Any]) -> list[str]:
     for w in iter_widgets(layout):
         t = w.get("type")
         wid = w.get("widgetId") or w.get("widget_id") or "?"
+        if t in OPS_BINDINGLESS_WIDGETS:
+            continue
         b = w.get("binding") or {}
         if t == "chart":
             xf = str(_bget(b, "x_field", "xField") or "").strip()
@@ -165,7 +183,7 @@ def validate_sources_exist(db: Session, *, customer_id: uuid.UUID, layout: dict[
     errs: list[str] = []
     for w in iter_widgets(layout):
         t = w.get("type")
-        if t in SITE_AGGREGATE_WIDGETS or t == "text":
+        if t in SITE_AGGREGATE_WIDGETS or t == "text" or t in OPS_BINDINGLESS_WIDGETS:
             continue
         b = w.get("binding") or {}
         cfg = w.get("config") or {}

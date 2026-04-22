@@ -8,6 +8,7 @@ import { PageStatus } from "@/components/PageStatus";
 import { ScrubberPipelineHelpModal } from "@/components/scrubber/ScrubberPipelineHelpModal";
 import { HealthStepEditor } from "@/components/scrubber/HealthStepEditor";
 import { KpiStepEditor } from "@/components/scrubber/KpiStepEditor";
+import { AppCard, AppGrid } from "@/components/app";
 import { PageShell } from "@/layouts/PageShell";
 import { buildKpiOutput, evaluateHealth } from "@/lib/scrubberKpiHealth";
 import type { PipelineStepId } from "@/types/scrubberPipeline";
@@ -1498,7 +1499,7 @@ export function ScrubberStudioPage() {
 
   return (
     <>
-    <PageShell title="Scrubber Studio" className="scrubber-studio-page" actions={headerActions}>
+    <PageShell className="scrubber-studio-page" actions={headerActions}>
       {safeReturnTo ? (
         <p style={{ marginTop: 0, marginBottom: "0.5rem" }}>
           <Link to={safeReturnTo}>← Back</Link>
@@ -1561,9 +1562,12 @@ export function ScrubberStudioPage() {
       )}
 
       <div className="scrubber-studio">
-        <div className="scrubber-studio__row scrubber-studio__row--top">
-          <section className="scrubber-studio__panel scrubber-studio__panel--input">
-            <h2 style={colTitle}>Input · raw payload</h2>
+        <AppGrid columns={2} className="app-grid--scrubber-top">
+          <section className="scrubber-studio__panel scrubber-studio__panel--input scrubber-studio__panel--carded">
+            <AppCard
+              title="Raw input"
+              bodyClassName="scrubber-studio__app-card-body scrubber-studio__app-card-body--input"
+            >
             <p style={{ margin: "0 0 0.35rem", fontSize: "0.78rem", color: "var(--color-text-muted)", lineHeight: 1.45 }}>
               {ingestionBusy
                 ? "Checking ingestion…"
@@ -1601,12 +1605,16 @@ export function ScrubberStudioPage() {
                 Use latest sample
               </button>
             </div>
+            </AppCard>
           </section>
 
-          <section className="scrubber-studio__panel scrubber-studio__panel--editor-wide">
+          <section className="scrubber-studio__panel scrubber-studio__panel--editor-wide scrubber-studio__panel--carded">
+            <AppCard
+              title="Pipeline"
+              bodyClassName="scrubber-studio__app-card-body scrubber-studio__app-card-body--pipeline"
+            >
             <div className="scrubber-studio__editor-head" ref={stepPickerRef}>
               <div className="scrubber-studio__editor-head-left">
-                <h2 style={{ ...colTitle, margin: 0 }}>Pipeline · editor</h2>
                 <button
                   type="button"
                   className={`scrubber-step-chevron${stepPickerOpen ? " scrubber-step-chevron--open" : ""}`}
@@ -1666,12 +1674,16 @@ export function ScrubberStudioPage() {
                 liveGps: isObjectRecord(liveOutput?.output_payload?.gps) ? (liveOutput?.output_payload?.gps as Record<string, unknown>) : null,
               })}
             </div>
+            </AppCard>
           </section>
-        </div>
+        </AppGrid>
 
         <div className="scrubber-studio__row scrubber-studio__row--result">
-          <section className="scrubber-studio__panel">
-            <h2 style={colTitle}>Result · transformed object</h2>
+          <section className="scrubber-studio__panel scrubber-studio__panel--carded">
+            <AppCard
+              title="Preview"
+              bodyClassName="scrubber-studio__app-card-body scrubber-studio__app-card-body--preview"
+            >
             <p style={colHint}>
               Live output tracks the pipeline as you edit. <strong>Compile preview</strong> runs function-based Python on
               the server — see compiled block below when available.
@@ -1786,6 +1798,7 @@ export function ScrubberStudioPage() {
               </details>
             ) : null}
             {scrubPreview?.error ? <PageStatus variant="error">{scrubPreview.error}</PageStatus> : null}
+            </AppCard>
           </section>
         </div>
       </div>
@@ -2454,7 +2467,6 @@ function healthBannerStyle(status: string): CSSProperties {
   };
 }
 
-const colTitle: CSSProperties = { fontSize: "1rem", margin: 0, fontWeight: 700 };
 const colHint: CSSProperties = { fontSize: "0.78rem", color: "var(--color-text-muted)", margin: 0 };
 
 const metaBar: CSSProperties = {

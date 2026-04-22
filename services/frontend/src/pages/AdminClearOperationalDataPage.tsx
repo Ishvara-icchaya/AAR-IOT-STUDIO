@@ -31,7 +31,7 @@ export function AdminClearOperationalDataPage() {
   }
 
   return (
-    <PageShell title="Clear operational data">
+    <PageShell>
       <PageStatus variant="warning" icon>
         <strong>Irreversible for this tenant.</strong> Removes devices, raw samples, data objects, workflows
         (including workflow result objects), dashboards, published services, alerts, and static ingestion

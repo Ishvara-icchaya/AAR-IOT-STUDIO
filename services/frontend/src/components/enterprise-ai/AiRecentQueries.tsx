@@ -13,49 +13,19 @@ export function AiRecentQueries({
   onReuse: (q: string) => void;
 }) {
   if (!items.length) {
-    return <p style={{ color: "var(--color-text-muted)", fontSize: "0.85rem" }}>No recent queries.</p>;
+    return <p className="dm-inline-summary">No recent queries.</p>;
   }
   return (
-    <ul style={{ listStyle: "none", padding: 0, margin: 0, fontSize: "0.82rem" }}>
+    <ul className="ea-query-list">
       {items.map((q) => (
-        <li
-          key={q.id}
-          style={{
-            padding: "0.45rem 0",
-            borderBottom: "1px solid var(--color-border-subtle, #333)",
-            display: "flex",
-            justifyContent: "space-between",
-            gap: "0.5rem",
-            alignItems: "flex-start",
-          }}
-        >
-          <span style={{ flex: 1 }}>
-            <span
-              style={{
-                fontSize: "0.68rem",
-                marginRight: "0.35rem",
-                padding: "0.1rem 0.35rem",
-                borderRadius: "3px",
-                background: "rgba(255,255,255,0.06)",
-                verticalAlign: "middle",
-              }}
-            >
+        <li key={q.id} className="ea-query-list__row">
+          <span className="ea-query-list__main">
+            <span className="dm-pill dm-pill--muted ea-query-list__mode" title="Response mode">
               {modeLabel(q)}
             </span>
-            {q.question}
+            <span className="ea-query-list__question">{q.question}</span>
           </span>
-          <button
-            type="button"
-            onClick={() => onReuse(q.question)}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: "var(--color-accent)",
-              cursor: "pointer",
-              textDecoration: "underline",
-              whiteSpace: "nowrap",
-            }}
-          >
+          <button type="button" className="dm-clear-filters ea-query-list__reuse" onClick={() => onReuse(q.question)}>
             Reuse
           </button>
         </li>

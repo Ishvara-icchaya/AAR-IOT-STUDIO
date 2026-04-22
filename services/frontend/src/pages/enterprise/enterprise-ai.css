@@ -1,0 +1,642 @@
+/* Enterprise AI — ops workspace layout (scoped); charcoal + dm-* via device-manage-page */
+
+.enterprise-ai-page.page-card {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.enterprise-ai-page .ea-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.enterprise-ai-page .ea-root > .ea-main {
+  flex: 1;
+  min-height: 0;
+}
+
+.enterprise-ai-page .ea-root > .dm-kpi-row,
+.enterprise-ai-page .ea-root > .ea-bottom {
+  flex-shrink: 0;
+}
+
+/* Main three-column layout: span area, ask, results */
+.ea-main {
+  min-height: 0;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+@media (min-width: 960px) {
+  .ea-main {
+    /* Results column gets the largest share */
+    grid-template-columns: minmax(200px, 0.88fr) minmax(240px, 0.95fr) minmax(280px, 1.35fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+}
+
+/* Stack layout on top of `dm-filter-panel` (same surface as Manage Devices filters) */
+.ea-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ea-stack--scroll {
+  overflow-y: auto;
+}
+
+.ea-stack--results {
+  min-height: 0;
+}
+
+.ea-results-tabs {
+  margin-bottom: 0.25rem;
+}
+
+.enterprise-ai-page .ea-results-tabs.app-tabs--plain {
+  gap: 0.15rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0;
+}
+
+.enterprise-ai-page .ea-results-tabs .app-tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.28rem 0.45rem;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.enterprise-ai-page .ea-results-tabs .app-tab[aria-selected="true"] {
+  color: #1d76ff;
+  border-bottom-color: #1d76ff;
+}
+
+.ea-results-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.4rem 0.5rem;
+  background: var(--color-surface-elevated);
+}
+
+.ea-concise-answer {
+  flex-shrink: 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-surface-elevated) 88%, var(--color-bg) 12%);
+  margin-bottom: 0.35rem;
+}
+
+.ea-concise-answer__label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: 0.2rem;
+}
+
+.ea-concise-answer__text {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--color-text);
+  white-space: pre-wrap;
+}
+
+.ea-concise-answer__more {
+  margin-top: 0.35rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #1d76ff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  font-family: inherit;
+}
+
+.ea-results-sample-heading {
+  margin: 0.65rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.ea-answer-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+  align-items: center;
+}
+
+.ea-answer-card__meta .dm-pill {
+  text-transform: none;
+}
+
+.ea-answer-card__pill--help {
+  cursor: help;
+}
+
+.ea-answer-card__time {
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+}
+
+.ea-answer-card__time-label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.ea-answer-card__time-range {
+  margin-left: 0.25rem;
+  opacity: 0.92;
+}
+
+.ea-answer-card__body {
+  white-space: pre-wrap;
+  line-height: 1.45;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.ea-answer-card--compact .ea-answer-card__body {
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.ea-answer-card__body--clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 10;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ea-results-foot {
+  margin-top: auto;
+  padding-top: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Prompt bar (nested) */
+.ea-prompt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.ea-prompt-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* LLM toggle (site & time come from shell context bar). */
+.ea-prompt-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.45rem 1.25rem;
+}
+
+.ea-check--option {
+  flex: 1 1 220px;
+  min-width: min(100%, 200px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.ea-prompt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: flex-end;
+}
+
+.ea-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.ea-field select,
+.ea-field textarea {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.ea-field select[multiple] {
+  min-height: 4.5rem;
+  min-width: 100%;
+  padding: 0.35rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.ea-field select:not([multiple]) {
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.88rem;
+}
+
+.ea-field-hint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-text-muted);
+}
+
+.ea-check-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: center;
+}
+
+.ea-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.ea-check input {
+  margin-top: 0.2rem;
+}
+
+.ea-question-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.ea-disclaimer {
+  margin: 0;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+/* Suggested chips */
+.ea-suggest-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ea-stack--scroll .ea-suggest-list {
+  margin-top: 0.1rem;
+}
+
+.ea-suggest-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-bg) 65%, transparent);
+  color: var(--color-text);
+  font-size: 0.84rem;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.ea-suggest-item:hover {
+  border-color: color-mix(in oklab, var(--color-border) 55%, #1d76ff 45%);
+  background: color-mix(in oklab, var(--color-surface) 92%, #1d76ff 8%);
+}
+
+.ea-suggest-icon {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  color: var(--color-text-muted);
+  opacity: 0.95;
+}
+
+/* Empty answer */
+.ea-empty-answer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 0.75rem 0.5rem;
+  color: var(--color-text-muted);
+}
+
+.ea-empty-answer svg {
+  opacity: 0.45;
+}
+
+.ea-empty-answer p {
+  margin: 0;
+  font-size: 0.92rem;
+  max-width: 22rem;
+  line-height: 1.45;
+}
+
+.ea-empty-answer strong {
+  color: var(--color-text);
+}
+
+/* Bottom row — capped height so main column keeps space; lists scroll */
+.ea-bottom {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 1fr;
+  min-height: 0;
+  max-height: min(32vh, 280px);
+  overflow: hidden;
+}
+
+@media (min-width: 720px) {
+  .ea-bottom {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.ea-bottom .dm-filter-panel.ea-stack {
+  min-height: 0;
+  max-height: min(32vh, 280px);
+  overflow: hidden;
+  padding: 0.45rem 0.55rem;
+  gap: 0.35rem;
+}
+
+.enterprise-ai-page .ea-bottom .dm-section-heading {
+  font-size: 0.62rem;
+}
+
+.enterprise-ai-page .ea-bottom .dm-filter-panel.ea-stack > :not(h2) {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ea-bottom-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1d76ff;
+  text-decoration: none;
+}
+
+.ea-bottom-link:hover {
+  text-decoration: underline;
+}
+
+.enterprise-ai-page .ea-bottom ul {
+  font-size: 0.82rem;
+}
+
+/* Recent / saved lists — same rhythm as Manage Devices table chrome */
+.ea-query-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text);
+}
+
+.ea-query-list__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ea-query-list__row:last-child {
+  border-bottom: none;
+}
+
+.ea-query-list__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.ea-query-list__mode {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+  text-transform: none !important;
+}
+
+.ea-query-list__question {
+  line-height: 1.35;
+}
+
+.ea-query-list__reuse {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.2rem 0.15rem;
+}
+
+.ea-query-list__row--saved {
+  flex-wrap: wrap;
+}
+
+.ea-query-list__saved-body {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.ea-query-list__saved-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.ea-query-list__saved-q {
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+  line-height: 1.35;
+}
+
+.ea-query-list__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.ea-query-list__actions .dm-btn {
+  padding: 0.28rem 0.55rem;
+  font-size: 0.74rem;
+}
+
+.ea-saved-queries__save {
+  margin-bottom: 0.5rem;
+  align-items: flex-end;
+}
+
+.ea-degraded-banner {
+  margin-bottom: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in oklab, var(--color-border) 40%, #f59e0b 60%);
+  background: color-mix(in oklab, #f59e0b 12%, var(--color-surface-elevated));
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+
+.ea-degraded-banner ul {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+
+/* Charcoal ops theme — align with Manage Devices (`device-manage-page` + `device-register-page.css`) */
+.enterprise-ai-page.device-manage-page.page-card {
+  --color-bg: var(--dm-bg);
+  --color-surface: var(--dm-surface);
+  --color-surface-elevated: var(--dm-surface);
+  --color-border: var(--dm-border);
+  --color-text: var(--dm-text);
+  --color-text-muted: var(--dm-muted);
+}
+
+.enterprise-ai-page.device-manage-page .ea-results-tabs .app-tab[aria-selected="true"] {
+  color: var(--dm-accent-blue);
+  border-bottom-color: var(--dm-accent-blue);
+}
+
+.enterprise-ai-page.device-manage-page .ea-bottom-link {
+  color: var(--dm-accent-blue);
+}
+
+.enterprise-ai-page.device-manage-page .ea-main {
+  gap: 0.4rem;
+}
+
+.enterprise-ai-page.device-manage-page .dm-filter-panel.ea-stack {
+  padding: 0.38rem 0.48rem;
+  gap: 0.32rem;
+}
+
+.enterprise-ai-page.device-manage-page .dm-section-heading {
+  letter-spacing: 0.05em;
+}
+
+.enterprise-ai-page.device-manage-page .ea-results-tabs .app-tab {
+  padding: 0.22rem 0.38rem;
+  font-size: 0.68rem;
+}
+
+.enterprise-ai-page.device-manage-page .ea-concise-answer {
+  border-color: var(--dm-border);
+  background: color-mix(in oklab, var(--dm-surface-2) 90%, transparent);
+}
+
+.enterprise-ai-page.device-manage-page .ea-concise-answer__more {
+  color: var(--dm-accent-blue);
+}
+
+.enterprise-ai-page.device-manage-page .ea-check--option {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.enterprise-ai-page.device-manage-page .ea-suggest-item {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.78rem;
+}
+
+.enterprise-ai-page.device-manage-page .ea-empty-answer {
+  padding: 0.5rem 0.35rem;
+}
+
+.enterprise-ai-page.device-manage-page .ea-empty-answer svg {
+  width: 32px;
+  height: 32px;
+}
+
+.enterprise-ai-page.device-manage-page .ea-empty-answer p {
+  font-size: 0.78rem;
+}
+
+.enterprise-ai-page.device-manage-page .ea-prompt-form .dm-filter-field textarea {
+  min-height: 5.5rem;
+  max-height: min(32vh, 14rem);
+}
+
+.enterprise-ai-page.device-manage-page .ea-degraded-banner {
+  border-color: color-mix(in oklab, var(--dm-border) 35%, var(--dm-warn) 65%);
+  background: color-mix(in oklab, var(--dm-warn) 14%, var(--dm-surface));
+  color: var(--dm-text);
+}
+
+.enterprise-ai-page.device-manage-page .ea-suggest-icon {
+  color: var(--dm-muted);
+}

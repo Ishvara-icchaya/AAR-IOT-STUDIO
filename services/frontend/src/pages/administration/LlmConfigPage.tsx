@@ -110,14 +110,14 @@ export function LlmConfigPage() {
 
   if (loading || !form) {
     return (
-      <PageShell title="LLM Configuration">
+      <PageShell>
         <p>Loading…</p>
       </PageShell>
     );
   }
 
   return (
-    <PageShell title="LLM Configuration">
+    <PageShell>
       <p className="admin-lead">Enterprise AI control plane for this customer tenant.</p>
       <LlmConfigForm
         value={form}

@@ -1,0 +1,182 @@
+/**
+ * Shared plain HTML tables (sticky header, pager) — replaces AG Grid on operational pages.
+ * Uses app shell tokens from index.css / ops-theme.
+ */
+
+.op-table-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color-bg, #0f1419);
+  border-radius: var(--radius, 8px);
+}
+
+.op-table-shell--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.op-table-shell--bordered {
+  border: 1px solid var(--color-border);
+}
+
+.op-table-loading {
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.op-table-empty {
+  margin: 0;
+  padding: 0.75rem 0.65rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.op-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  max-height: min(560px, calc(100vh - 14rem));
+}
+
+.op-table-scroll--static {
+  overflow: visible !important;
+  max-height: none !important;
+  flex: 0 1 auto;
+}
+
+.op-table-shell--fill .op-table-scroll {
+  max-height: none;
+}
+
+.op-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--color-text);
+  table-layout: auto;
+}
+
+.op-data-table--dense {
+  font-size: 11px;
+}
+
+.op-data-table--dense .op-data-table__th,
+.op-data-table--dense .op-data-table__td {
+  height: 34px;
+  padding: 0.25rem 0.4rem;
+}
+
+.op-data-table--spacious .op-data-table__th,
+.op-data-table--spacious .op-data-table__td {
+  height: 44px;
+}
+
+.op-data-table__th,
+.op-data-table__td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+  text-align: left;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.op-data-table__th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in oklab, var(--color-surface-elevated, #1a2230) 92%, var(--color-bg, #0f1419) 8%);
+  font-weight: 700;
+  color: var(--color-text-muted);
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+.op-data-table__th--center,
+.op-data-table__td--center {
+  text-align: center;
+}
+
+.op-data-table__th--right,
+.op-data-table__td--right {
+  text-align: right;
+}
+
+.op-data-table__td--flex {
+  white-space: nowrap;
+}
+
+.op-data-table__td-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.op-data-table__td-inner--end {
+  justify-content: flex-end;
+}
+
+.op-data-table__row {
+  cursor: default;
+}
+
+.op-data-table__row--clickable {
+  cursor: pointer;
+}
+
+.op-data-table__row:hover {
+  background: color-mix(in oklab, var(--color-accent, #3b82f6) 7%, var(--color-bg, #0f1419));
+}
+
+.op-data-table__checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+.op-table-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border-top: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-surface-elevated, #1a2230) 88%, var(--color-bg) 12%);
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.op-table-pager__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.op-table-pager__btn {
+  padding: 0.28rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.op-table-pager__btn:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-border));
+  color: var(--color-accent);
+}
+
+.op-table-pager__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

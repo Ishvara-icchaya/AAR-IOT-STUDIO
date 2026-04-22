@@ -28,11 +28,11 @@ export function WorkflowLivePage() {
   }, [load]);
 
   if (!workflowId) {
-    return <PageShell title="Live workflow">Missing id.</PageShell>;
+    return <PageShell>Missing id.</PageShell>;
   }
 
   return (
-    <PageShell title="Workflow runtime">
+    <PageShell>
       <div style={{ marginBottom: "0.75rem", display: "flex", gap: "0.75rem" }}>
         <Link to={`/workflow/${workflowId}/edit`}>← Editor</Link>
         <button type="button" style={btn} onClick={() => void load()}>

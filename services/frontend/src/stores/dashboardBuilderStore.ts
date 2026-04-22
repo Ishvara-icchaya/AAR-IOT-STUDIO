@@ -28,9 +28,14 @@ function normalizeLayout(raw: Record<string, unknown> | undefined): DashboardLay
   if (!raw || typeof raw !== "object") return { version: 1, rows: [] };
   const rowsIn = Array.isArray(raw.rows) ? raw.rows : [];
   const rows: DashboardLayoutModel["rows"] = rowsIn.map((r: unknown) => {
-    if (!r || typeof r !== "object") return { rowId: crypto.randomUUID(), columns: [] };
+    if (!r || typeof r !== "object") return { rowId: crypto.randomUUID(), heightWeight: 1, columns: [] };
     const row = r as Record<string, unknown>;
     const rowId = String(row.rowId ?? row.row_id ?? crypto.randomUUID());
+    const hwRaw = row.heightWeight ?? row.height_weight;
+    let heightWeight = 1;
+    if (typeof hwRaw === "number" && Number.isFinite(hwRaw) && hwRaw > 0) {
+      heightWeight = Math.min(40, Math.max(0.25, hwRaw));
+    }
     const colsIn = Array.isArray(row.columns) ? row.columns : [];
     const columns = colsIn.map((c: unknown) => {
       if (!c || typeof c !== "object") return { columnId: crypto.randomUUID(), span: 12 };
@@ -51,7 +56,7 @@ function normalizeLayout(raw: Record<string, unknown> | undefined): DashboardLay
       }
       return { columnId, span, widget };
     });
-    return { rowId, columns };
+    return { rowId, heightWeight, columns };
   });
   const settings = normalizeSettings(raw.settings);
   return {
@@ -69,6 +74,7 @@ export function normalizeLayoutForMapWidgets(layout: DashboardLayoutModel): Dash
   const nextRows: DashboardRowModel[] = [];
 
   for (const row of layout.rows) {
+    const rowHw = row.heightWeight ?? 1;
     let buf: DashboardColumnModel[] = [];
     let firstChunk = true;
 
@@ -85,6 +91,7 @@ export function normalizeLayoutForMapWidgets(layout: DashboardLayoutModel): Dash
         firstChunk = false;
         nextRows.push({
           rowId: rid,
+          heightWeight: rowHw,
           columns: buf.map((c) => ({ ...c })),
         });
         buf = [];
@@ -94,6 +101,7 @@ export function normalizeLayoutForMapWidgets(layout: DashboardLayoutModel): Dash
       firstChunk = false;
       nextRows.push({
         rowId: rid,
+        heightWeight: rowHw,
         columns: buf.map((c) => ({ ...c })),
       });
       buf = [];
@@ -104,6 +112,7 @@ export function normalizeLayoutForMapWidgets(layout: DashboardLayoutModel): Dash
         flushBuf(row.rowId, false);
         nextRows.push({
           rowId: crypto.randomUUID(),
+          heightWeight: rowHw,
           columns: [{ columnId: crypto.randomUUID(), span: 12, widget: col.widget }],
         });
       } else {
@@ -121,6 +130,7 @@ export function layoutToApiJson(layout: DashboardLayoutModel): Record<string, un
     version: layout.version,
     rows: layout.rows.map((row) => ({
       rowId: row.rowId,
+      heightWeight: row.heightWeight ?? 1,
       columns: row.columns.map((col) => ({
         columnId: col.columnId,
         span: col.span,
@@ -167,6 +177,7 @@ type BuilderActions = {
   setPreviewPayload: (p: import("@/types/dashboard").DashboardLiveDTO | null) => void;
   addRow: () => void;
   removeRow: (rowId: string) => void;
+  setRowHeightWeight: (rowId: string, heightWeight: number) => void;
   applyRowPreset: (rowId: string, preset: RowPresetKey) => void;
   addColumn: (rowId: string) => void;
   removeColumn: (rowId: string, columnId: string) => void;
@@ -227,12 +238,22 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
           ...s.layout.rows,
           {
             rowId: crypto.randomUUID(),
+            heightWeight: 1,
             columns: [{ columnId: crypto.randomUUID(), span: 12 }],
           },
         ],
       }),
       dirty: true,
     })),
+
+  setRowHeightWeight: (rowId, heightWeight) =>
+    set((s) => {
+      const w = Math.min(40, Math.max(0.25, heightWeight));
+      const rows = s.layout.rows.map((row) =>
+        row.rowId === rowId ? { ...row, heightWeight: w } : row,
+      );
+      return { layout: { ...s.layout, rows }, dirty: true };
+    }),
 
   removeRow: (rowId) =>
     set((s) => ({
@@ -257,7 +278,7 @@ export const useDashboardBuilderStore = create<BuilderState & BuilderActions>((s
         for (let i = 0; i < Math.min(old.length, columns.length); i++) {
           columns[i] = { ...columns[i], widget: old[i]?.widget };
         }
-        return { ...row, columns };
+        return { ...row, columns, heightWeight: row.heightWeight ?? 1 };
       });
       return { layout: normalizeLayoutForMapWidgets({ ...s.layout, rows }), dirty: true };
     }),

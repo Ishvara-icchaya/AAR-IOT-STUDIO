@@ -1,32 +1,44 @@
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
+import { DashboardWidgetFrame } from "@/components/dashboard/DashboardWidgetFrame";
+import { adaptAlertSummaryWidget } from "@/lib/dashboard/adapters/widgetDataAdapters";
+import { resolveWidgetPresentation } from "@/lib/widgetPresentation";
 import { blinkModeClass } from "@/lib/healthBlink";
 
 export function AlertSummaryWidget({ block }: { block: DashboardLiveWidgetDTO }) {
-  const d = block.data ?? {};
-  const blink = blinkModeClass(d.blink_mode);
-  const by = (d.active_by_severity as Record<string, number>) || {};
-  const recent = Array.isArray(d.recent) ? (d.recent as { title?: string; severity?: string; acknowledged?: boolean }[]) : [];
-  const unack = Number(d.unacknowledged_count ?? 0);
+  const pres = resolveWidgetPresentation(block);
+  const vm = adaptAlertSummaryWidget(block);
+  const blink = blinkModeClass(vm.blinkMode);
+  const by = vm.activeBySeverity;
+  const recent = vm.recent;
+  const unack = vm.unacknowledgedCount;
 
   return (
-    <div className={`dash-widget dash-widget--alerts ${blink}`}>
-      <h3 className="dash-widget__title">{block.title}</h3>
-      <p className="dash-widget__muted">Unacknowledged: {unack}</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
+    <DashboardWidgetFrame
+      block={block}
+      presentation={pres}
+      state="normal"
+      widgetKind="alerts"
+      className={blink}
+      bodyFill
+      subtitle={<span className="dash-wf-alerts__unack">Unacknowledged: {unack}</span>}
+    >
+      <div className="dash-wf-alerts__chips">
         {Object.entries(by).map(([sev, n]) => (
-          <span key={sev} style={{ padding: "0.2rem 0.5rem", background: "var(--color-surface-elevated)", borderRadius: 4 }}>
-            {sev}: {n}
+          <span key={sev} className="dash-wf-alerts__chip">
+            <span className="dash-wf-alerts__chip-sev">{sev}</span>
+            <span className="dash-wf-alerts__chip-n">{n}</span>
           </span>
         ))}
       </div>
-      <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.85rem", maxHeight: 160, overflow: "auto" }}>
+      <ul className="dash-widget__alerts-list dash-wf-alerts__list">
         {recent.slice(0, 10).map((a, i) => (
-          <li key={i} style={{ marginBottom: 4 }}>
-            <span style={{ color: "var(--color-text-muted)" }}>{a.severity}</span> {a.title}
-            {a.acknowledged ? " ✓" : ""}
+          <li key={i}>
+            <span className="dash-wf-alerts__sev">{a.severity}</span>{" "}
+            <span className="dash-wf-alerts__title">{a.title}</span>
+            {a.acknowledged ? <span className="dash-wf-alerts__ack"> ✓</span> : null}
           </li>
         ))}
       </ul>
-    </div>
+    </DashboardWidgetFrame>
   );
 }

@@ -3,16 +3,31 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BrushCleaning, ClipboardCheck, Loader2, Save, X } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
+import type { DeviceRead } from "@/api/devices";
 import {
   fetchDeviceEndpoint,
   validateDeviceEndpoint,
   type DeviceEndpointObservability,
   type DeviceEndpointRead,
 } from "@/api/deviceEndpoints";
+import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
+import {
+  AppButton,
+  AppCard,
+  AppEmptyState,
+  AppField,
+  AppGrid,
+  AppInput,
+  AppSelect,
+  AppTextarea,
+  AppToolbar,
+  appButtonClassName,
+} from "@/components/app";
 import { ConfigDrawer } from "@/components/ops/ConfigDrawer";
 import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
+import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import {
   configStructureSignature,
   jsonCloneForShape,
@@ -33,27 +48,6 @@ import {
   type WebSocketFields,
 } from "@/lib/deviceEndpointConfig";
 import { activationStatusStyle, formatActivationLabel } from "@/lib/endpointActivation";
-type DeviceRow = {
-  id: string;
-  site_id: string;
-  name: string;
-  is_active: boolean;
-  polling_enabled: boolean;
-  current_liveness_state?: string;
-  last_seen_at?: string | null;
-  endpoint: {
-    id: string;
-    protocol: string;
-    config: Record<string, unknown>;
-    polling_interval_seconds: number;
-    is_active: boolean;
-    activation_status?: string;
-    first_payload_at?: string | null;
-    last_payload_at?: string | null;
-    last_error?: string | null;
-    validation_status?: string | null;
-  } | null;
-};
 
 type SiteRow = { id: string; name: string };
 
@@ -127,6 +121,12 @@ function formatOptionalTs(iso: string | null | undefined): string {
   }
 }
 
+function formatLastDataReceived(d: DeviceRead): string {
+  const ms = lastDataReceivedMs(d);
+  if (ms === null) return "—";
+  return formatOptionalTs(new Date(ms).toISOString());
+}
+
 function livenessLabel(s: string | null | undefined): string {
   const x = String(s || "waiting_for_first_payload");
   if (x === "waiting_for_first_payload") return "Waiting first payload";
@@ -168,12 +168,13 @@ function protocolLabel(p: string) {
 }
 
 export function DeviceManagePage() {
-  const [devices, setDevices] = useState<DeviceRow[]>([]);
+  const [devices, setDevices] = useState<DeviceRead[]>([]);
   const [sitesById, setSitesById] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [editingDevice, setEditingDevice] = useState<DeviceRow | null>(null);
+  useShellFeedback(err, null);
+  const [editingDevice, setEditingDevice] = useState<DeviceRead | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const deviceIdFromQuery = searchParams.get("device");
   const navigate = useNavigate();
@@ -239,12 +240,12 @@ export function DeviceManagePage() {
 
   const { refreshToken } = useOpsShell();
 
-  const refresh = useCallback(async (): Promise<DeviceRow[]> => {
+  const refresh = useCallback(async (): Promise<DeviceRead[]> => {
     setLoading(true);
     setErr(null);
     try {
       const [devRes, siteList] = await Promise.all([
-        apiFetch<{ items: DeviceRow[] }>("/devices"),
+        apiFetch<{ items: DeviceRead[] }>("/devices"),
         apiFetch<SiteRow[]>("/administration/sites").catch(() => [] as SiteRow[]),
       ]);
       const items = devRes?.items ?? [];
@@ -274,7 +275,7 @@ export function DeviceManagePage() {
     }
     setEditingDevice(match);
     setErr(null);
-    setSearchParams({}, { replace: true });
+    /* Keep ?device= in the URL for refresh/share; do not strip params (avoids a blank flash before the drawer). */
   }, [loading, deviceIdFromQuery, devices, setSearchParams]);
 
   useEffect(() => {
@@ -453,6 +454,11 @@ export function DeviceManagePage() {
   const canSaveConfiguration =
     !submitting && hasUnsavedChanges && validationAllowsSave && configStructureMatches;
 
+  const deviceFromQuery = useMemo(
+    () => (deviceIdFromQuery ? devices.find((d) => d.id === deviceIdFromQuery) : undefined),
+    [deviceIdFromQuery, devices],
+  );
+
   function validateEndpoint(): string | null {
     if (savedEndpoint && savedEndpoint.protocol === protocol) {
       try {
@@ -532,44 +538,44 @@ export function DeviceManagePage() {
   }
 
   return (
-    <PageShell title="Manage device" className="device-endpoint-page">
+    <PageShell variant="list" className="device-endpoint-page">
       <div style={stack}>
-        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-
         <nav style={breadcrumbNav} aria-label="Manage devices">
           <span style={breadcrumbCurrent}>Devices</span>
           <span style={breadcrumbMuted}> — open a device from Register devices to configure its endpoint</span>
         </nav>
 
         <ConfigDrawer
-          open={!!editingDevice}
+          open={Boolean(editingDevice || deviceIdFromQuery)}
           onClose={cancelEdit}
           title="Device & endpoint"
-          subtitle={editingDevice?.name}
+          subtitle={editingDevice?.name ?? (deviceIdFromQuery ? "…" : undefined)}
           width={1680}
         >
           {editingDevice ? (
             <>
-            <nav style={drawerToolbarNav} aria-label="Manage devices">
-              <div style={drawerToolbarLeft}>
-                <button
-                  type="button"
-                  style={toolbarIconBtn}
+            <AppToolbar
+              className="device-endpoint-drawer-toolbar"
+              left={
+                <>
+                <AppButton
+                  variant="icon"
                   onClick={cancelEdit}
                   title="Back to Register devices — device list"
                   aria-label="Back to device list"
                 >
                   <ArrowLeft size={18} strokeWidth={2} aria-hidden />
-                </button>
+                </AppButton>
                 <span style={breadcrumbSep} aria-hidden>
                   /
                 </span>
                 <span style={breadcrumbCurrent}>Edit · {editingDevice.name}</span>
-              </div>
-              <div style={drawerToolbarRight}>
-                <button
-                  type="button"
-                  style={toolbarIconBtn}
+                </>
+              }
+              right={
+                <>
+                <AppButton
+                  variant="icon"
                   disabled={validating || submitting}
                   title={
                     savedEndpoint
@@ -584,31 +590,31 @@ export function DeviceManagePage() {
                   ) : (
                     <ClipboardCheck size={18} strokeWidth={2} aria-hidden />
                   )}
-                </button>
+                </AppButton>
                 {scrubberUnlocked ? (
                   <Link
                     to={`/scrubber/data-objects?device=${encodeURIComponent(editingDevice.id)}`}
-                    style={{ ...toolbarIconBtn, textDecoration: "none" }}
+                    className={appButtonClassName("icon")}
+                    style={{ textDecoration: "none" }}
                     title="Open Scrubber data objects for this device"
                     aria-label="Open Scrubber data objects for this device"
                   >
                     <BrushCleaning size={18} strokeWidth={2} aria-hidden />
                   </Link>
                 ) : (
-                  <button
-                    type="button"
+                  <AppButton
+                    variant="icon"
                     disabled
-                    style={{ ...toolbarIconBtn, opacity: 0.45, cursor: "not-allowed" }}
                     title="Scrubber unlocks after the first archived payload is available (or once raw preview loads)."
                     aria-label="Scrubber (locked until first payload or raw preview)"
                   >
                     <BrushCleaning size={18} strokeWidth={2} aria-hidden />
-                  </button>
+                  </AppButton>
                 )}
-                <button
+                <AppButton
                   type="submit"
                   form="device-endpoint-form"
-                  style={toolbarIconBtnPrimary}
+                  variant="iconPrimary"
                   disabled={!canSaveConfiguration || submitting}
                   title={
                     !configStructureMatches && savedEndpoint && savedEndpoint.protocol === protocol
@@ -624,29 +630,28 @@ export function DeviceManagePage() {
                   ) : (
                     <Save size={18} strokeWidth={2} aria-hidden />
                   )}
-                </button>
-                <button
-                  type="button"
-                  style={toolbarIconBtn}
+                </AppButton>
+                <AppButton
+                  variant="icon"
                   onClick={cancelEdit}
                   disabled={submitting}
                   title="Close without saving — return to Register devices"
                   aria-label="Cancel and close"
                 >
                   <X size={18} strokeWidth={2} aria-hidden />
-                </button>
-              </div>
-            </nav>
+                </AppButton>
+                </>
+              }
+            />
             <h2 style={{ ...h2, fontSize: "0.95rem", marginTop: "0.5rem" }}>Edit device</h2>
             <p style={{ ...muted, fontSize: "0.8rem" }}>
               <strong>{editingDevice.name}</strong> · {sitesById[editingDevice.site_id] ?? editingDevice.site_id.slice(0, 8) + "…"} · Status:{" "}
               <strong>{editingDevice.is_active ? "Active" : "Inactive"}</strong>
             </p>
 
-            <div style={editLayoutRoot} role="region" aria-label="Endpoint editor layout">
-              <div style={editRow1}>
-                <div style={editPanel}>
-                  <div style={editPanelTitle}>Endpoint configuration</div>
+            <div className="app-section" role="region" aria-label="Endpoint editor layout">
+              <AppGrid columns={3}>
+                <AppCard title="Endpoint configuration">
                   {savedEndpoint && savedEndpoint.protocol === protocol && !configStructureMatches ? (
                     <div style={{ marginBottom: "0.5rem" }}>
                       <PageStatus variant="warning" icon>
@@ -662,13 +667,12 @@ export function DeviceManagePage() {
                     </div>
                   ) : null}
                 <form id="device-endpoint-form" onSubmit={saveEndpoint} style={{ minWidth: 0 }}>
-                <div style={fieldGrid3}>
-                  <label style={lblSm}>
-                    Protocol
-                    <select
+                <AppGrid columns={3} className="app-grid--tight app-grid--form-row-margin">
+                  <AppField size="sm" label="Protocol">
+                    <AppSelect
                       value={protocol}
                       onChange={(e) => setProtocol(e.target.value as IngestProtocol)}
-                      style={inpSm}
+                      size="sm"
                       required
                     >
                       {INGEST_PROTOCOLS.map((opt) => (
@@ -676,47 +680,45 @@ export function DeviceManagePage() {
                           {protocolLabel(opt)}
                         </option>
                       ))}
-                    </select>
-                  </label>
+                    </AppSelect>
+                  </AppField>
                   {isHttpRestPush ? (
-                    <p style={{ ...muted, gridColumn: "2 / -1", fontSize: "0.78rem", margin: 0, alignSelf: "center" }}>
+                    <p className="app-grid__help-span-2">
                       <strong>Push to Platform:</strong> ingest cadence is controlled by the upstream system (each POST to the
                       platform API). No upstream URL is configured here.
                     </p>
                   ) : (
                     <>
-                      <label style={lblSm}>
-                        Polling
-                        <select
+                      <AppField size="sm" label="Polling">
+                        <AppSelect
                           value={pollRealtime ? "rt" : "iv"}
                           onChange={(e) => setPollRealtime(e.target.value === "rt")}
-                          style={inpSm}
+                          size="sm"
                         >
                           <option value="rt">Real time (0s)</option>
                           <option value="iv">Interval</option>
-                        </select>
-                      </label>
-                      <label style={lblSm}>
-                        Interval (sec)
-                        <input
+                        </AppSelect>
+                      </AppField>
+                      <AppField size="sm" label="Interval (sec)">
+                        <AppInput
                           type="number"
                           min={5}
                           max={86400}
                           disabled={pollRealtime}
                           value={pollIntervalSec}
                           onChange={(e) => setPollIntervalSec(Number(e.target.value))}
-                          style={{ ...inpSm, opacity: pollRealtime ? 0.5 : 1 }}
+                          size="sm"
+                          style={{ opacity: pollRealtime ? 0.5 : 1 }}
                         />
-                      </label>
+                      </AppField>
                     </>
                   )}
-                </div>
+                </AppGrid>
 
                 {protocol === "http" && (
-                  <div style={fieldGrid3}>
-                    <label style={lblSm}>
-                      REST integration
-                      <select
+                  <AppGrid columns={3} className="app-grid--tight app-grid--form-row-margin">
+                    <AppField size="sm" label="REST integration">
+                      <AppSelect
                         value={httpF.restMode}
                         onChange={(e) => {
                           const mode = e.target.value as "inbound_hook" | "polling";
@@ -727,165 +729,172 @@ export function DeviceManagePage() {
                             return { ...prev, restMode: mode };
                           });
                         }}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="inbound_hook">Push to Platform</option>
                         <option value="polling">Pull from Upstream</option>
-                      </select>
-                    </label>
+                      </AppSelect>
+                    </AppField>
                     {isHttpRestPush ? (
-                      <p style={{ ...muted, gridColumn: "2 / -1", fontSize: "0.78rem", margin: 0 }}>
+                      <p className="app-grid__help-span-2">
                         Upstream systems send HTTP payloads to AAR-IoT-Studio. Use{" "}
                         <code>POST /api/v1/ingest/raw</code> with JWT auth (multipart body per product contract).
                       </p>
                     ) : null}
-                  </div>
+                  </AppGrid>
                 )}
 
                 {protocol === "http" && isHttpRestPull && (
-                  <div style={fieldGrid3}>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Upstream URL (optional if Host + Port + Path below)
-                      <input
+                  <AppGrid columns={3} className="app-grid--tight app-grid--form-row-margin">
+                    <AppField size="sm" label="Upstream URL (optional if Host + Port + Path below)" className="app-field--grid-span-full">
+                      <AppInput
                         value={httpF.pollingUrl}
                         onChange={(e) => setHttpF({ ...httpF, pollingUrl: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                         placeholder="https://upstream.example.com/api/readings"
                       />
-                    </label>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Host
-                      <input value={httpF.host} onChange={(e) => setHttpF({ ...httpF, host: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Path
-                      <input value={httpF.path} onChange={(e) => setHttpF({ ...httpF, path: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={lblSm}>
-                      Port
-                      <input value={httpF.port} onChange={(e) => setHttpF({ ...httpF, port: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={lblSm}>
-                      Method
-                      <select
+                    </AppField>
+                    <AppField size="sm" label="Host" className="app-field--grid-span-full">
+                      <AppInput
+                        value={httpF.host}
+                        onChange={(e) => setHttpF({ ...httpF, host: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Path" className="app-field--grid-span-full">
+                      <AppInput
+                        value={httpF.path}
+                        onChange={(e) => setHttpF({ ...httpF, path: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Port">
+                      <AppInput
+                        value={httpF.port}
+                        onChange={(e) => setHttpF({ ...httpF, port: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Method">
+                      <AppSelect
                         value={httpF.method}
                         onChange={(e) => setHttpF({ ...httpF, method: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="GET">GET</option>
                         <option value="POST">POST</option>
                         <option value="PUT">PUT</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      TLS
-                      <select
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="TLS">
+                      <AppSelect
                         value={httpF.useTls ? "y" : "n"}
                         onChange={(e) => setHttpF({ ...httpF, useTls: e.target.value === "y" })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="y">Yes (HTTPS)</option>
                         <option value="n">No (HTTP)</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Timeout (s)
-                      <input
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Timeout (s)">
+                      <AppInput
                         value={httpF.timeoutSeconds}
                         onChange={(e) => setHttpF({ ...httpF, timeoutSeconds: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       />
-                    </label>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Extra headers (JSON object, optional)
-                      <textarea
+                    </AppField>
+                    <AppField size="sm" label="Extra headers (JSON object, optional)" className="app-field--grid-span-full">
+                      <AppTextarea
                         value={httpF.headersJson}
                         onChange={(e) => setHttpF({ ...httpF, headersJson: e.target.value })}
-                        style={{ ...inpSm, minHeight: "4rem", fontFamily: "monospace", fontSize: "0.8rem" }}
+                        size="sm"
+                        mono
+                        style={{ minHeight: "4rem" }}
                         placeholder='{"X-Custom":"value"}'
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Auth
-                      <select
+                    </AppField>
+                    <AppField size="sm" label="Auth">
+                      <AppSelect
                         value={httpF.authType}
                         onChange={(e) =>
                           setHttpF({ ...httpF, authType: e.target.value as HttpFields["authType"] })
                         }
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="none">None</option>
                         <option value="bearer">Bearer token (Authorization)</option>
                         <option value="header">Custom header</option>
-                      </select>
-                    </label>
+                      </AppSelect>
+                    </AppField>
                     {httpF.authType === "header" ? (
-                      <label style={lblSm}>
-                        Header name
-                        <input
+                      <AppField size="sm" label="Header name">
+                        <AppInput
                           value={httpF.authHeaderName}
                           onChange={(e) => setHttpF({ ...httpF, authHeaderName: e.target.value })}
-                          style={inpSm}
+                          size="sm"
                         />
-                      </label>
+                      </AppField>
                     ) : null}
                     {httpF.authType !== "none" ? (
-                      <label style={{ ...lblSm, gridColumn: httpF.authType === "header" ? "1 / -1" : undefined }}>
-                        Secret / token
-                        <input
+                      <AppField
+                        size="sm"
+                        label="Secret / token"
+                        className={httpF.authType === "header" ? "app-field--grid-span-full" : undefined}
+                      >
+                        <AppInput
                           type="password"
                           value={httpF.authHeaderValue}
                           onChange={(e) => setHttpF({ ...httpF, authHeaderValue: e.target.value })}
-                          style={inpSm}
+                          size="sm"
                           autoComplete="off"
                         />
-                      </label>
+                      </AppField>
                     ) : null}
-                  </div>
+                  </AppGrid>
                 )}
 
                 {protocol === "mqtt" && (
-                  <div style={fieldGrid3}>
-                    <label style={lblSm}>
-                      Broker mode
-                      <select
+                  <AppGrid columns={3} className="app-grid--tight app-grid--form-row-margin">
+                    <AppField size="sm" label="Broker mode">
+                      <AppSelect
                         value={mqttF.brokerMode}
                         onChange={(e) =>
                           setMqttF({ ...mqttF, brokerMode: e.target.value as "internal" | "external" })
                         }
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="internal">Internal (platform Mosquitto)</option>
                         <option value="external">External broker</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Broker host
-                      <input
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Broker host">
+                      <AppInput
                         value={mqttF.host}
                         onChange={(e) => setMqttF({ ...mqttF, host: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                         placeholder={
                           mqttF.brokerMode === "internal"
                             ? "mosquitto (default if empty)"
                             : "e.g. 192.168.x.x"
                         }
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Broker port
-                      <input value={mqttF.port} onChange={(e) => setMqttF({ ...mqttF, port: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Topic
-                      <input
+                    </AppField>
+                    <AppField size="sm" label="Broker port">
+                      <AppInput
+                        value={mqttF.port}
+                        onChange={(e) => setMqttF({ ...mqttF, port: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Topic" className="app-field--grid-span-full">
+                      <AppInput
                         value={mqttF.topic}
                         onChange={(e) => setMqttF({ ...mqttF, topic: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                         placeholder="e.g. factory/# or factory/telemetry"
                       />
-                    </label>
-                    <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.72rem", margin: 0 }}>
+                    </AppField>
+                    <p className="app-grid__help-span-full">
                       The bridge subscribes with this filter; it must match the full published topic path. An exact
                       filter <code>factory/telemetry</code> does not receive messages on{" "}
                       <code>factory/telemetry/truck-001</code> — use a wildcard such as <code>factory/#</code> or{" "}
@@ -895,180 +904,180 @@ export function DeviceManagePage() {
                       to late/offline by design; widen the topic only if messages still publish on the broker but never
                       reach the platform.
                     </p>
-                    <label style={lblSm}>
-                      QoS
-                      <select
+                    <AppField size="sm" label="QoS">
+                      <AppSelect
                         value={mqttF.qos}
                         onChange={(e) => setMqttF({ ...mqttF, qos: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="0">0</option>
                         <option value="1">1</option>
                         <option value="2">2</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Username
-                      <input
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Username">
+                      <AppInput
                         value={mqttF.username}
                         onChange={(e) => setMqttF({ ...mqttF, username: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                         autoComplete="off"
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Password
-                      <input
+                    </AppField>
+                    <AppField size="sm" label="Password">
+                      <AppInput
                         type="password"
                         value={mqttF.password}
                         onChange={(e) => setMqttF({ ...mqttF, password: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                         autoComplete="off"
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Client ID
-                      <input value={mqttF.clientId} onChange={(e) => setMqttF({ ...mqttF, clientId: e.target.value })} style={inpSm} />
-                    </label>
-                  </div>
+                    </AppField>
+                    <AppField size="sm" label="Client ID">
+                      <AppInput
+                        value={mqttF.clientId}
+                        onChange={(e) => setMqttF({ ...mqttF, clientId: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                  </AppGrid>
                 )}
 
                 {protocol === "coap" && (
-                  <div style={fieldGrid3}>
-                    <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.75rem", margin: 0 }}>
+                  <AppGrid columns={3} className="app-grid--tight app-grid--form-row-margin">
+                    <p className="app-grid__help-span-full app-grid__help-span-full--md">
                       CoAP is modeled as a <strong>listener/adapter</strong> (not a broker). Payloads must be normalized and
                       written through the canonical raw ingest path when the adapter is deployed.
                     </p>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Host
-                      <input value={coapF.host} onChange={(e) => setCoapF({ ...coapF, host: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Path
-                      <input value={coapF.path} onChange={(e) => setCoapF({ ...coapF, path: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={lblSm}>
-                      Port
-                      <input value={coapF.port} onChange={(e) => setCoapF({ ...coapF, port: e.target.value })} style={inpSm} />
-                    </label>
-                    <label style={lblSm}>
-                      Method
-                      <select
+                    <AppField size="sm" label="Host" className="app-field--grid-span-full">
+                      <AppInput
+                        value={coapF.host}
+                        onChange={(e) => setCoapF({ ...coapF, host: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Path" className="app-field--grid-span-full">
+                      <AppInput
+                        value={coapF.path}
+                        onChange={(e) => setCoapF({ ...coapF, path: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Port">
+                      <AppInput
+                        value={coapF.port}
+                        onChange={(e) => setCoapF({ ...coapF, port: e.target.value })}
+                        size="sm"
+                      />
+                    </AppField>
+                    <AppField size="sm" label="Method">
+                      <AppSelect
                         value={coapF.method}
                         onChange={(e) => setCoapF({ ...coapF, method: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="GET">GET</option>
                         <option value="POST">POST</option>
                         <option value="PUT">PUT</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Security
-                      <select
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Security">
+                      <AppSelect
                         value={coapF.security}
                         onChange={(e) => setCoapF({ ...coapF, security: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="none">None</option>
                         <option value="dtls">DTLS</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Timeout (s)
-                      <input
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Timeout (s)">
+                      <AppInput
                         value={coapF.timeoutSeconds}
                         onChange={(e) => setCoapF({ ...coapF, timeoutSeconds: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Observe (CoAP observe)
-                      <select
+                    </AppField>
+                    <AppField size="sm" label="Observe (CoAP observe)">
+                      <AppSelect
                         value={coapF.observe ? "y" : "n"}
                         onChange={(e) => setCoapF({ ...coapF, observe: e.target.value === "y" })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="n">No</option>
                         <option value="y">Yes</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Poll interval (sec)
-                      <input
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Poll interval (sec)">
+                      <AppInput
                         type="number"
                         min={5}
                         value={coapF.pollIntervalSeconds}
                         onChange={(e) => setCoapF({ ...coapF, pollIntervalSeconds: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       />
-                    </label>
-                  </div>
+                    </AppField>
+                  </AppGrid>
                 )}
 
                 {protocol === "websocket" && (
-                  <div style={fieldGrid3}>
-                    <p style={{ ...muted, gridColumn: "1 / -1", fontSize: "0.75rem", margin: 0 }}>
+                  <AppGrid columns={3} className="app-grid--tight app-grid--form-row-margin">
+                    <p className="app-grid__help-span-full app-grid__help-span-full--md">
                       WebSocket ingest is a <strong>platform listener</strong>; configuration here is consumed by the ingest
                       adapter (same canonical archive + Kafka path as REST/MQTT).
                     </p>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      WebSocket URL
-                      <input
+                    <AppField size="sm" label="WebSocket URL" className="app-field--grid-span-full">
+                      <AppInput
                         value={wsF.url}
                         onChange={(e) => setWsF({ ...wsF, url: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                         placeholder="ws://host:8001/stream or wss://…"
                       />
-                    </label>
-                    <label style={lblSm}>
-                      TLS (wss)
-                      <select
+                    </AppField>
+                    <AppField size="sm" label="TLS (wss)">
+                      <AppSelect
                         value={wsF.useTls ? "y" : "n"}
                         onChange={(e) => setWsF({ ...wsF, useTls: e.target.value === "y" })}
-                        style={inpSm}
+                        size="sm"
                       >
                         <option value="n">ws</option>
                         <option value="y">wss</option>
-                      </select>
-                    </label>
-                    <label style={lblSm}>
-                      Subprotocol
-                      <input
+                      </AppSelect>
+                    </AppField>
+                    <AppField size="sm" label="Subprotocol">
+                      <AppInput
                         value={wsF.subprotocol}
                         onChange={(e) => setWsF({ ...wsF, subprotocol: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Reconnect delay (s)
-                      <input
+                    </AppField>
+                    <AppField size="sm" label="Reconnect delay (s)">
+                      <AppInput
                         type="number"
                         min={1}
                         value={wsF.reconnectDelaySeconds}
                         onChange={(e) => setWsF({ ...wsF, reconnectDelaySeconds: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       />
-                    </label>
-                    <label style={lblSm}>
-                      Ping interval (s)
-                      <input
+                    </AppField>
+                    <AppField size="sm" label="Ping interval (s)">
+                      <AppInput
                         type="number"
                         min={0}
                         value={wsF.pingIntervalSeconds}
                         onChange={(e) => setWsF({ ...wsF, pingIntervalSeconds: e.target.value })}
-                        style={inpSm}
+                        size="sm"
                       />
-                    </label>
-                    <label style={{ ...lblSm, gridColumn: "1 / -1" }}>
-                      Connection headers (JSON, optional)
-                      <textarea
+                    </AppField>
+                    <AppField size="sm" label="Connection headers (JSON, optional)" className="app-field--grid-span-full">
+                      <AppTextarea
                         value={wsF.headersJson}
                         onChange={(e) => setWsF({ ...wsF, headersJson: e.target.value })}
-                        style={{ ...inpSm, minHeight: "3.5rem", fontFamily: "monospace", fontSize: "0.8rem" }}
+                        size="sm"
+                        mono
+                        style={{ minHeight: "3.5rem" }}
                       />
-                    </label>
-                  </div>
+                    </AppField>
+                  </AppGrid>
                 )}
 
                 {!canSaveConfiguration && hasUnsavedChanges && savedEndpoint ? (
@@ -1082,26 +1091,29 @@ export function DeviceManagePage() {
                   </p>
                 ) : null}
               </form>
-                </div>
-                <div style={{ ...editPanel, ...payloadCell }}>
-                  <div style={editPanelTitle}>Ingest Observability</div>
-                  <div style={payloadHeaderRow}>
-                    <div style={payloadTitle}>Latest archived raw</div>
-                    <button
-                      type="button"
-                      style={payloadBlocking ? { ...refreshBtn, opacity: 0.5, cursor: "not-allowed" } : refreshBtn}
+                </AppCard>
+                <AppCard
+                  title="Latest archived raw"
+                  headerExtra={
+                    <AppButton
+                      variant="secondary"
                       disabled={payloadBlocking || !editingDevice}
                       onClick={() => editingDevice && void runPayloadFetch(editingDevice.id, "manual")}
                     >
                       Refresh preview
-                    </button>
-                  </div>
+                    </AppButton>
+                  }
+                  bodyClassName="app-card__body"
+                >
+                  <div className="device-endpoint-payload-panel" style={payloadCell}>
                   {payloadBlocking ? <p style={payloadLoadingLine}>Loading ingested payload…</p> : null}
                   {payloadErr ? (
                     <p style={{ color: "var(--page-status-error-fg)", fontSize: "0.78rem" }}>{payloadErr}</p>
                   ) : null}
                   {!payloadBlocking && !payloadMeta && !payloadErr ? (
-                    <div style={{ marginTop: "0.35rem" }} />
+                    <AppEmptyState title="No archived raw">
+                      <p style={{ margin: 0 }}>Ingest or refresh when data is available.</p>
+                    </AppEmptyState>
                   ) : null}
                   {payloadMeta ? (
                     <>
@@ -1136,10 +1148,10 @@ export function DeviceManagePage() {
                   {payloadPreview?.truncated ? (
                     <p style={payloadHint}>Preview truncated — open Raw Data for full object.</p>
                   ) : null}
-                </div>
+                  </div>
+                </AppCard>
 
-                <div style={editPanel}>
-                  <div style={editPanelTitle}>Endpoint runtime series</div>
+                <AppCard title="Endpoint runtime status">
                   <table style={kvTable} aria-label="Endpoint runtime series">
                     <tbody>
                       <tr>
@@ -1147,14 +1159,20 @@ export function DeviceManagePage() {
                           Liveness state
                         </th>
                         <td style={kvTd}>
-                          <span style={livenessStyle(editingDevice.current_liveness_state)}>
-                            {livenessLabel(editingDevice.current_liveness_state)}
+                          <span style={livenessStyle(displayLivenessState(editingDevice))}>
+                            {livenessLabel(displayLivenessState(editingDevice))}
                           </span>
                         </td>
                       </tr>
                       <tr>
                         <th scope="row" style={kvTh}>
-                          Last seen
+                          Last data received
+                        </th>
+                        <td style={kvTd}>{formatLastDataReceived(editingDevice)}</td>
+                      </tr>
+                      <tr>
+                        <th scope="row" style={kvTh}>
+                          Device last_seen_at
                         </th>
                         <td style={kvTd}>{formatOptionalTs(editingDevice.last_seen_at)}</td>
                       </tr>
@@ -1281,16 +1299,44 @@ export function DeviceManagePage() {
                       Use <strong>Validate</strong> in the toolbar after the first save to refresh connectivity and payload-receipt checks.
                     </p>
                   )}
-                </div>
-              </div>
+                </AppCard>
+              </AppGrid>
             </div>
             </>
+          ) : deviceIdFromQuery && (loading || (deviceFromQuery && !editingDevice)) ? (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.75rem",
+                padding: "2.5rem 1rem",
+                color: "var(--color-text-muted)",
+                fontSize: "0.9rem",
+              }}
+            >
+              <Loader2 size={28} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
+              <span>Loading endpoint configuration…</span>
+            </div>
+          ) : deviceIdFromQuery && !loading && !deviceFromQuery ? (
+            <div
+              style={{
+                padding: "1.5rem 1rem",
+                color: "var(--color-text-muted)",
+                fontSize: "0.88rem",
+                textAlign: "center",
+              }}
+            >
+              Device not found or you no longer have access. This panel will close when you leave the page or use
+              Back.
+            </div>
           ) : null}
         </ConfigDrawer>
 
         {!editingDevice ? (
-          <div style={manageEmpty}>
-            <p style={muted}>
+          <AppEmptyState title="Configure a device endpoint">
+            <p style={{ margin: 0 }}>
               Use{" "}
               <Link to="/devices/register" style={{ color: "var(--color-accent)" }}>
                 Register devices
@@ -1298,42 +1344,12 @@ export function DeviceManagePage() {
               to view and manage the device list (activation, status, last data). Choose <strong>Manage</strong> on a
               device to open endpoint configuration here.
             </p>
-          </div>
+          </AppEmptyState>
         ) : null}
       </div>
     </PageShell>
   );
 }
-
-const drawerToolbarNav: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.65rem",
-  rowGap: "0.5rem",
-  fontSize: "0.82rem",
-  marginBottom: "0.35rem",
-  paddingBottom: "0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-};
-
-const drawerToolbarLeft: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: "0.35rem",
-  minWidth: 0,
-};
-
-const drawerToolbarRight: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "0.4rem",
-  marginLeft: "auto",
-};
 
 const breadcrumbNav: CSSProperties = {
   display: "flex",
@@ -1349,14 +1365,6 @@ const breadcrumbSep: CSSProperties = { color: "var(--color-text-muted)", userSel
 const breadcrumbCurrent: CSSProperties = { color: "var(--color-text)", fontWeight: 600 };
 
 const breadcrumbMuted: CSSProperties = { color: "var(--color-text-muted)", fontWeight: 400 };
-
-const manageEmpty: CSSProperties = {
-  border: "1px solid var(--color-border)",
-  borderRadius: "12px",
-  background: "var(--color-surface-elevated)",
-  padding: "1.25rem 1.5rem",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-};
 
 const stack: CSSProperties = {
   display: "flex",
@@ -1380,115 +1388,6 @@ const muted: CSSProperties = {
   fontSize: "0.85rem",
   color: "var(--color-text-muted)",
   lineHeight: 1.45,
-};
-
-const editLayoutRoot: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  marginTop: "0.65rem",
-  minWidth: 0,
-};
-
-const editRow1: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)",
-  gap: "0.75rem",
-  alignItems: "start",
-};
-
-const editPanel: CSSProperties = {
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  background: "var(--color-bg)",
-  padding: "0.55rem 0.65rem",
-  minWidth: 0,
-};
-
-const editPanelTitle: CSSProperties = {
-  fontSize: "0.82rem",
-  fontWeight: 600,
-  color: "var(--color-text)",
-  marginBottom: "0.45rem",
-  paddingBottom: "0.35rem",
-  borderBottom: "1px solid var(--color-border)",
-};
-
-/** Endpoint configuration: fixed three columns inside the drawer panel. */
-const fieldGrid3: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: "0.45rem 0.5rem",
-  marginTop: "0.45rem",
-};
-
-const lblSm: CSSProperties = {
-  display: "grid",
-  gap: "0.15rem",
-  fontSize: "0.72rem",
-  color: "var(--color-text-muted)",
-  minWidth: 0,
-};
-
-const inpSm: CSSProperties = {
-  padding: "0.35rem 0.4rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-  fontFamily: "inherit",
-  fontSize: "0.8rem",
-  width: "100%",
-  minWidth: 0,
-};
-
-const toolbarIconBtn: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minWidth: "2.25rem",
-  minHeight: "2.25rem",
-  padding: "0.35rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  color: "var(--color-text)",
-  cursor: "pointer",
-  fontFamily: "inherit",
-  boxSizing: "border-box",
-};
-
-const toolbarIconBtnPrimary: CSSProperties = {
-  ...toolbarIconBtn,
-  border: "1px solid color-mix(in oklab, var(--color-accent) 55%, var(--color-border))",
-  background: "var(--color-accent)",
-  color: "var(--btn-on-accent, #fff)",
-};
-
-const payloadHeaderRow: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.5rem",
-  flexShrink: 0,
-};
-
-const payloadTitle: CSSProperties = {
-  fontSize: "0.82rem",
-  fontWeight: 600,
-  color: "var(--color-text)",
-};
-
-const refreshBtn: CSSProperties = {
-  padding: "0.25rem 0.5rem",
-  fontSize: "0.75rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface-elevated)",
-  color: "var(--color-text)",
-  fontFamily: "inherit",
-  cursor: "pointer",
-  fontWeight: 600,
 };
 
 const payloadLoadingLine: CSSProperties = {

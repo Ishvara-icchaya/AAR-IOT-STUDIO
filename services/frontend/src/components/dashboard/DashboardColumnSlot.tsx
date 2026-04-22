@@ -39,7 +39,7 @@ export function DashboardColumnSlot({ rowId, column, readOnly }: { rowId: string
     >
       <div className="dash-slot__toolbar">
         <label className="dash-slot__span">
-          span
+          Width (cols)
           <input
             type="number"
             min={1}

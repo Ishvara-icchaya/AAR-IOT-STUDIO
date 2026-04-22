@@ -1,15 +1,7 @@
-import type { CSSProperties } from "react";
-import type { MonitoringAiOps, MonitoringAiPayload } from "@/api/monitoring";
+import { useMemo } from "react";
+import type { MonitoringAiPayload, MonitoringAiServiceRow } from "@/api/monitoring";
+import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { MonitoringStatusBadge } from "./MonitoringStatusBadge";
-
-const tbl: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" };
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem",
-  borderBottom: "1px solid var(--color-border)",
-  color: "var(--color-text-muted)",
-};
-const td: CSSProperties = { padding: "0.5rem", borderBottom: "1px solid var(--color-border-subtle, #333)" };
 
 function sevColor(s: string) {
   const x = s.toLowerCase();
@@ -27,7 +19,7 @@ function formatWhen(iso: string | null | undefined) {
   }
 }
 
-function OpsSummary({ ops }: { ops: MonitoringAiOps | undefined }) {
+function OpsSummary({ ops }: { ops: MonitoringAiPayload["ops"] }) {
   if (!ops) {
     return <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>No AI operations metrics in this response.</p>;
   }
@@ -55,7 +47,62 @@ function OpsSummary({ ops }: { ops: MonitoringAiOps | undefined }) {
   );
 }
 
+type AiIssueRow = MonitoringAiPayload["recent_ai_issues"][number] & { _rowId: string };
+
 export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
+  const serviceColumns = useMemo<PlainOperationalColumn<MonitoringAiServiceRow>[]>(
+    () => [
+      { id: "service", header: "Service", cell: (r) => r.service },
+      {
+        id: "status",
+        header: "Status",
+        cell: (r) => <MonitoringStatusBadge status={r.status} />,
+      },
+      { id: "model", header: "Model", cell: (r) => String(r.model ?? "—") },
+      { id: "requests_per_minute", header: "Req/min", cell: (r) => String(r.requests_per_minute ?? "—") },
+      { id: "avg_latency_sec", header: "Avg latency (s)", cell: (r) => String(r.avg_latency_sec ?? "—") },
+      { id: "compute_mode", header: "Compute", cell: (r) => String(r.compute_mode ?? "—") },
+      {
+        id: "last_error",
+        header: "Last error",
+        cell: (r) => <small>{r.last_error ?? "—"}</small>,
+      },
+    ],
+    [],
+  );
+
+  const issueRows: AiIssueRow[] = useMemo(
+    () =>
+      data.recent_ai_issues.map((r, i) => ({
+        ...r,
+        _rowId: `${i}-${r.time}-${r.message.slice(0, 32)}`,
+      })),
+    [data.recent_ai_issues],
+  );
+
+  const issueColumns = useMemo<PlainOperationalColumn<AiIssueRow>[]>(
+    () => [
+      {
+        id: "time",
+        header: "Time",
+        cell: (r) => {
+          try {
+            return new Date(r.time).toLocaleString();
+          } catch {
+            return r.time;
+          }
+        },
+      },
+      {
+        id: "severity",
+        header: "Severity",
+        cell: (r) => <span style={{ color: sevColor(r.severity) }}>{r.severity}</span>,
+      },
+      { id: "message", header: "Message", cell: (r) => r.message },
+    ],
+    [],
+  );
+
   return (
     <div>
       <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>AI operations</h3>
@@ -73,62 +120,25 @@ export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
         className="table-scroll-sticky"
         style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", marginBottom: "1.5rem" }}
       >
-        <table style={tbl}>
-          <thead>
-            <tr>
-              <th style={th}>Service</th>
-              <th style={th}>Status</th>
-              <th style={th}>Model</th>
-              <th style={th}>Req/min</th>
-              <th style={th}>Avg latency (s)</th>
-              <th style={th}>Compute</th>
-              <th style={th}>Last error</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.services.map((s) => (
-              <tr key={s.service}>
-                <td style={td}>{s.service}</td>
-                <td style={td}>
-                  <MonitoringStatusBadge status={s.status} />
-                </td>
-                <td style={td}>{s.model ?? "—"}</td>
-                <td style={td}>{s.requests_per_minute ?? "—"}</td>
-                <td style={td}>{s.avg_latency_sec ?? "—"}</td>
-                <td style={td}>{s.compute_mode ?? "—"}</td>
-                <td style={td}>
-                  <small>{s.last_error ?? "—"}</small>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <PlainOperationalTable<MonitoringAiServiceRow>
+          rows={data.services}
+          columns={serviceColumns}
+          getRowId={(r) => r.service}
+          bordered
+          emptyMessage="No AI services in this response."
+        />
       </div>
       <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Recent AI issues</h3>
-      {data.recent_ai_issues.length === 0 ? (
+      {issueRows.length === 0 ? (
         <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>None recorded.</p>
       ) : (
         <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
-          <table style={tbl}>
-            <thead>
-              <tr>
-                <th style={th}>Time</th>
-                <th style={th}>Severity</th>
-                <th style={th}>Message</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.recent_ai_issues.map((r, i) => (
-                <tr key={`${r.time}-${i}`}>
-                  <td style={td}>
-                    <small>{new Date(r.time).toLocaleString()}</small>
-                  </td>
-                  <td style={{ ...td, color: sevColor(r.severity) }}>{r.severity}</td>
-                  <td style={td}>{r.message}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <PlainOperationalTable<AiIssueRow>
+            rows={issueRows}
+            columns={issueColumns}
+            getRowId={(r) => r._rowId}
+            bordered
+          />
         </div>
       )}
     </div>

@@ -17,7 +17,7 @@ export function DashboardPreviewPanel() {
         changes).
       </p>
       {previewPayload && layout ? (
-        <div className="dash-preview-panel__scroll">
+        <div className="dash-preview-panel__scroll dash-preview-panel__scroll--fit">
           <DashboardLiveRenderer
             layout={layout}
             widgets={Array.isArray(previewPayload.widgets) ? previewPayload.widgets : []}

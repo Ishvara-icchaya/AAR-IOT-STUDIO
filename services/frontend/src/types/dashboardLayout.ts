@@ -1,5 +1,23 @@
 /** Layout contract (camelCase in UI; backend accepts camelCase aliases). */
 
+/** Optional presentation overrides (live view + builder config). */
+export type DashboardWidgetPresentationConfig = {
+  variant?: "compact" | "standard" | "full" | "dense";
+  verticalAlign?: "start" | "center" | "end" | "stretch";
+  vertical_align?: "start" | "center" | "end" | "stretch";
+  showTitle?: boolean;
+  show_title?: boolean;
+  showSource?: boolean;
+  show_source?: boolean;
+  showUpdatedAt?: boolean;
+  show_updated_at?: boolean;
+  decimalPlaces?: number;
+  decimal_places?: number;
+  unit?: string;
+  contentDensity?: "comfortable" | "compact" | "dense";
+  content_density?: "comfortable" | "compact" | "dense";
+};
+
 export type DashboardWidgetBinding = {
   sourceType?: "data_object" | "result_object";
   sourceId?: string;
@@ -22,7 +40,7 @@ export type DashboardWidgetModel = {
   type: string;
   title: string;
   binding: DashboardWidgetBinding & Record<string, unknown>;
-  config: Record<string, unknown>;
+  config: (Record<string, unknown> & { presentation?: DashboardWidgetPresentationConfig }) | Record<string, unknown>;
 };
 
 export type DashboardColumnModel = {
@@ -33,6 +51,8 @@ export type DashboardColumnModel = {
 
 export type DashboardRowModel = {
   rowId: string;
+  /** Relative vertical share when the dashboard is fit to one viewport (live / preview). Default 1. */
+  heightWeight?: number;
   columns: DashboardColumnModel[];
 };
 

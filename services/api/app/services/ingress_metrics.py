@@ -328,3 +328,44 @@ def hot_stream_inactivity_message(
         f"{adapter_label}: no successful payload for {int(age)}s "
         f"(threshold {int(max_silence_sec)}s; prior messages_total={mc})"
     )
+
+
+def get_rest_ingestion_bucket_series(*, buckets: int = 24, bucket_minutes: int = 10) -> list[dict[str, Any]]:
+    """Aggregate REST ok minute counters into buckets (newest bucket last). Best-effort if Redis down."""
+    out: list[dict[str, Any]] = []
+    r = _redis()
+    if r is None:
+        for i in range(buckets):
+            out.append({"label": f"-{buckets - i - 1}h", "count": 0, "rate_per_min": 0.0})
+        return out
+    try:
+        now = datetime.now(timezone.utc)
+        for b in range(buckets):
+            end_off = (buckets - 1 - b) * bucket_minutes
+            start_off = end_off + bucket_minutes
+            bucket_end = now - timedelta(minutes=end_off)
+            bucket_start = now - timedelta(minutes=start_off)
+            total = 0
+            cur = bucket_start
+            while cur < bucket_end:
+                mk = REST_OK_PREFIX + cur.strftime("%Y%m%d%H%M")
+                try:
+                    v = r.get(mk)
+                    if v:
+                        total += int(v)
+                except (TypeError, ValueError):
+                    pass
+                cur += timedelta(minutes=1)
+            label = bucket_start.strftime("%H:%M")
+            mins = max(1, int((bucket_end - bucket_start).total_seconds() // 60))
+            rate = round(total / float(mins), 2)
+            out.append({"label": label, "count": total, "rate_per_min": rate})
+        return out
+    except Exception:
+        log.debug("get_rest_ingestion_bucket_series failed", exc_info=True)
+        return [{"label": "", "count": 0, "rate_per_min": 0.0} for _ in range(buckets)]
+    finally:
+        try:
+            r.close()
+        except Exception:
+            pass

@@ -84,7 +84,7 @@ export function DashboardBuilderPage() {
   const rowIds = layout.rows.map((r) => `sort-row:${r.rowId}`);
 
   if (!dashboardId) {
-    return <PageShell title="Dashboard">Missing dashboard id.</PageShell>;
+    return <PageShell>Missing dashboard id.</PageShell>;
   }
 
   return (

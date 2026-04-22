@@ -44,8 +44,8 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
     id: "scrubber",
     label: "Scrubber",
     items: [
-      { to: "/scrubber/data-objects", label: "View Data Objects" },
-      { to: "/scrubber/stale-ingestion", label: "Mapping without ingestion" },
+      { to: "/scrubber/data-objects", label: "Data objects" },
+      { to: "/scrubber/stale-ingestion", label: "Stale ingestion" },
       { to: "/scrubber/raw-select", label: "Pick raw sample" },
     ],
   },
@@ -53,8 +53,8 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
     id: "workflow",
     label: "Workflow",
     items: [
-      { to: "/workflow/list", label: "View Workflows" },
-      { to: "/workflow/create", label: "Create Workflow" },
+      { to: "/workflow/list", label: "Workflows" },
+      { to: "/workflow/create", label: "Create workflow" },
     ],
   },
   {
@@ -69,7 +69,7 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
     id: "enterprise",
     label: "Enterprise",
     items: [
-      { to: "/enterprise-dashboard", label: "Primary Dashboard", end: true },
+      { to: "/dashboard", label: "Primary Dashboard", end: true },
       { to: "/iot-dashboard", label: "Operations Console" },
     ],
   },
@@ -81,8 +81,8 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
 ];
 
 export const ADMIN_NAV_ITEMS: NavChild[] = [
-  { to: "/administration/users", label: "Create Users" },
-  { to: "/administration/sites", label: "Create Sites" },
+  { to: "/administration/users", label: "Users" },
+  { to: "/administration/sites", label: "Sites" },
   { to: "/administration/clear-data", label: "Clear operational data" },
   { to: "/administration/monitoring", label: "Monitoring" },
   { to: "/administration/llm-config", label: "LLM Configuration" },
@@ -109,7 +109,8 @@ export function activeMainSectionId(pathname: string): string | null {
     if (pathMatchesFlatLink(pathname, link)) return link.id;
   }
   for (const g of MAIN_NAV_GROUPS) {
-    if (g.id === "dashboard" && pathname.startsWith("/dashboard/")) return "dashboard";
+    if (g.id === "dashboard" && (pathname === "/dashboard" || pathname.startsWith("/dashboard/")))
+      return "dashboard";
     if (g.id === "workflow" && pathname.startsWith("/workflow/")) return "workflow";
     if (g.id === "published" && pathname.startsWith("/published-services")) return "published";
     if (g.items.some((c) => pathMatchesChild(pathname, c))) return g.id;
@@ -129,6 +130,15 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/devices/manage") return "Manage device";
   if (pathname === "/devices/raw") return "Raw Data";
   if (pathname === "/enterprise-ai") return "Enterprise AI";
+  if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
+  if (pathname === "/administration/users") return "Users";
+  if (pathname === "/administration/sites") return "Sites";
+  if (pathname === "/administration/ports") return "Configure Ports";
+  if (pathname === "/scrubber/data-objects") return "Data objects";
+  if (pathname === "/scrubber/stale-ingestion") return "Stale ingestion";
+  if (pathname === "/scrubber/raw-select") return "Pick raw sample";
+  if (pathname === "/workflow/list") return "Workflows";
+  if (pathname === "/workflow/create") return "Create workflow";
   for (const g of MAIN_NAV_GROUPS) {
     const hit = g.items.find((i) => isChildActive(pathname, i));
     if (hit) return hit.label;
@@ -143,6 +153,7 @@ export function titleFromPath(pathname: string): string {
   if (pathname.startsWith("/workflow/") && pathname.includes("/live")) return "Live workflow";
   if (pathname === "/alerts") return "Alerts";
   if (pathname.startsWith("/alerts/")) return "Alert detail";
+  if (pathname === "/published-services") return "Published services";
   if (pathname.startsWith("/published-services/")) {
     if (pathname.endsWith("/test")) return "Test published service";
     if (pathname.includes("/edit")) return "Edit published service";

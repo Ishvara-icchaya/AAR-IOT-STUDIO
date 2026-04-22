@@ -10,6 +10,7 @@ import { MqttIngestTelemetryPanel } from "@/components/admin/MqttIngestTelemetry
 import { PublishDefaultsPanel } from "@/components/admin/PublishDefaultsPanel";
 import { useShellMessage } from "@/layouts/shell";
 import type { PlatformPortsConfigDTO, PlatformPortsConfigUpdateDTO } from "@/types/portsConfig";
+import "../device-register-page.css";
 
 function toUpdate(cfg: PlatformPortsConfigDTO): PlatformPortsConfigUpdateDTO {
   return {
@@ -107,29 +108,43 @@ export function PortsConfigPage() {
 
   if (loading || !cfg) {
     return (
-      <PageShell title="Platform ports configuration">
-        <p>Loading…</p>
+      <PageShell variant="list" className="ports-config-page device-manage-page">
+        <div className="dm-root">
+          <p className="dm-empty">Loading…</p>
+        </div>
       </PageShell>
     );
   }
 
   return (
-    <PageShell title="Platform ports configuration">
-      <PortsConfigBanner />
-      <CanonicalIngressProductNotice />
-      <p className="admin-lead">Logical service endpoints and publish defaults for this tenant (on-prem oriented).</p>
-      <PortsTable ports={cfg.ports} onChange={(ports) => patch({ ports })} />
-      <MqttIngestTelemetryPanel value={cfg} onChange={patch} />
-      <PublishDefaultsPanel value={cfg} onChange={patch} />
-      <PortsAccessSettingsPanel value={cfg} onChange={patch} />
-      <PortsActions
-        saving={saving}
-        testing={testing}
-        restarting={restarting}
-        onSave={onSave}
-        onTest={onTest}
-        onRestart={onRestart}
-      />
+    <PageShell variant="list" className="ports-config-page device-manage-page">
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-sr-only">Configure Ports</h1>
+              <p className="dm-page-hero__subtitle" style={{ marginTop: 0 }}>
+                Logical service endpoints and publish defaults for this tenant (on-prem oriented).
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <PortsConfigBanner />
+        <CanonicalIngressProductNotice />
+        <PortsTable ports={cfg.ports} onChange={(ports) => patch({ ports })} />
+        <MqttIngestTelemetryPanel value={cfg} onChange={patch} />
+        <PublishDefaultsPanel value={cfg} onChange={patch} />
+        <PortsAccessSettingsPanel value={cfg} onChange={patch} />
+        <PortsActions
+          saving={saving}
+          testing={testing}
+          restarting={restarting}
+          onSave={onSave}
+          onTest={onTest}
+          onRestart={onRestart}
+        />
+      </div>
     </PageShell>
   );
 }

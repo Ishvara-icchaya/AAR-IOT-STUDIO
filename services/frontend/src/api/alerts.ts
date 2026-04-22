@@ -80,7 +80,8 @@ export async function acknowledgeAllAlerts(params?: {
   if (params?.search?.trim()) qs.set("search", params.search.trim());
   if (params?.limit != null) qs.set("limit", String(params.limit));
   const s = qs.toString();
-  return apiFetch<AlertAcknowledgeAllResponse>(`/alerts/acknowledge-all${s ? `?${s}` : ""}`, { method: "POST" });
+  /* Empty JSON body: some stacks require a Content-Length on POST; query params carry filters. */
+  return apiFetch<AlertAcknowledgeAllResponse>(`/alerts/acknowledge-all${s ? `?${s}` : ""}`, { method: "POST", json: {} });
 }
 
 export async function getAlertsSummary() {

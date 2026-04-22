@@ -43,7 +43,9 @@ from app.schemas.dashboard import (
 )
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.dependency_service import dashboard_delete_dependencies
+from app.services.dashboard_default_template import default_ops_template_layout
 from app.services.dashboard_live import build_live_payload
+from app.services.dashboard_resolve import build_dashboard_live_response
 from app.services.lifecycle_actions import (
     archive_dashboard,
     clear_primary_dashboard_for_all_users,
@@ -166,6 +168,22 @@ def list_result_object_sources(
     return DashboardSourcesResultObjectsResponse(items=items)
 
 
+@router.get("/resolved-live", response_model=DashboardLiveResponse)
+def get_resolved_dashboard_live(
+    site_id: uuid.UUID | None = Query(None, description="Narrow synthetic ops widgets to one site."),
+    hours: int | None = Query(
+        None,
+        ge=1,
+        le=24 * 60,
+        description="If set, filter recent alerts/activity to this many past hours (synthetic path).",
+    ),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Primary frozen dashboard when valid; otherwise synthetic Operations Overview."""
+    return build_dashboard_live_response(db, user, scope_site_id=site_id, scope_hours=hours)
+
+
 @router.get("", response_model=DashboardListResponse)
 def list_dashboards(
     site_id: uuid.UUID | None = None,
@@ -235,7 +253,10 @@ def create_dashboard(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
-    errs = validate_layout_for_save(layout=body.layout, site_id=body.site_id, require_widgets=False)
+    layout_in = dict(body.layout or {})
+    if len(iter_widgets(layout_in)) == 0:
+        layout_in = default_ops_template_layout(site_id=body.site_id)
+    errs = validate_layout_for_save(layout=layout_in, site_id=body.site_id, require_widgets=False)
     if errs:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"errors": errs})
     d = Dashboard(
@@ -243,7 +264,7 @@ def create_dashboard(
         site_id=body.site_id,
         name=body.name,
         description=body.description,
-        layout=dict(body.layout or {}),
+        layout=layout_in,
         status=DASHBOARD_DRAFT,
         created_by=user.id,
     )
@@ -310,6 +331,41 @@ def update_dashboard(
         log,
         component="api.dashboard",
         action="updated",
+        status="ok",
+        dashboard_id=str(d.id),
+        user_id=str(user.id),
+    )
+    return _dashboard_read(db, user, d)
+
+
+@router.post("/{dashboard_id}/reset-default-layout", response_model=DashboardRead)
+def reset_dashboard_default_layout(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Replace draft layout with the default Operations Overview template (id/name unchanged)."""
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    if d.status == DASHBOARD_FROZEN:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Unfreeze the dashboard before resetting its layout.",
+        )
+    if not d.site_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Dashboard must have a site to apply the template.")
+    layout = default_ops_template_layout(site_id=d.site_id)
+    errs = validate_layout_for_save(layout=layout, site_id=d.site_id, require_widgets=False)
+    if errs:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"errors": errs})
+    d.layout = layout
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    pipeline_emit(
+        log,
+        component="api.dashboard",
+        action="reset_default_layout",
         status="ok",
         dashboard_id=str(d.id),
         user_id=str(user.id),
@@ -518,12 +574,14 @@ def _live_bundle(db: Session, user: User, d: Dashboard) -> dict:
         "site_id": str(d.site_id) if d.site_id else None,
         "layout": dict(d.layout or {}),
     }
+    allowed = allowed_site_ids_for_user(db, user)
     return build_live_payload(
         db,
         customer_id=user.customer_id,
         layout=dict(d.layout or {}),
         dashboard_meta=meta,
         dashboard_site_id=d.site_id,
+        allowed_site_ids=allowed,
     )
 
 
@@ -571,12 +629,14 @@ def preview_dashboard(
         "site_id": str(d.site_id) if d.site_id else None,
         "layout": layout_use,
     }
+    allowed = allowed_site_ids_for_user(db, user)
     bundle = build_live_payload(
         db,
         customer_id=user.customer_id,
         layout=layout_use,
         dashboard_meta=meta,
         dashboard_site_id=d.site_id,
+        allowed_site_ids=allowed,
     )
     pref = db.get(DashboardUserPreference, user.id)
     primary_id = d.id if pref and pref.primary_dashboard_id == d.id else None

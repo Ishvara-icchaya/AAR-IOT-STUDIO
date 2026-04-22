@@ -1,19 +1,124 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrushCleaning } from "lucide-react";
+import {
+  AlertTriangle,
+  BrushCleaning,
+  CircleAlert,
+  Clock,
+  Download,
+  FileJson2,
+  Layers,
+  Pencil,
+  Power,
+  Search,
+  Settings2,
+  Signal,
+  Smartphone,
+  Wifi,
+} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { validateDeviceEndpoint } from "@/api/deviceEndpoints";
 import { createDevice, listDevices, updateDevice, type DeviceRead } from "@/api/devices";
-import { PageStatus } from "@/components/PageStatus";
-import { useOpsShell } from "@/contexts/OpsShellContext";
+import { useOpsShell, type OpsTimeRange } from "@/contexts/OpsShellContext";
+import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { PageShell } from "@/layouts/PageShell";
+import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
-import {
-  ENDPOINT_ACTIVATION_STATUSES,
-  activationStatusStyle,
-  formatActivationLabel,
-} from "@/lib/endpointActivation";
+import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
+import { ENDPOINT_ACTIVATION_STATUSES, formatActivationLabel } from "@/lib/endpointActivation";
+
+import "./device-register-page.css";
+
+type TimeScope = "all" | "last_1_hour" | "last_24_hours" | "last_7_days" | "last_30_days";
+
+function opsTimeRangeToScope(tr: OpsTimeRange): TimeScope {
+  switch (tr) {
+    case "1h":
+      return "last_1_hour";
+    case "24h":
+      return "last_24_hours";
+    case "7d":
+      return "last_7_days";
+    case "30d":
+      return "last_30_days";
+    default:
+      return "last_24_hours";
+  }
+}
+
+function matchesTimeScope(d: DeviceRead, scope: TimeScope): boolean {
+  if (scope === "all") return true;
+  const t = lastDataReceivedMs(d);
+  if (t === null) return false;
+  const age = Date.now() - t;
+  const limits: Record<Exclude<TimeScope, "all">, number> = {
+    last_1_hour: 3600 * 1000,
+    last_24_hours: 24 * 3600 * 1000,
+    last_7_days: 7 * 24 * 3600 * 1000,
+    last_30_days: 30 * 24 * 3600 * 1000,
+  };
+  return age <= limits[scope];
+}
+
+function formatRelativeShort(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return "—";
+    const diff = Date.now() - t;
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 48) return `${h}h ago`;
+    return new Date(iso).toLocaleString();
+  } catch {
+    return "—";
+  }
+}
+
+function exportDevicesCsv(rows: DeviceRead[], sitesById: Record<string, string>) {
+  const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const header = [
+    "name",
+    "site",
+    "description",
+    "protocol",
+    "activation",
+    "connectivity",
+    "liveness",
+    "last_data",
+  ];
+  const lines = [header.join(",")];
+  for (const d of rows) {
+    const site = sitesById[d.site_id] ?? d.site_id;
+    const proto = d.endpoint?.protocol ? normalizeProtocol(d.endpoint.protocol) : "";
+    const act = d.endpoint?.activation_status ?? "";
+    const conn = d.endpoint?.validation_status ?? "";
+    const live = displayLivenessState(d);
+    const lastMs = lastDataReceivedMs(d);
+    const last = lastMs != null ? new Date(lastMs).toISOString() : "";
+    lines.push(
+      [
+        esc(d.name),
+        esc(site),
+        esc((d.description ?? "").replace(/\s+/g, " ").trim()),
+        esc(proto),
+        esc(act),
+        esc(conn),
+        esc(live),
+        esc(last),
+      ].join(","),
+    );
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `devices-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 type SiteRow = { id: string; name: string };
 
@@ -29,15 +134,6 @@ function livenessLabel(s: string | null | undefined): string {
   return x;
 }
 
-function livenessStyle(s: string | null | undefined): CSSProperties {
-  const x = String(s || "waiting_for_first_payload");
-  if (x === "online") return { color: "var(--color-success, #2e7d32)", fontWeight: 600 };
-  if (x === "late") return { color: "var(--color-warning, #b8860b)", fontWeight: 600 };
-  if (x === "offline") return { color: "var(--page-status-error-fg, #c62828)", fontWeight: 700 };
-  if (x === "recovered") return { color: "var(--color-accent, #4da3ff)", fontWeight: 600 };
-  return { color: "var(--color-text-muted)" };
-}
-
 /** Endpoint validation / connectivity (from last validate run). */
 function connectivityLabel(d: DeviceRead): string {
   if (!d.endpoint) return "No endpoint";
@@ -47,15 +143,6 @@ function connectivityLabel(d: DeviceRead): string {
   if (v === "warning") return "Degraded";
   if (v === "failed") return "Invalid";
   return v;
-}
-
-function connectivityStyle(d: DeviceRead): CSSProperties {
-  if (!d.endpoint) return { color: "var(--color-text-muted)" };
-  const v = d.endpoint.validation_status;
-  if (v === "ok") return { color: "var(--color-success, #2e7d32)", fontWeight: 600 };
-  if (v === "warning") return { color: "var(--color-warning, #b8860b)", fontWeight: 600 };
-  if (v === "failed") return { color: "var(--page-status-error-fg, #c62828)", fontWeight: 700 };
-  return { color: "var(--color-text-muted)" };
 }
 
 /** Bucket keys for client-side hide filters (applied after name/description search results load). */
@@ -78,8 +165,91 @@ function connectivityBucket(d: DeviceRead): string {
 }
 
 function livenessBucket(d: DeviceRead): string {
-  const s = d.current_liveness_state?.trim();
-  return s || "waiting_for_first_payload";
+  return displayLivenessState(d);
+}
+
+function protocolBucket(d: DeviceRead): string {
+  const p = d.endpoint?.protocol;
+  if (!p || !String(p).trim()) return "";
+  return normalizeProtocol(String(p));
+}
+
+function protocolFilterLabel(bucket: string): string {
+  if (bucket === "http") return "HTTP / REST";
+  if (bucket === "websocket") return "WebSocket";
+  return bucket.toUpperCase();
+}
+
+/** Positive filter: devices with no saved protocol on the endpoint. */
+const PROTOCOL_FILTER_NONE = "__proto_none__";
+
+/** Exclusive bucket for KPI cards (matches reference: online / degraded / offline / error). */
+function kpiBucket(d: DeviceRead): "error" | "offline" | "degraded" | "online" | "other" {
+  const act = d.endpoint?.activation_status;
+  const val = d.endpoint?.validation_status;
+  if (act === "error" || val === "failed") return "error";
+  const live = livenessBucket(d);
+  if (live === "offline") return "offline";
+  if (live === "late" || val === "warning") return "degraded";
+  if (live === "online") return "online";
+  return "other";
+}
+
+function activationPillClass(status: string | undefined): string {
+  if (!status) return "dm-pill dm-pill--muted";
+  if (status === "active") return "dm-pill dm-pill--neon";
+  if (status === "error") return "dm-pill dm-pill--bad";
+  if (status === "waiting_for_first_payload") return "dm-pill dm-pill--warn";
+  return "dm-pill dm-pill--muted";
+}
+
+function connectivityPillClass(d: DeviceRead): string {
+  if (!d.endpoint) return "dm-pill dm-pill--muted";
+  const v = d.endpoint.validation_status;
+  if (v === "ok") return "dm-pill dm-pill--neon";
+  if (v === "warning") return "dm-pill dm-pill--warn";
+  if (v === "failed") return "dm-pill dm-pill--bad";
+  return "dm-pill dm-pill--muted";
+}
+
+function statusLabel(d: DeviceRead): string {
+  const activation = d.endpoint?.activation_status;
+  if (activation === "inactive") return "Inactive";
+  if (activation === "error") return "Error";
+  return livenessLabel(displayLivenessState(d));
+}
+
+function statusDotKind(d: DeviceRead): "online" | "degraded" | "offline" | "error" | "muted" {
+  const activation = d.endpoint?.activation_status;
+  if (activation === "error") return "error";
+  if (activation === "inactive") return "muted";
+  const live = String(displayLivenessState(d));
+  if (live === "online" || live === "recovered") return "online";
+  if (live === "offline") return "offline";
+  if (live === "late") return "degraded";
+  return "muted";
+}
+
+function activationMetricWrapClass(status: string | undefined): string {
+  if (!status) return "dm-metric-wrap dm-metric-wrap--tone-neutral";
+  if (status === "active") return "dm-metric-wrap dm-metric-wrap--tone-ok";
+  if (status === "error") return "dm-metric-wrap dm-metric-wrap--tone-bad";
+  if (status === "waiting_for_first_payload") return "dm-metric-wrap dm-metric-wrap--tone-warn";
+  if (status === "inactive") return "dm-metric-wrap dm-metric-wrap--tone-muted";
+  return "dm-metric-wrap dm-metric-wrap--tone-muted";
+}
+
+function connectivityMetricWrapClass(d: DeviceRead): string {
+  if (!d.endpoint) return "dm-metric-wrap dm-metric-wrap--tone-neutral";
+  const v = d.endpoint.validation_status;
+  if (v === "ok") return "dm-metric-wrap dm-metric-wrap--tone-ok";
+  if (v === "warning") return "dm-metric-wrap dm-metric-wrap--tone-warn";
+  if (v === "failed") return "dm-metric-wrap dm-metric-wrap--tone-bad";
+  return "dm-metric-wrap dm-metric-wrap--tone-muted";
+}
+
+function statusMetricWrapClass(d: DeviceRead): string {
+  return `dm-metric-wrap dm-metric-wrap--tone-${statusDotKind(d)}`;
 }
 
 const HIDE_ACTIVATION_OPTIONS: { key: string; label: string }[] = [
@@ -99,6 +269,8 @@ const HIDE_CONNECTIVITY_OPTIONS: { key: string; label: string }[] = [
   { key: "failed", label: "Invalid" },
   { key: "other", label: "Other" },
 ];
+
+const DEVICE_TABLE_PAGE_SIZE = 25;
 
 const HIDE_STATUS_OPTIONS: { key: string; label: string }[] = [
   { key: "waiting_for_first_payload", label: "Waiting first payload" },
@@ -126,7 +298,8 @@ function connectivityTitle(d: DeviceRead): string | undefined {
 
 export function DeviceRegisterPage() {
   const location = useLocation();
-  const { siteId: opsSiteId, refreshToken } = useOpsShell();
+  const { siteId: opsSiteId, timeRange: opsTimeRange, refreshToken } = useOpsShell();
+  const timeScope = useMemo(() => opsTimeRangeToScope(opsTimeRange), [opsTimeRange]);
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [sitesById, setSitesById] = useState<Record<string, string>>({});
   const [items, setItems] = useState<DeviceRead[]>([]);
@@ -139,11 +312,12 @@ export function DeviceRegisterPage() {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [checkingConnectivity, setCheckingConnectivity] = useState(false);
+  useShellFeedback(err, ok);
 
-  /** When true for a bucket key, rows matching that Activation / Connectivity / Status value are hidden (client-side only; search is unchanged). */
-  const [hideActivation, setHideActivation] = useState<Record<string, boolean>>({});
-  const [hideConnectivity, setHideConnectivity] = useState<Record<string, boolean>>({});
-  const [hideStatus, setHideStatus] = useState<Record<string, boolean>>({});
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterActivation, setFilterActivation] = useState("all");
+  const [filterConnectivity, setFilterConnectivity] = useState("all");
+  const [filterProtocol, setFilterProtocol] = useState("all");
 
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -193,22 +367,111 @@ export function DeviceRegisterPage() {
     void loadDevices(appliedQ);
   }, [appliedQ, loadDevices]);
 
-  const visibleItems = useMemo(() => {
-    return items.filter((d) => {
-      if (hideActivation[activationBucket(d)]) return false;
-      if (hideConnectivity[connectivityBucket(d)]) return false;
-      if (hideStatus[livenessBucket(d)]) return false;
+  const timeScopedItems = useMemo(() => {
+    return items.filter((d) => matchesTimeScope(d, timeScope));
+  }, [items, timeScope]);
+
+  const protocolOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const d of items) {
+      const pb = protocolBucket(d);
+      if (pb) set.add(pb);
+    }
+    return Array.from(set).sort();
+  }, [items]);
+
+  const dropdownFiltered = useMemo(() => {
+    return timeScopedItems.filter((d) => {
+      if (filterStatus !== "all" && livenessBucket(d) !== filterStatus) return false;
+      if (filterActivation !== "all" && activationBucket(d) !== filterActivation) return false;
+      if (filterConnectivity !== "all" && connectivityBucket(d) !== filterConnectivity) return false;
+      if (filterProtocol !== "all") {
+        const pb = protocolBucket(d);
+        if (filterProtocol === PROTOCOL_FILTER_NONE) {
+          if (pb !== "") return false;
+        } else if (pb !== filterProtocol) return false;
+      }
       return true;
     });
-  }, [items, hideActivation, hideConnectivity, hideStatus]);
+  }, [timeScopedItems, filterStatus, filterActivation, filterConnectivity, filterProtocol]);
 
-  const hideFilterActive = useMemo(() => {
+  const kpiStats = useMemo(() => {
+    const rows = timeScopedItems;
+    const total = rows.length;
+    let online = 0;
+    let degraded = 0;
+    let offline = 0;
+    let error = 0;
+    for (const d of rows) {
+      switch (kpiBucket(d)) {
+        case "online":
+          online++;
+          break;
+        case "degraded":
+          degraded++;
+          break;
+        case "offline":
+          offline++;
+          break;
+        case "error":
+          error++;
+          break;
+        default:
+          break;
+      }
+    }
+    const siteIds = new Set(rows.map((r) => r.site_id));
+    let latest: { iso: string; name: string } | null = null;
+    let bestMs = -1;
+    for (const d of rows) {
+      const ms = lastDataReceivedMs(d);
+      if (ms !== null && ms > bestMs) {
+        bestMs = ms;
+        latest = { iso: new Date(ms).toISOString(), name: d.name };
+      }
+    }
+    const pct = (n: number) => (total ? ((n / total) * 100).toFixed(1) : "0.0");
+    return {
+      total,
+      online,
+      degraded,
+      offline,
+      error,
+      siteCount: siteIds.size,
+      pctOnline: pct(online),
+      pctDegraded: pct(degraded),
+      pctOffline: pct(offline),
+      pctError: pct(error),
+      lastRelative: latest ? formatRelativeShort(latest.iso) : "—",
+      lastDeviceName: latest?.name ?? "",
+    };
+  }, [timeScopedItems]);
+
+  const dropdownFilterActive = useMemo(() => {
     return (
-      Object.values(hideActivation).some(Boolean) ||
-      Object.values(hideConnectivity).some(Boolean) ||
-      Object.values(hideStatus).some(Boolean)
+      filterStatus !== "all" ||
+      filterActivation !== "all" ||
+      filterConnectivity !== "all" ||
+      filterProtocol !== "all"
     );
-  }, [hideActivation, hideConnectivity, hideStatus]);
+  }, [filterStatus, filterActivation, filterConnectivity, filterProtocol]);
+
+  const [deviceTablePage, setDeviceTablePage] = useState(1);
+
+  const deviceTableTotalPages = Math.max(1, Math.ceil(dropdownFiltered.length / DEVICE_TABLE_PAGE_SIZE));
+
+  useEffect(() => {
+    setDeviceTablePage((p) => Math.min(p, deviceTableTotalPages));
+  }, [deviceTableTotalPages]);
+
+  const deviceTablePageRows = useMemo(() => {
+    const start = (deviceTablePage - 1) * DEVICE_TABLE_PAGE_SIZE;
+    return dropdownFiltered.slice(start, start + DEVICE_TABLE_PAGE_SIZE);
+  }, [dropdownFiltered, deviceTablePage]);
+
+  useEffect(() => {
+    setDeviceTablePage(1);
+  }, [appliedQ, filterStatus, filterActivation, filterConnectivity, filterProtocol, timeScope, opsSiteId]);
 
   useEffect(() => {
     if (refreshToken === 0) return;
@@ -237,7 +500,7 @@ export function DeviceRegisterPage() {
     }
   }, [modalMode, siteId, sites]);
 
-  function openCreateModal() {
+  const openCreateModal = useCallback(() => {
     setErr(null);
     setOk(null);
     setEditId(null);
@@ -245,9 +508,9 @@ export function DeviceRegisterPage() {
     setDescription("");
     setSiteId(sites[0]?.id ?? "");
     setModalMode("create");
-  }
+  }, [sites]);
 
-  function openEditModal(d: DeviceRead) {
+  const openEditModal = useCallback((d: DeviceRead) => {
     setErr(null);
     setOk(null);
     setEditId(d.id);
@@ -255,11 +518,20 @@ export function DeviceRegisterPage() {
     setDescription(d.description ?? "");
     setSiteId(d.site_id);
     setModalMode("edit");
-  }
+  }, []);
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
     setAppliedQ(searchInput);
+  }
+
+  function clearFilters() {
+    setFilterStatus("all");
+    setFilterActivation("all");
+    setFilterConnectivity("all");
+    setFilterProtocol("all");
+    setSearchInput("");
+    setAppliedQ("");
   }
 
   function formatOptionalTs(iso: string | null | undefined): string {
@@ -272,10 +544,9 @@ export function DeviceRegisterPage() {
   }
 
   function lastDataSummary(d: DeviceRead): string {
-    if (d.last_seen_at) return formatOptionalTs(d.last_seen_at);
-    const lp = d.endpoint?.last_payload_at;
-    if (lp) return formatOptionalTs(lp);
-    return "—";
+    const ms = lastDataReceivedMs(d);
+    if (ms === null) return "—";
+    return formatOptionalTs(new Date(ms).toISOString());
   }
 
   function protocolLabel(d: DeviceRead): string {
@@ -348,256 +619,395 @@ export function DeviceRegisterPage() {
     }
   }
 
+  const canClearFilters = dropdownFilterActive || !!searchInput.trim() || !!appliedQ.trim();
+
   return (
-    <PageShell title="Manage Devices">
-      <div style={stack}>
-        <div style={leadScrollWrap}>
-          <p style={lead}>Search registered devices by name or description.</p>
-        </div>
-
-        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-        {ok ? <PageStatus variant="success">{ok}</PageStatus> : null}
-
-        <form onSubmit={onSearch} style={toolbar}>
-          <label style={searchLbl}>
-            Search
-            <input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Name or description"
-              style={searchInp}
-            />
-          </label>
-          <button type="submit" style={btnSecondary} disabled={tableLoading}>
-            Search
-          </button>
-          <button type="button" style={btnPrimary} onClick={openCreateModal}>
-            Register new device
-          </button>
-        </form>
-
-        <details style={hideDetails}>
-          <summary style={hideDetailsSummary}>Advanced Search</summary>
-          <p style={hideHint}>
-            Checked options remove matching rows from the list below. Name/description search and API results are unchanged;
-            only the displayed rows are filtered.
-          </p>
-          <div style={hideGrid}>
-            <div style={hideGroup}>
-              <div style={hideGroupTitle}>Activation</div>
-              {HIDE_ACTIVATION_OPTIONS.map(({ key, label }) => (
-                <label key={`act-${key}`} style={hideCheckboxLbl}>
-                  <input
-                    type="checkbox"
-                    checked={!!hideActivation[key]}
-                    onChange={() =>
-                      setHideActivation((prev) => ({ ...prev, [key]: !prev[key] }))
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+    <PageShell variant="list" className="device-manage-page">
+      <div className="dm-root">
+        <header className="dm-page-hero">
+          <div className="dm-page-hero__top">
+            <div className="dm-page-hero__titles">
+              <h1 className="dm-page-hero__title">Manage Devices</h1>
+              <p className="dm-page-hero__subtitle">View and manage all devices across your sites.</p>
             </div>
-            <div style={hideGroup}>
-              <div style={hideGroupTitle}>Connectivity</div>
-              {HIDE_CONNECTIVITY_OPTIONS.map(({ key, label }) => (
-                <label key={`conn-${key}`} style={hideCheckboxLbl}>
-                  <input
-                    type="checkbox"
-                    checked={!!hideConnectivity[key]}
-                    onChange={() =>
-                      setHideConnectivity((prev) => ({ ...prev, [key]: !prev[key] }))
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-            <div style={hideGroup}>
-              <div style={hideGroupTitle}>Status (liveness)</div>
-              {HIDE_STATUS_OPTIONS.map(({ key, label }) => (
-                <label key={`st-${key}`} style={hideCheckboxLbl}>
-                  <input
-                    type="checkbox"
-                    checked={!!hideStatus[key]}
-                    onChange={() =>
-                      setHideStatus((prev) => ({ ...prev, [key]: !prev[key] }))
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+            <div className="dm-page-hero__actions">
+              <button
+                type="button"
+                className="dm-btn dm-btn--outline"
+                disabled={dropdownFiltered.length === 0 || tableLoading}
+                onClick={() => exportDevicesCsv(dropdownFiltered, sitesById)}
+              >
+                <Download size={16} strokeWidth={2} aria-hidden />
+                Export
+              </button>
+              <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
+                + Register new device
+              </button>
+              <button
+                type="button"
+                className="dm-btn dm-btn--outline"
+                disabled={checkingConnectivity || tableLoading || items.length === 0}
+                title="Re-run endpoint validation for each device that has a saved endpoint, then refresh connectivity in the table."
+                onClick={() => void checkConnectivityForListedDevices()}
+              >
+                <Signal size={16} strokeWidth={2} aria-hidden />
+                {checkingConnectivity ? "Checking…" : "Check connectivity"}
+              </button>
             </div>
           </div>
-          {hideFilterActive ? (
-            <button
-              type="button"
-              style={btnSecondary}
-              onClick={() => {
-                setHideActivation({});
-                setHideConnectivity({});
-                setHideStatus({});
-              }}
-            >
-              Clear all hide options
-            </button>
-          ) : null}
-        </details>
+          <div className="dm-page-hero__scope">
+            <OpsScopeControls variant="inline" timeRangeLabel="Time range" />
+          </div>
+        </header>
 
-        {hideFilterActive && items.length > 0 ? (
-          <p style={hideSummary}>
-            Showing <strong>{visibleItems.length}</strong> of <strong>{items.length}</strong> device
-            {items.length === 1 ? "" : "s"} from the current search.
+        <section className="dm-kpi-row" aria-label="Device summary">
+          <div className="dm-kpi dm-kpi--with-deco">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <Smartphone size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                Total devices
+              </div>
+              <div className="dm-kpi__value">{kpiStats.total}</div>
+              <div className="dm-kpi__sub">
+                Across {kpiStats.siteCount} site{kpiStats.siteCount === 1 ? "" : "s"}
+              </div>
+            </div>
+            <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
+              <Layers size={36} strokeWidth={1.25} />
+            </div>
+          </div>
+          <div className="dm-kpi dm-kpi--with-deco">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--online" aria-hidden />
+                Online
+              </div>
+              <div className="dm-kpi__value">{kpiStats.online}</div>
+              <div className="dm-kpi__sub">{kpiStats.pctOnline}%</div>
+            </div>
+            <div className="dm-kpi__deco dm-kpi__deco--online" aria-hidden>
+              <Wifi size={38} strokeWidth={1.35} />
+            </div>
+          </div>
+          <div className="dm-kpi dm-kpi--with-deco">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--warn" aria-hidden />
+                Degraded
+              </div>
+              <div className="dm-kpi__value">{kpiStats.degraded}</div>
+              <div className="dm-kpi__sub">{kpiStats.pctDegraded}%</div>
+            </div>
+            <div className="dm-kpi__deco dm-kpi__deco--warn" aria-hidden>
+              <AlertTriangle size={36} strokeWidth={1.35} />
+            </div>
+          </div>
+          <div className="dm-kpi dm-kpi--with-deco">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--offline" aria-hidden />
+                Offline
+              </div>
+              <div className="dm-kpi__value">{kpiStats.offline}</div>
+              <div className="dm-kpi__sub">{kpiStats.pctOffline}%</div>
+            </div>
+            <div className="dm-kpi__deco dm-kpi__deco--offline" aria-hidden>
+              <Power size={36} strokeWidth={1.35} />
+            </div>
+          </div>
+          <div className="dm-kpi dm-kpi--with-deco">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <span className="dm-kpi-dot dm-kpi-dot--error" aria-hidden />
+                Error
+              </div>
+              <div className="dm-kpi__value">{kpiStats.error}</div>
+              <div className="dm-kpi__sub">{kpiStats.pctError}%</div>
+            </div>
+            <div className="dm-kpi__deco dm-kpi__deco--error" aria-hidden>
+              <CircleAlert size={36} strokeWidth={1.35} />
+            </div>
+          </div>
+          <div className="dm-kpi dm-kpi--with-deco">
+            <div className="dm-kpi__body">
+              <div className="dm-kpi__label">
+                <Clock size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                Last data received
+              </div>
+              <div className="dm-kpi__value">{kpiStats.lastRelative}</div>
+              <div className="dm-kpi__sub">{kpiStats.lastDeviceName ? `Latest: ${kpiStats.lastDeviceName}` : "No recent payloads"}</div>
+            </div>
+            <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
+              <Clock size={34} strokeWidth={1.25} />
+            </div>
+          </div>
+        </section>
+
+        <section className="dm-filter-panel" aria-label="Search and filters">
+          <form className="dm-controls-form" onSubmit={onSearch}>
+            <div className="dm-controls-form__row">
+              <div className="dm-search-wrap">
+                <Search size={16} strokeWidth={2} aria-hidden />
+                <input
+                  className="dm-search-input"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Search by name, description, protocol..."
+                  aria-label="Search devices"
+                />
+              </div>
+              <div className="dm-filter-field">
+                <label htmlFor="dm-f-status">Status</label>
+                <select id="dm-f-status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                  <option value="all">All statuses</option>
+                  {HIDE_STATUS_OPTIONS.map(({ key, label }) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="dm-filter-field">
+                <label htmlFor="dm-f-act">Activation</label>
+                <select id="dm-f-act" value={filterActivation} onChange={(e) => setFilterActivation(e.target.value)}>
+                  <option value="all">All</option>
+                  {HIDE_ACTIVATION_OPTIONS.map(({ key, label }) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="dm-filter-field">
+                <label htmlFor="dm-f-conn">Connectivity</label>
+                <select id="dm-f-conn" value={filterConnectivity} onChange={(e) => setFilterConnectivity(e.target.value)}>
+                  <option value="all">All</option>
+                  {HIDE_CONNECTIVITY_OPTIONS.map(({ key, label }) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="dm-filter-field">
+                <label htmlFor="dm-f-proto">Protocol</label>
+                <select id="dm-f-proto" value={filterProtocol} onChange={(e) => setFilterProtocol(e.target.value)}>
+                  <option value="all">All</option>
+                  <option value={PROTOCOL_FILTER_NONE}>No protocol</option>
+                  {protocolOptions.map((pb) => (
+                    <option key={pb} value={pb}>
+                      {protocolFilterLabel(pb)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="button" className="dm-clear-filters" disabled={!canClearFilters} onClick={clearFilters}>
+                Clear filters
+              </button>
+              <button type="submit" className="dm-btn dm-btn--primary dm-btn--search" disabled={tableLoading}>
+                Search
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {dropdownFilterActive && dropdownFiltered.length > 0 ? (
+          <p className="dm-inline-summary">
+            Showing <strong>{dropdownFiltered.length}</strong> of <strong>{timeScopedItems.length}</strong> device
+            {timeScopedItems.length === 1 ? "" : "s"} in the current shell time scope.
           </p>
         ) : null}
 
-        <div style={tableWrap} id="registered-devices-table">
-          <table className="ops-data-table" style={tbl}>
-            <thead>
-              <tr>
-                <th style={th}>Name</th>
-                <th style={th}>Site</th>
-                <th style={th}>Description</th>
-                <th style={th}>Protocol</th>
-                <th style={th}>Activation</th>
-                <th style={th}>Connectivity</th>
-                <th style={th}>Status</th>
-                <th style={th}>Last data</th>
-                <th style={th} aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {loading && items.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={tdEmpty}>
-                    Loading…
-                  </td>
-                </tr>
-              ) : items.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={tdEmpty}>
-                    No devices match{appliedQ ? ` “${appliedQ}”` : ""}.{" "}
-                    <button type="button" style={linkBtn} onClick={openCreateModal}>
-                      Register one
-                    </button>
-                  </td>
-                </tr>
-              ) : visibleItems.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={tdEmpty}>
-                    All {items.length} device{items.length === 1 ? "" : "s"} from this search are hidden by your hide
-                    filters. Clear some options above or use &quot;Clear all hide options&quot;.
-                  </td>
-                </tr>
-              ) : (
-                visibleItems.map((d) => (
-                    <tr key={d.id}>
-                      <td style={td}>{d.name}</td>
-                      <td style={td}>
-                        <small>{sitesById[d.site_id] ?? d.site_id.slice(0, 8) + "…"}</small>
-                      </td>
-                      <td style={tdDesc}>
-                        <span title={d.description ?? undefined}>{d.description?.trim() ? d.description : "—"}</span>
-                      </td>
-                      <td style={tdProto}>{protocolLabel(d)}</td>
-                      <td style={td}>
-                        {d.endpoint?.activation_status ? (
-                          <small style={activationStatusStyle(d.endpoint.activation_status)}>
-                            {formatActivationLabel(d.endpoint.activation_status)}
-                          </small>
-                        ) : (
-                          <small>—</small>
-                        )}
-                      </td>
-                      <td style={td}>
-                        <small style={connectivityStyle(d)} title={connectivityTitle(d)}>
-                          {connectivityLabel(d)}
-                        </small>
-                      </td>
-                      <td style={td}>
-                        <small style={livenessStyle(d.current_liveness_state)}>{livenessLabel(d.current_liveness_state)}</small>
-                      </td>
-                      <td style={tdMuted}>{lastDataSummary(d)}</td>
-                      <td style={tdAct}>
-                        <div style={actRow}>
-                          <Link
-                            to={`/devices/manage?device=${encodeURIComponent(d.id)}`}
-                            style={iconLink}
-                            title="Manage device — endpoint and ingest"
-                            aria-label={`Manage device ${d.name}`}
-                          >
-                            <ManageDeviceIcon />
-                          </Link>
-                          <Link
-                            to={`/devices/raw?deviceId=${encodeURIComponent(d.id)}`}
-                            style={iconLink}
-                            title="View raw sample archives for this device"
-                            aria-label={`Raw sample for ${d.name}`}
-                          >
-                            <RawSampleIcon />
-                          </Link>
-                          {d.endpoint?.activation_status === "active" ? (
-                            <Link
-                              to={`/scrubber/create?deviceId=${encodeURIComponent(d.id)}&returnTo=${encodeURIComponent("/devices/register#registered-devices-table")}`}
-                              style={iconLink}
-                              title="Open Scrubber Studio (uses latest archived raw if no newer sample)"
-                              aria-label={`Open scrubber for ${d.name}`}
-                            >
-                              <BrushCleaning size={16} strokeWidth={2} aria-hidden />
-                            </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              style={{ ...iconBtn, opacity: 0.45, cursor: "not-allowed" }}
-                              disabled
-                              title={
-                                d.endpoint
-                                  ? "Scrubber is available when activation status is Active."
-                                  : "Save an endpoint and reach Active activation to open the scrubber from this list."
-                              }
-                              aria-label={`Scrubber unavailable for ${d.name}`}
-                            >
-                              <BrushCleaning size={16} strokeWidth={2} aria-hidden />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            style={iconBtn}
-                            title="Edit registration"
-                            aria-label={`Edit registration for ${d.name}`}
-                            onClick={() => openEditModal(d)}
-                          >
-                            <EditIcon />
-                          </button>
-                        </div>
-                      </td>
+        <div className="dm-table-wrap" id="registered-devices-table">
+          {loading && items.length === 0 ? (
+            <p className="dm-empty">Loading…</p>
+          ) : items.length === 0 ? (
+            <p className="dm-empty">
+              No devices match{appliedQ ? ` “${appliedQ}”` : ""}.{" "}
+              <button type="button" style={linkBtn} onClick={openCreateModal}>
+                Register one
+              </button>
+            </p>
+          ) : timeScopedItems.length === 0 ? (
+            <p className="dm-empty">No device activity in the selected time range. Try widening the time range or clearing filters.</p>
+          ) : dropdownFiltered.length === 0 ? (
+            <p className="dm-empty">No devices match the selected filters. Adjust the dropdowns or clear filters.</p>
+          ) : (
+            <div className="dm-device-table-shell" aria-busy={tableLoading}>
+              {tableLoading ? <p className="dm-table-loading">Updating list…</p> : null}
+              <div className="dm-table-scroll">
+                <table className="dm-data-table">
+                  <thead>
+                    <tr>
+                      <th className="dm-data-table__th" scope="col">
+                        Name
+                      </th>
+                      <th className="dm-data-table__th" scope="col">
+                        Site
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--desc" scope="col">
+                        Description
+                      </th>
+                      <th className="dm-data-table__th" scope="col">
+                        Protocol
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Activation
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Connectivity
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                        Status
+                      </th>
+                      <th className="dm-data-table__th" scope="col">
+                        Last data
+                      </th>
+                      <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
+                        Actions
+                      </th>
                     </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                  </thead>
+                  <tbody>
+                    {deviceTablePageRows.map((d) => {
+                      const siteLabel = sitesById[d.site_id] ?? `${d.site_id.slice(0, 8)}…`;
+                      const kind = statusDotKind(d);
+                      return (
+                        <tr key={d.id} className="dm-data-table__row">
+                          <td className="dm-data-table__td">
+                            <Link className="dm-name-link" to={`/devices/manage?device=${encodeURIComponent(d.id)}`}>
+                              {d.name}
+                            </Link>
+                          </td>
+                          <td className="dm-data-table__td">
+                            <small>{siteLabel}</small>
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--desc">
+                            <span title={d.description ?? undefined} style={tdDesc}>
+                              {d.description?.trim() ? d.description : "—"}
+                            </span>
+                          </td>
+                          <td className="dm-data-table__td">{protocolLabel(d)}</td>
+                          <td className="dm-data-table__td dm-data-table__td--center">
+                            {d.endpoint?.activation_status ? (
+                              <div className={activationMetricWrapClass(d.endpoint.activation_status)}>
+                                <span className={activationPillClass(d.endpoint.activation_status)}>
+                                  {formatActivationLabel(d.endpoint.activation_status)}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className={`${activationMetricWrapClass(undefined)} dm-metric-wrap--empty`}>
+                                <span className="dm-pill dm-pill--muted">—</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--center">
+                            <div className={connectivityMetricWrapClass(d)}>
+                              <span className={connectivityPillClass(d)} title={connectivityTitle(d)}>
+                                {connectivityLabel(d)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--center">
+                            <div className={statusMetricWrapClass(d)}>
+                              <span className={`dm-status-line dm-status-line--${kind}`}>
+                                <span className={`dm-status-dot dm-status-dot--${kind}`} aria-hidden />
+                                {statusLabel(d)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="dm-data-table__td dm-data-table__td--muted">{lastDataSummary(d)}</td>
+                          <td className="dm-data-table__td dm-data-table__td--actions">
+                            <div className="dm-act-grid">
+                              <Link
+                                className="dm-act-grid__btn"
+                                to={`/devices/manage?device=${encodeURIComponent(d.id)}`}
+                                title="Endpoint configuration — Manage device"
+                                aria-label={`Endpoint configuration for ${d.name}`}
+                              >
+                                <Settings2 size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <Link
+                                className="dm-act-grid__btn"
+                                to={`/devices/raw?deviceId=${encodeURIComponent(d.id)}`}
+                                title="View last sample payload (raw archives)"
+                                aria-label={`View raw sample for ${d.name}`}
+                              >
+                                <FileJson2 size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              {d.endpoint?.activation_status === "active" ? (
+                                <Link
+                                  className="dm-act-grid__btn"
+                                  to={`/scrubber/create?deviceId=${encodeURIComponent(d.id)}&returnTo=${encodeURIComponent("/devices/register#registered-devices-table")}`}
+                                  title="Scrubber Studio"
+                                  aria-label={`Open scrubber for ${d.name}`}
+                                >
+                                  <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                                </Link>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="dm-act-grid__btn dm-act-grid__btn--disabled"
+                                  disabled
+                                  title={
+                                    d.endpoint
+                                      ? "Scrubber is available when activation status is Active."
+                                      : "Save an endpoint and reach Active activation to open the scrubber from this list."
+                                  }
+                                  aria-label={`Scrubber unavailable for ${d.name}`}
+                                >
+                                  <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="dm-act-grid__btn dm-act-grid__btn--plain"
+                                title="Edit device info"
+                                aria-label={`Edit registration for ${d.name}`}
+                                onClick={() => openEditModal(d)}
+                              >
+                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {deviceTableTotalPages > 1 ? (
+                <div className="dm-table-pager" role="navigation" aria-label="Device table pages">
+                  <span className="dm-table-pager__range">
+                    {(deviceTablePage - 1) * DEVICE_TABLE_PAGE_SIZE + 1}–
+                    {Math.min(dropdownFiltered.length, deviceTablePage * DEVICE_TABLE_PAGE_SIZE)} of {dropdownFiltered.length}
+                  </span>
+                  <div className="dm-table-pager__controls">
+                    <button
+                      type="button"
+                      className="dm-table-pager__btn"
+                      disabled={deviceTablePage <= 1}
+                      onClick={() => setDeviceTablePage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </button>
+                    <span className="dm-table-pager__page">
+                      Page {deviceTablePage} / {deviceTableTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="dm-table-pager__btn"
+                      disabled={deviceTablePage >= deviceTableTotalPages}
+                      onClick={() => setDeviceTablePage((p) => Math.min(deviceTableTotalPages, p + 1))}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
-
-        <p style={connectivityActions}>
-          <span
-            style={{ display: "inline-block" }}
-            title="Re-runs endpoint validation (reachability and payload checks) for each row that has a saved endpoint, then refreshes connectivity status."
-          >
-            <button
-              type="button"
-              style={{
-                ...linkBtn,
-                ...(checkingConnectivity || tableLoading || items.length === 0
-                  ? { opacity: 0.55, cursor: "not-allowed" as const }
-                  : {}),
-              }}
-              disabled={checkingConnectivity || tableLoading || items.length === 0}
-              onClick={() => void checkConnectivityForListedDevices()}
-            >
-              {checkingConnectivity ? "Checking connectivity…" : "Check connectivity for listed devices"}
-            </button>
-          </span>
-        </p>
       </div>
 
       {modalMode ? (
@@ -646,189 +1056,6 @@ export function DeviceRegisterPage() {
   );
 }
 
-function EditIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-    </svg>
-  );
-}
-
-function ManageDeviceIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <line x1="4" y1="21" x2="4" y2="14" />
-      <line x1="4" y1="10" x2="4" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12" y2="3" />
-      <line x1="20" y1="21" x2="20" y2="16" />
-      <line x1="20" y1="12" x2="20" y2="3" />
-      <line x1="1" y1="14" x2="7" y2="14" />
-      <line x1="9" y1="8" x2="15" y2="8" />
-      <line x1="17" y1="16" x2="23" y2="16" />
-    </svg>
-  );
-}
-
-function RawSampleIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-      <polyline points="14 2 14 8 20 8" />
-      <path d="M10 12h4M10 16h4M8 8h1" />
-    </svg>
-  );
-}
-
-const stack: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "1rem",
-  minHeight: 0,
-};
-
-const leadScrollWrap: CSSProperties = {
-  maxWidth: "100%",
-  overflowX: "auto",
-  overflowY: "hidden",
-  WebkitOverflowScrolling: "touch",
-};
-
-const lead: CSSProperties = {
-  margin: 0,
-  fontSize: "0.72rem",
-  lineHeight: 1.35,
-  color: "var(--color-text-muted)",
-  whiteSpace: "nowrap",
-};
-
-const toolbar: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.65rem",
-  alignItems: "flex-end",
-};
-
-const hideDetails: CSSProperties = {
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  padding: "0.5rem 0.75rem 0.65rem",
-  margin: 0,
-  background: "var(--color-surface-elevated)",
-};
-
-const hideDetailsSummary: CSSProperties = {
-  fontSize: "0.8rem",
-  fontWeight: 600,
-  color: "var(--color-text)",
-  cursor: "pointer",
-  padding: "0.15rem 0",
-};
-
-const hideHint: CSSProperties = {
-  margin: "0 0 0.5rem",
-  fontSize: "0.72rem",
-  lineHeight: 1.4,
-  color: "var(--color-text-muted)",
-  maxWidth: "56rem",
-};
-
-const hideGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: "0.75rem 1.25rem",
-  marginBottom: "0.5rem",
-};
-
-const hideGroup: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.35rem",
-  minWidth: 0,
-};
-
-const hideGroupTitle: CSSProperties = {
-  fontSize: "0.75rem",
-  fontWeight: 600,
-  color: "var(--color-text-muted)",
-  textTransform: "uppercase",
-  letterSpacing: "0.02em",
-};
-
-const hideCheckboxLbl: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.4rem",
-  fontSize: "0.78rem",
-  color: "var(--color-text)",
-  cursor: "pointer",
-  lineHeight: 1.3,
-};
-
-const hideSummary: CSSProperties = {
-  margin: 0,
-  fontSize: "0.78rem",
-  color: "var(--color-text-muted)",
-};
-
-const searchLbl: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.2rem",
-  fontSize: "0.75rem",
-  color: "var(--color-text-muted)",
-  flex: "0 1 auto",
-  width: "min(220px, 100%)",
-  maxWidth: "220px",
-};
-
-const searchInp: CSSProperties = {
-  padding: "0.3rem 0.4rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-bg)",
-  color: "var(--color-text)",
-  fontFamily: "inherit",
-  fontSize: "0.8rem",
-  width: "100%",
-  maxWidth: "220px",
-  boxSizing: "border-box",
-};
-
 const inp: CSSProperties = {
   padding: "0.45rem 0.5rem",
   borderRadius: "var(--radius)",
@@ -863,108 +1090,11 @@ const btnSecondary: CSSProperties = {
   cursor: "pointer",
 };
 
-const tableWrap: CSSProperties = {
-  overflow: "auto",
-  border: "1px solid var(--color-border)",
-  borderRadius: "var(--radius)",
-  flex: 1,
-  minHeight: 0,
-};
-
-const connectivityActions: CSSProperties = {
-  margin: "0.35rem 0 0",
-  fontSize: "0.85rem",
-  color: "var(--color-text-muted)",
-  lineHeight: 1.45,
-  maxWidth: "48rem",
-};
-
-const tbl: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.88rem",
-};
-
-const th: CSSProperties = {
-  textAlign: "left",
-  padding: "0.5rem 0.65rem",
-  borderBottom: "1px solid var(--color-border)",
-  background: "var(--color-surface-elevated)",
-  color: "var(--color-text-muted)",
-  fontWeight: 600,
-};
-
-const td: CSSProperties = {
-  padding: "0.45rem 0.65rem",
-  borderBottom: "1px solid var(--color-border)",
-  verticalAlign: "top",
-};
-
 const tdDesc: CSSProperties = {
-  ...td,
   maxWidth: "320px",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-};
-
-const tdProto: CSSProperties = {
-  ...td,
-  fontSize: "0.82rem",
-  color: "var(--color-text-muted)",
-  whiteSpace: "nowrap",
-};
-
-const tdMuted: CSSProperties = {
-  ...td,
-  fontSize: "0.82rem",
-  color: "var(--color-text-muted)",
-  maxWidth: "11rem",
-};
-
-const tdAct: CSSProperties = {
-  ...td,
-  width: "9.25rem",
-  textAlign: "right",
-};
-
-const actRow: CSSProperties = {
-  display: "inline-flex",
-  flexWrap: "wrap",
-  gap: "0.35rem",
-  alignItems: "center",
-  justifyContent: "flex-end",
-};
-
-const iconLink: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0.35rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  color: "var(--color-accent)",
-  textDecoration: "none",
-  cursor: "pointer",
-};
-
-const tdEmpty: CSSProperties = {
-  ...td,
-  color: "var(--color-text-muted)",
-  padding: "1.25rem",
-};
-
-const iconBtn: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0.35rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  color: "var(--color-text)",
-  cursor: "pointer",
 };
 
 const linkBtn: CSSProperties = {
