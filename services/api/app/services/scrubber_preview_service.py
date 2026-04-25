@@ -14,6 +14,7 @@ from app.models.user import User
 from app.schemas.device_object import merge_device_object_mapping
 from app.schemas.scrubber_preview import ScrubberPreviewRequest, ScrubberPreviewResponse, ScrubberPreviewResult
 from app.services.raw_preview import read_raw_slice
+from app.services.field_catalog_service import build_ai_projection_document
 from app.services.scrubber_engine import run_scrubber
 from app.core.config import settings
 from minio.error import S3Error
@@ -98,9 +99,18 @@ def scrubber_preview(
                 health_status="red",
                 health_code="transform_error",
                 health_message=str(e)[:2000],
+                ai_projection=None,
             ),
             error=str(e)[:2000],
         )
+
+    cat = merged.get("fieldCatalog") if isinstance(merged.get("fieldCatalog"), dict) else None
+    ai_proj = build_ai_projection_document(
+        catalog=cat,
+        payload=result.payload if isinstance(result.payload, dict) else {},
+        kpi_json=result.kpi if isinstance(result.kpi, dict) else {},
+        object_type=result.object_name,
+    )
 
     return ScrubberPreviewResponse(
         raw_object_id=row.id,
@@ -114,6 +124,7 @@ def scrubber_preview(
             health_message=result.health_message,
             scrubber_version=result.scrubber_version,
             health_details=result.health_details,
+            ai_projection=ai_proj,
         ),
         error=None,
     )

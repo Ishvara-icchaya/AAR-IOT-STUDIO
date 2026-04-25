@@ -16,6 +16,7 @@ from app.schemas.device_object import (
     DeviceObjectRead,
     merge_device_object_mapping,
 )
+from app.services.field_catalog_service import validate_field_catalog
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -66,6 +67,13 @@ def patch_device_object(
 
     existing = row.mapping if isinstance(row.mapping, dict) else {}
     row.mapping = merge_device_object_mapping(existing, body.mapping)
+    fc = row.mapping.get("fieldCatalog") if isinstance(row.mapping, dict) else None
+    if isinstance(fc, dict):
+        errs, warns = validate_field_catalog(fc)
+        for w in warns:
+            log.warning("device_objects.fieldCatalog device_id=%s %s", device_id, w)
+        if errs:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "; ".join(errs))
     db.add(row)
     db.commit()
     db.refresh(row)

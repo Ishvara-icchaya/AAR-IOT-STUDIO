@@ -15,6 +15,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+if [[ -f "${ROOT}/env.sh" ]]; then
+  # shellcheck disable=SC1091
+  source "${ROOT}/env.sh"
+fi
+
 COMPOSE_BASE=(docker compose -f docker-compose.yml)
 COMPOSE_DEBUG=(docker compose -f docker-compose.yml -f docker-compose.debug.yml)
 
@@ -232,6 +237,7 @@ Logging rules:
   Optional: KAFKA_PYTHON_DEBUG=1 for kafka-python internals (very noisy).
 
   Ollama: add profile when needed, e.g. COMPOSE_PROFILES=llm docker compose -f docker-compose.yml -f docker-compose.debug.yml --profile llm up
+  Optional env.sh in repo root is sourced automatically (e.g. OLLAMA_MODEL); same exports apply to docker compose substitution when using ./run.sh.
 EOF
 }
 

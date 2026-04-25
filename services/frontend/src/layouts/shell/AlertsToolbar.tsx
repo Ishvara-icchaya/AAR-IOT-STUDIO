@@ -1,5 +1,5 @@
-import { Bell } from "lucide-react";
 import { useAlertsModal } from "@/contexts/AlertsModalContext";
+import { AppIcon } from "@/lib/appIcons";
 
 type AlertTone = "none" | "critical" | "warning" | "info";
 
@@ -28,7 +28,7 @@ export function AlertsToolbar({
       aria-label="Open alerts"
       onClick={() => openList()}
     >
-      <Bell size={16} strokeWidth={2} aria-hidden />
+      <AppIcon name="alert" size="table" aria-hidden />
       <span>Alerts</span>
       {unacked > 0 ? (
         <span

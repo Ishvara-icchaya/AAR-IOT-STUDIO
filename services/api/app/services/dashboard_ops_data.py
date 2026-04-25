@@ -14,6 +14,7 @@ from app.models.data_object import DataObject
 from app.models.device import Device
 from app.models.site import Site
 from app.models.workflow_result_object import WorkflowResultObject
+from app.services.liveness_serving import ops_overview_kpis_serving
 
 
 def build_ops_overview_kpis_data(
@@ -22,7 +23,7 @@ def build_ops_overview_kpis_data(
     customer_id: uuid.UUID,
     allowed_site_ids: list[uuid.UUID] | None,
 ) -> dict[str, Any]:
-    """Device counts by liveness + last seen hint."""
+    """Device counts by liveness + last seen hint (Redis rollups when fresh, else timestamp recompute)."""
     if allowed_site_ids is not None and len(allowed_site_ids) == 0:
         return {
             "total_devices": 0,
@@ -32,61 +33,7 @@ def build_ops_overview_kpis_data(
             "last_data_relative": "—",
             "last_device_name": None,
         }
-    stmt = (
-        select(Device.current_liveness_state, func.count())
-        .where(Device.customer_id == customer_id)
-        .group_by(Device.current_liveness_state)
-    )
-    if allowed_site_ids is not None:
-        stmt = stmt.where(Device.site_id.in_(allowed_site_ids))
-    rows = db.execute(stmt).all()
-    by_state: dict[str, int] = {}
-    for st, cnt in rows:
-        key = str(st or "waiting_for_first_payload")
-        by_state[key] = int(cnt or 0)
-
-    total = sum(by_state.values())
-    online = int(by_state.get("online", 0))
-    late = int(by_state.get("late", 0))
-    offline = int(by_state.get("offline", 0))
-    waiting = int(by_state.get("waiting_for_first_payload", 0))
-    degraded = late + waiting
-
-    last_q = (
-        select(Device.last_seen_at, Device.name)
-        .where(Device.customer_id == customer_id)
-        .where(Device.last_seen_at.is_not(None))
-        .order_by(Device.last_seen_at.desc())
-        .limit(1)
-    )
-    if allowed_site_ids is not None:
-        last_q = last_q.where(Device.site_id.in_(allowed_site_ids))
-    lr = db.execute(last_q).first()
-    last_seen: datetime | None = None
-    last_name: str | None = None
-    if lr:
-        last_seen, last_name = lr[0], lr[1]
-
-    rel = "—"
-    if last_seen:
-        delta = datetime.now(timezone.utc) - last_seen
-        if delta.total_seconds() < 60:
-            rel = "just now"
-        elif delta.total_seconds() < 3600:
-            rel = f"{int(delta.total_seconds() // 60)}m ago"
-        elif delta.total_seconds() < 86400:
-            rel = f"{int(delta.total_seconds() // 3600)}h ago"
-        else:
-            rel = f"{int(delta.days)}d ago"
-
-    return {
-        "total_devices": total,
-        "online": online,
-        "degraded": degraded,
-        "offline": offline,
-        "last_data_relative": rel,
-        "last_device_name": last_name,
-    }
+    return ops_overview_kpis_serving(db, customer_id=customer_id, allowed_site_ids=allowed_site_ids)
 
 
 def build_ops_device_table_data(

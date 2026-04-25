@@ -26,6 +26,24 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
     alsoActiveOn: ["/devices/manage", "/devices/raw"],
   },
   {
+    id: "raw-sample",
+    label: "Raw sample",
+    to: "/scrubber/raw-select",
+    alsoActiveOn: ["/scrubber/raw-select", "/scrubber/create"],
+  },
+  {
+    id: "scrubber-v2",
+    label: "Scrubber Pipelines",
+    to: "/scrubber/v2/pipelines",
+    alsoActiveOn: ["/scrubber/v2/pipelines", "/scrubber/v2/create"],
+  },
+  {
+    id: "workflow",
+    label: "Workflows",
+    /** List is the hub; create/edit/test/live stay under `/workflow/…` for active highlighting. */
+    to: "/workflow",
+  },
+  {
     id: "enterprise-ai",
     label: "Enterprise AI",
     to: "/enterprise-ai",
@@ -40,23 +58,6 @@ export function pathMatchesFlatLink(pathname: string, link: MainNavFlatLink): bo
 }
 
 export const MAIN_NAV_GROUPS: NavGroup[] = [
-  {
-    id: "scrubber",
-    label: "Scrubber",
-    items: [
-      { to: "/scrubber/data-objects", label: "Data objects" },
-      { to: "/scrubber/stale-ingestion", label: "Stale ingestion" },
-      { to: "/scrubber/raw-select", label: "Pick raw sample" },
-    ],
-  },
-  {
-    id: "workflow",
-    label: "Workflow",
-    items: [
-      { to: "/workflow/list", label: "Workflows" },
-      { to: "/workflow/create", label: "Create workflow" },
-    ],
-  },
   {
     id: "dashboard",
     label: "Dashboard",
@@ -111,7 +112,6 @@ export function activeMainSectionId(pathname: string): string | null {
   for (const g of MAIN_NAV_GROUPS) {
     if (g.id === "dashboard" && (pathname === "/dashboard" || pathname.startsWith("/dashboard/")))
       return "dashboard";
-    if (g.id === "workflow" && pathname.startsWith("/workflow/")) return "workflow";
     if (g.id === "published" && pathname.startsWith("/published-services")) return "published";
     if (g.items.some((c) => pathMatchesChild(pathname, c))) return g.id;
   }
@@ -126,6 +126,9 @@ export function isAdminSectionActive(pathname: string): boolean {
 export function titleFromPath(pathname: string): string {
   if (pathname === "/iot-dashboard") return "Operations Console";
   if (pathname === "/scrubber/create") return "Scrubber Studio";
+  if (pathname === "/scrubber/v2") return "Scrubber Pipelines";
+  if (pathname === "/scrubber/v2/pipelines") return "Scrubber Pipelines";
+  if (pathname.startsWith("/scrubber/v2")) return "Scrubber Studio 2.0";
   if (pathname === "/devices/register") return "Manage Devices";
   if (pathname === "/devices/manage") return "Manage device";
   if (pathname === "/devices/raw") return "Raw Data";
@@ -134,9 +137,8 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/administration/users") return "Users";
   if (pathname === "/administration/sites") return "Sites";
   if (pathname === "/administration/ports") return "Configure Ports";
-  if (pathname === "/scrubber/data-objects") return "Data objects";
-  if (pathname === "/scrubber/stale-ingestion") return "Stale ingestion";
-  if (pathname === "/scrubber/raw-select") return "Pick raw sample";
+  if (pathname === "/scrubber/raw-select") return "Raw sample";
+  if (pathname === "/workflow") return "Workflows";
   if (pathname === "/workflow/list") return "Workflows";
   if (pathname === "/workflow/create") return "Create workflow";
   for (const g of MAIN_NAV_GROUPS) {

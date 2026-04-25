@@ -117,7 +117,7 @@ export function ScrubberRawSelectPage() {
         <header className="dm-page-hero">
           <div className="dm-page-hero__top">
             <div className="dm-page-hero__titles">
-              <h1 className="dm-page-hero__title">Pick raw sample</h1>
+              <h1 className="dm-page-hero__title">Raw sample</h1>
               <p className="dm-page-hero__subtitle">
                 Choose a device and a recent archived raw object, then open Scrubber Studio. Raw bytes in storage are never
                 modified.
@@ -152,11 +152,6 @@ export function ScrubberRawSelectPage() {
                 Open studio (latest)
               </Link>
             ) : null}
-            <span className="dm-inline-summary" style={{ margin: 0, alignSelf: "center" }}>
-              <Link to="/scrubber/data-objects" className="dm-name-link">
-                Data objects
-              </Link>
-            </span>
           </form>
         </section>
 

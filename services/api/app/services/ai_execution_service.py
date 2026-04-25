@@ -181,6 +181,7 @@ def _execute_plan_core(
         if isinstance(hs, str) and hs:
             q = q.where(DataObject.health_status == hs)
         q = q.order_by(DataObject.updated_at.desc()).limit(limit)  # type: ignore[attr-defined]
+        is_catalog = str(plan.get("intent") or "") == "data_object_catalog"
         for d in db.scalars(q).all():
             item: dict[str, Any] = {
                 "id": str(d.id),
@@ -196,6 +197,8 @@ def _execute_plan_core(
                 item["kpi_preview"] = str(d.kpi_json)[:800]
             else:
                 item["kpi_keys"] = list((d.kpi_json or {}).keys())[:20]
+            if is_catalog and getattr(d, "ai_projection", None) is not None:
+                item["ai_projection"] = d.ai_projection
             rows.append(item)
         metrics["rows_returned"] = len(rows)
         return rows, _aggregate_data_objects(rows, agg)
@@ -226,10 +229,12 @@ def _execute_plan_core(
             q = q.where(Device.polling_enabled.is_(False))
         q = q.order_by(Device.name.asc()).limit(limit)
         for d in db.scalars(q).all():
+            desc = (d.description or "").strip()
             rows.append(
                 {
                     "id": str(d.id),
                     "name": d.name,
+                    "description": (desc[:400] + "…") if len(desc) > 400 else desc,
                     "site_id": str(d.site_id),
                     "is_active": d.is_active,
                     "polling_enabled": d.polling_enabled,

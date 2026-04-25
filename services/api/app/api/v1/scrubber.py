@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
@@ -8,21 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
 from app.api.deps import get_current_user
-from app.core.data_object_lifecycle import DATA_PUBLISHED
 from app.core.pipeline_log import emit as pipeline_emit
 from app.db.session import get_db
 from app.models.data_object import DataObject
 from app.models.health_threshold_reference import HealthThresholdReference
 from app.models.data_object_detail import DataObjectDetail
 from app.models.device import Device
-from app.models.device_object import DeviceObject
-from app.models.raw_data_object import RawDataObject
-from app.models.site import Site
 from app.models.user import User
 from app.schemas.data_object import (
     DataObjectDetailListResponse,
     DataObjectDetailRead,
-    DataObjectListResponse,
     DataObjectRead,
 )
 from app.schemas.health_threshold_reference import (
@@ -32,16 +27,11 @@ from app.schemas.health_threshold_reference import (
     HealthThresholdReferenceUpdate,
 )
 from app.schemas.payload_field_metadata import PayloadFieldEntry, PayloadFieldMetadataResponse
-from app.services.data_object_query import order_by_metadata_recency
 from app.services.payload_field_catalog import build_payload_field_entries
 from app.schemas.scrubber_generate_health import GenerateHealthMappingRequest, GenerateHealthMappingResponse
 from app.schemas.scrubber_test_llm import TestLlmOverlayRequest, TestLlmOverlayResponse
 from app.schemas.scrubber_preview import ScrubberPreviewRequest, ScrubberPreviewResponse
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
-from app.schemas.scrubber_stale_ingestion import (
-    StaleIngestionDeviceItem,
-    StaleIngestionDeviceListResponse,
-)
 from app.services.dependency_service import data_object_delete_dependencies
 from app.services.lifecycle_actions import (
     archive_data_object,
@@ -71,25 +61,6 @@ def _require_data_object_access(
     if allowed is not None and dev.site_id not in allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     return row
-
-
-def _mapping_has_scrubber_draft(mapping: dict) -> bool:
-    ss = mapping.get("scrubberStudio")
-    if not isinstance(ss, dict):
-        return False
-    d = ss.get("draft")
-    return isinstance(d, dict) and len(d) > 0
-
-
-def _scrubber_version_from_mapping(mapping: dict) -> str | None:
-    ss = mapping.get("scrubberStudio")
-    if not isinstance(ss, dict):
-        return None
-    v = ss.get("version")
-    if v is None:
-        return None
-    s = str(v).strip()
-    return s or None
 
 
 @router.post("/preview", response_model=ScrubberPreviewResponse)
@@ -164,49 +135,6 @@ def post_test_llm_overlay(
         )
     except Exception as e:
         return TestLlmOverlayResponse(error=str(e)[:2000])
-
-
-@router.get("/data-objects", response_model=DataObjectListResponse)
-def list_data_objects(
-    device_id: uuid.UUID | None = Query(None),
-    for_workflow: bool = Query(
-        False,
-        description="When true, return only lifecycle_status=published rows (workflow / downstream consumers)",
-    ),
-    limit: int = Query(100, ge=1, le=500),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    log.debug("scrubber.list_data_objects")
-    allowed = allowed_site_ids_for_user(db, user)
-    if allowed is not None and len(allowed) == 0:
-        return DataObjectListResponse(items=[])
-
-    stmt = (
-        select(DataObject)
-        .join(Device, Device.id == DataObject.device_id)
-        .where(DataObject.customer_id == user.customer_id)
-        .order_by(order_by_metadata_recency())
-        .limit(limit)
-    )
-    if device_id is not None:
-        stmt = stmt.where(DataObject.device_id == device_id)
-    if for_workflow:
-        stmt = stmt.where(DataObject.lifecycle_status == DATA_PUBLISHED)
-    if allowed is not None:
-        stmt = stmt.where(Device.site_id.in_(allowed))
-
-    rows = list(db.scalars(stmt).all())
-    out = [DataObjectRead.model_validate(r) for r in rows]
-
-    pipeline_emit(
-        log,
-        component="api.scrubber",
-        action="list_data_objects",
-        status="ok",
-        count=len(out),
-    )
-    return DataObjectListResponse(items=out)
 
 
 @router.get("/data-objects/{data_object_id}", response_model=DataObjectRead)
@@ -303,102 +231,6 @@ def get_data_object_detail(
         detail_id=str(detail_id),
     )
     return DataObjectDetailRead.model_validate(d)
-
-
-@router.get("/devices-stale-ingestion", response_model=StaleIngestionDeviceListResponse)
-def list_devices_stale_ingestion(
-    stale_after_hours: float = Query(
-        24,
-        ge=0.5,
-        le=8760,
-        description="Devices with no raw, or newest raw older than this (UTC), are listed.",
-    ),
-    limit: int = Query(100, ge=1, le=500),
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Devices that have a non-empty scrubberStudio draft but no recent raw ingestion."""
-    log.debug("scrubber.devices_stale_ingestion stale_after_hours=%s", stale_after_hours)
-    allowed = allowed_site_ids_for_user(db, user)
-    if allowed is not None and len(allowed) == 0:
-        return StaleIngestionDeviceListResponse(items=[], stale_after_hours=stale_after_hours)
-
-    stmt = (
-        select(Device, DeviceObject, Site.name)
-        .join(DeviceObject, DeviceObject.device_id == Device.id)
-        .join(Site, Site.id == Device.site_id)
-        .where(Device.customer_id == user.customer_id)
-        .order_by(Device.name.asc())
-    )
-    if allowed is not None:
-        stmt = stmt.where(Device.site_id.in_(allowed))
-
-    candidates: list[tuple[Device, DeviceObject, str]] = []
-    for device, do, site_name in db.execute(stmt).all():
-        m = do.mapping if isinstance(do.mapping, dict) else {}
-        if not _mapping_has_scrubber_draft(m):
-            continue
-        candidates.append((device, do, site_name or ""))
-
-    if not candidates:
-        return StaleIngestionDeviceListResponse(items=[], stale_after_hours=stale_after_hours)
-
-    device_ids = [d.id for d, _, _ in candidates]
-
-    mx_stmt = (
-        select(RawDataObject.device_id, func.max(RawDataObject.ingested_at))
-        .where(RawDataObject.device_id.in_(device_ids))
-        .group_by(RawDataObject.device_id)
-    )
-    latest_at_by_device = {row[0]: row[1] for row in db.execute(mx_stmt).all()}
-
-    cnt_stmt = (
-        select(RawDataObject.device_id, func.count())
-        .where(RawDataObject.device_id.in_(device_ids))
-        .group_by(RawDataObject.device_id)
-    )
-    count_by_device = {row[0]: int(row[1]) for row in db.execute(cnt_stmt).all()}
-
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=stale_after_hours)
-
-    stale_rows: list[tuple[Device, DeviceObject, str]] = []
-    for device, do, site_name in candidates:
-        lat = latest_at_by_device.get(device.id)
-        if lat is not None and lat >= cutoff:
-            continue
-        stale_rows.append((device, do, site_name))
-
-    out: list[StaleIngestionDeviceItem] = []
-    for device, do, site_name in stale_rows[:limit]:
-        m = do.mapping if isinstance(do.mapping, dict) else {}
-        latest = db.scalar(
-            select(RawDataObject)
-            .where(RawDataObject.device_id == device.id)
-            .order_by(RawDataObject.ingested_at.desc(), RawDataObject.id.desc())
-            .limit(1)
-        )
-        latest_at = latest.ingested_at if latest else None
-        out.append(
-            StaleIngestionDeviceItem(
-                device_id=device.id,
-                device_name=device.name,
-                site_id=device.site_id,
-                site_name=site_name,
-                scrubber_version=_scrubber_version_from_mapping(m),
-                latest_raw_id=latest.id if latest else None,
-                latest_raw_ingested_at=latest_at,
-                raw_object_count=count_by_device.get(device.id, 0),
-            )
-        )
-
-    pipeline_emit(
-        log,
-        component="api.scrubber",
-        action="devices_stale_ingestion",
-        status="ok",
-        count=len(out),
-    )
-    return StaleIngestionDeviceListResponse(items=out, stale_after_hours=stale_after_hours)
 
 
 @router.get("/data-objects/{data_object_id}/dependencies", response_model=DependenciesListResponse)

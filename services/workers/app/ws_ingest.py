@@ -11,7 +11,8 @@ from typing import Any
 import psycopg2
 import websockets
 
-from app.ingest_archive import db_url, ingest_json_payload_for_device
+from app.db_url import db_url
+from app.ingest_archive import ingest_json_payload_for_device
 from app.ingress_redis_metrics import (
     record_ingest_error,
     record_ingest_success,

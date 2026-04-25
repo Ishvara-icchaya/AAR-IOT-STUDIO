@@ -3,6 +3,7 @@ import { apiFetch } from "@/api/client";
 export type StaticIngestionListItem = {
   id: string;
   site_id: string;
+  device_id: string | null;
   name: string;
   description: string | null;
   end_at: string | null;
@@ -16,10 +17,19 @@ export type StaticIngestionRead = StaticIngestionListItem & {
   created_at: string;
 };
 
-export async function listStaticIngestions(siteId: string, params?: { q?: string; active_only?: boolean }) {
-  const qs = new URLSearchParams({ site_id: siteId });
-  if (params?.q?.trim()) qs.set("q", params.q.trim());
-  if (params?.active_only) qs.set("active_only", "true");
+export type ListStaticIngestionsParams =
+  | { site_id: string; q?: string; active_only?: boolean }
+  | { device_id: string; q?: string; active_only?: boolean };
+
+export async function listStaticIngestions(params: ListStaticIngestionsParams) {
+  const qs = new URLSearchParams();
+  if ("device_id" in params && params.device_id) {
+    qs.set("device_id", params.device_id);
+  } else if ("site_id" in params && params.site_id) {
+    qs.set("site_id", params.site_id);
+  }
+  if (params.q?.trim()) qs.set("q", params.q.trim());
+  if (params.active_only) qs.set("active_only", "true");
   return apiFetch<{ items: StaticIngestionListItem[] }>(`/static-ingestions?${qs.toString()}`);
 }
 
@@ -29,6 +39,7 @@ export async function getStaticIngestion(id: string) {
 
 export type StaticIngestionValidateBody = {
   site_id: string;
+  device_id?: string | null;
   name: string;
   description?: string | null;
   end_at: string | null;

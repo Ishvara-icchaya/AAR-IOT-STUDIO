@@ -31,12 +31,9 @@ class DataObjectRead(BaseModel):
     trace_id: str | None
     latest_detail_id: uuid.UUID | None = None
     latest_seen_at: datetime | None = None
+    ai_projection: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
-
-
-class DataObjectListResponse(BaseModel):
-    items: list[DataObjectRead]
 
 
 class DataObjectDetailRead(BaseModel):

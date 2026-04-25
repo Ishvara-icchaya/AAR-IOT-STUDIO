@@ -11,14 +11,12 @@ from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.customer import Customer
+    from app.models.device import Device
     from app.models.site import Site
 
 
 class StaticIngestion(Base, TimestampMixin):
     __tablename__ = "static_ingestions"
-    __table_args__ = (
-        UniqueConstraint("customer_id", "site_id", "name", name="uq_static_ingestion_customer_site_name"),
-    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     customer_id: Mapped[uuid.UUID] = mapped_column(
@@ -26,6 +24,11 @@ class StaticIngestion(Base, TimestampMixin):
     )
     site_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("sites.id", ondelete="RESTRICT"), nullable=False
+    )
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("devices.id", ondelete="CASCADE"),
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text(), nullable=True)
@@ -35,3 +38,4 @@ class StaticIngestion(Base, TimestampMixin):
 
     customer: Mapped["Customer"] = relationship()
     site: Mapped["Site"] = relationship()
+    device: Mapped["Device | None"] = relationship("Device", foreign_keys=[device_id])

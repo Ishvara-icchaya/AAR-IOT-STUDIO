@@ -5,6 +5,16 @@ const ONLINE = "online";
 const LATE = "late";
 const OFFLINE = "offline";
 const RECOVERED = "recovered";
+const INACTIVE = "inactive";
+
+const BADNESS: Record<string, number> = {
+  [OFFLINE]: 4,
+  [LATE]: 3,
+  [WAITING]: 2,
+  [RECOVERED]: 1,
+  [ONLINE]: 0,
+  [INACTIVE]: 4,
+};
 
 function parseIsoMs(iso: string | null | undefined): number | null {
   if (!iso) return null;
@@ -48,8 +58,8 @@ export function lastDataReceivedMs(d: DeviceRead): number | null {
  * operational_status suppression — not exposed on DeviceRead).
  */
 export function deriveLivenessStateFromTimestamps(d: DeviceRead): string {
-  if (!d.is_active) return WAITING;
-  if (d.endpoint != null && !d.endpoint.is_active) return WAITING;
+  if (!d.is_active) return INACTIVE;
+  if (d.endpoint != null && !d.endpoint.is_active) return INACTIVE;
 
   const seenMs = effectiveLastSeenMsForLiveness(d);
   if (seenMs === null) return WAITING;
@@ -68,13 +78,24 @@ export function deriveLivenessStateFromTimestamps(d: DeviceRead): string {
 }
 
 /**
- * Table / list liveness: derived from ingest age + per-device thresholds so the UI
- * does not lag `current_liveness_state` between worker passes. Preserves a short
- * "recovered" label when the API is in that transition.
+ * Table / list liveness: blend timestamp-derived state with `current_liveness_state`
+ * so inactive devices are not mislabeled as “waiting”, and the API can still win
+ * for worse states (late/offline) when the worker has already transitioned.
  */
 export function displayLivenessState(d: DeviceRead): string {
   const derived = deriveLivenessStateFromTimestamps(d);
-  const raw = (d.current_liveness_state || "").trim();
+  if (derived === INACTIVE) return INACTIVE;
+
+  const raw = (d.current_liveness_state || "").trim().toLowerCase();
   if (raw === RECOVERED && derived === ONLINE) return RECOVERED;
+
+  // Stale FSM: worker still “waiting” while we already have fresh ingest timestamps.
+  if (raw === WAITING && derived === ONLINE) return ONLINE;
+
+  if (!raw) return derived;
+
+  const br = BADNESS[raw] ?? -1;
+  const bd = BADNESS[derived] ?? -1;
+  if (br > bd) return raw;
   return derived;
 }

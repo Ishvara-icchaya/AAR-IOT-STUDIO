@@ -60,6 +60,8 @@ type ScrubberPreviewResp = {
     health_message: string;
     scrubber_version?: string | null;
     health_details?: Record<string, unknown> | null;
+    /** Role-bucket projection from `mapping.fieldCatalog` (see docs/SEMANTIC_FIELD_CATALOG_ENTERPRISE_AI.md). */
+    ai_projection?: Record<string, unknown> | null;
   };
   error: string | null;
 };

@@ -1,0 +1,97 @@
+.confirm-action-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.confirm-action-modal {
+  width: min(32rem, 100%);
+  border-radius: 10px;
+  border: 1px solid var(--dm-border-strong, rgba(255, 255, 255, 0.14));
+  background: var(--dm-surface, #111822);
+  color: var(--dm-text, #f4f6f8);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+}
+
+.confirm-action-modal__head {
+  padding: 0.9rem 1rem 0.6rem;
+  border-bottom: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+}
+
+.confirm-action-modal__title {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.confirm-action-modal__body {
+  padding: 0.8rem 1rem;
+  font-size: 0.84rem;
+  color: var(--dm-muted, #9aa3b2);
+  line-height: 1.45;
+}
+
+.confirm-action-modal__require {
+  padding: 0 1rem 0.75rem;
+}
+
+.confirm-action-modal__require-label {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--dm-muted, #9aa3b2);
+  margin-bottom: 0.32rem;
+}
+
+.confirm-action-modal__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.52rem;
+  border-radius: 7px;
+  border: 1px solid var(--dm-border-strong, rgba(255, 255, 255, 0.14));
+  background: var(--dm-surface-2, #0d121a);
+  color: var(--dm-text, #f4f6f8);
+}
+
+.confirm-action-modal__error {
+  margin: 0 1rem 0.75rem;
+  padding: 0.5rem 0.58rem;
+  border-radius: 7px;
+  border: 1px solid color-mix(in oklab, var(--dm-danger, #ef4444) 55%, var(--dm-border, rgba(255, 255, 255, 0.08)));
+  background: color-mix(in oklab, var(--dm-danger, #ef4444) 14%, var(--dm-surface, #111822));
+  color: #fecaca;
+  font-size: 0.76rem;
+}
+
+.confirm-action-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  padding: 0.7rem 1rem 1rem;
+  border-top: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+}
+
+.confirm-action-modal .dm-btn--danger {
+  border: none;
+  background: var(--dm-danger, #ef4444);
+  color: #fff;
+}
+
+.confirm-action-modal .dm-btn--danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.confirm-action-modal .dm-btn--warning {
+  border: none;
+  background: var(--dm-warn, #f59e0b);
+  color: #111827;
+}
+
+.confirm-action-modal .dm-btn--warning:hover:not(:disabled) {
+  filter: brightness(1.08);
+}

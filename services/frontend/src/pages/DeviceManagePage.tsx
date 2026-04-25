@@ -19,10 +19,12 @@ import {
   AppGrid,
   AppInput,
   AppSelect,
+  AppTabs,
   AppTextarea,
   AppToolbar,
   appButtonClassName,
 } from "@/components/app";
+import { DeviceEndpointStaticJsonPanel } from "@/components/device/DeviceEndpointStaticJsonPanel";
 import { ConfigDrawer } from "@/components/ops/ConfigDrawer";
 import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
@@ -50,6 +52,8 @@ import {
 import { activationStatusStyle, formatActivationLabel } from "@/lib/endpointActivation";
 
 type SiteRow = { id: string; name: string };
+
+type EndpointConfigTab = "connection" | "static_json";
 
 type RawListItem = {
   id: string;
@@ -129,6 +133,7 @@ function formatLastDataReceived(d: DeviceRead): string {
 
 function livenessLabel(s: string | null | undefined): string {
   const x = String(s || "waiting_for_first_payload");
+  if (x === "inactive") return "Inactive";
   if (x === "waiting_for_first_payload") return "Waiting first payload";
   if (x === "online") return "Online";
   if (x === "late") return "Late";
@@ -139,6 +144,7 @@ function livenessLabel(s: string | null | undefined): string {
 
 function livenessStyle(s: string | null | undefined): CSSProperties {
   const x = String(s || "waiting_for_first_payload");
+  if (x === "inactive") return { color: "var(--color-text-muted)", fontWeight: 500 };
   if (x === "online") return { color: "var(--color-success, #2e7d32)", fontWeight: 600 };
   if (x === "late") return { color: "var(--color-warning, #b8860b)", fontWeight: 600 };
   if (x === "offline") return { color: "var(--page-status-error-fg, #c62828)", fontWeight: 700 };
@@ -197,6 +203,7 @@ export function DeviceManagePage() {
   const [observability, setObservability] = useState<DeviceEndpointObservability | null>(null);
   const [savedEndpoint, setSavedEndpoint] = useState<DeviceEndpointRead | null>(null);
   const [validating, setValidating] = useState(false);
+  const [endpointConfigTab, setEndpointConfigTab] = useState<EndpointConfigTab>("connection");
 
   const loadEndpointFields = useCallback(async (deviceId: string) => {
     try {
@@ -287,6 +294,10 @@ export function DeviceManagePage() {
     if (!editingDevice) return;
     void loadEndpointFields(editingDevice.id);
   }, [editingDevice, loadEndpointFields]);
+
+  useEffect(() => {
+    setEndpointConfigTab("connection");
+  }, [editingDevice?.id]);
 
   const previewRefreshMs =
     editingDevice && (pollRealtime || savedEndpoint?.polling_interval_seconds === 0) ? 2000 : 5000;
@@ -593,11 +604,11 @@ export function DeviceManagePage() {
                 </AppButton>
                 {scrubberUnlocked ? (
                   <Link
-                    to={`/scrubber/data-objects?device=${encodeURIComponent(editingDevice.id)}`}
+                    to="/scrubber/raw-select"
                     className={appButtonClassName("icon")}
                     style={{ textDecoration: "none" }}
-                    title="Open Scrubber data objects for this device"
-                    aria-label="Open Scrubber data objects for this device"
+                    title="Open Raw sample — pick archived raw, then Scrubber Studio"
+                    aria-label="Open Raw sample for Scrubber Studio"
                   >
                     <BrushCleaning size={18} strokeWidth={2} aria-hidden />
                   </Link>
@@ -652,6 +663,18 @@ export function DeviceManagePage() {
             <div className="app-section" role="region" aria-label="Endpoint editor layout">
               <AppGrid columns={3}>
                 <AppCard title="Endpoint configuration">
+                  <AppTabs<EndpointConfigTab>
+                    ariaLabel="Endpoint configuration sections"
+                    tabs={[
+                      { id: "connection", label: "Connection" },
+                      { id: "static_json", label: "Static JSON" },
+                    ]}
+                    active={endpointConfigTab}
+                    onChange={(id) => setEndpointConfigTab(id)}
+                    plain
+                  />
+                  {endpointConfigTab === "connection" ? (
+                    <>
                   {savedEndpoint && savedEndpoint.protocol === protocol && !configStructureMatches ? (
                     <div style={{ marginBottom: "0.5rem" }}>
                       <PageStatus variant="warning" icon>
@@ -1091,6 +1114,15 @@ export function DeviceManagePage() {
                   </p>
                 ) : null}
               </form>
+                    </>
+                  ) : editingDevice ? (
+                    <DeviceEndpointStaticJsonPanel
+                      deviceId={editingDevice.id}
+                      siteId={editingDevice.site_id}
+                      siteName={sitesById[editingDevice.site_id]}
+                      deviceName={editingDevice.name}
+                    />
+                  ) : null}
                 </AppCard>
                 <AppCard
                   title="Latest archived raw"

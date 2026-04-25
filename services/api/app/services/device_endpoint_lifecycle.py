@@ -11,6 +11,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.liveness_redis import touch_publish_device_seen
+
 
 def _norm_protocol_source(ps: str) -> str:
     return (ps or "").strip().lower()
@@ -47,6 +49,8 @@ def touch_after_archived_success(db: Session, *, device_id: uuid.UUID, protocol_
         ),
         {"did": str(device_id)},
     )
+    db.flush()
+    touch_publish_device_seen(db, device_id)
 
 
 def record_ingest_failure(

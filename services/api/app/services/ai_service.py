@@ -39,6 +39,25 @@ from app.services.ai_sql_guard import PlanRejected, validate_and_clamp_plan
 log = logging.getLogger(__name__)
 
 
+def _format_data_object_catalog_row(r: dict[str, Any]) -> str:
+    """One-line summary: role-based ai_projection when present; else KPI key names only."""
+    nm = str(r.get("name") or r.get("id") or "").strip()
+    proj = r.get("ai_projection")
+    if isinstance(proj, dict) and proj.get("_meta"):
+        chunks: list[str] = []
+        for role in ("identity", "display", "metric", "health", "geo", "grouping", "filter", "timestamp"):
+            b = proj.get(role)
+            if isinstance(b, dict) and b:
+                bits = [f"{k}={v}" for k, v in list(b.items())[:8]]
+                chunks.append(f"{role}: " + "; ".join(bits))
+        return (nm + ": " + " | ".join(chunks)) if chunks else nm
+    keys = r.get("kpi_keys")
+    if isinstance(keys, list) and keys:
+        k2 = ", ".join(str(x) for x in keys[:12])
+        return f"{nm} [kpi keys: {k2}] (configure device_objects.mapping.fieldCatalog for role-based AI fields)"
+    return nm
+
+
 def _human_time_preset(preset: str | None) -> str:
     p = (preset or "last_24_hours").lower().replace(" ", "_")
     return {
@@ -123,6 +142,17 @@ def _structured_answer(
         parts.append(f"Top categories: {metrics['categories']}.")
     if "by_health" in metrics:
         parts.append(f"Health distribution: {metrics['by_health']}.")
+    if intent == "health_summary" and rows and dataset == "ai_data_objects_latest":
+        flagged = [r for r in rows if str(r.get("health_status") or "").lower() in ("red", "yellow")]
+        if flagged:
+            bits: list[str] = []
+            for r in flagged[:25]:
+                nm = str(r.get("name") or r.get("id") or "").strip() or "(unnamed)"
+                sid = str(r.get("site_id") or "").strip()
+                hs = str(r.get("health_status") or "").strip()
+                bits.append(f"{nm} [site_id={sid}, health={hs}]")
+            more = f" (+{len(flagged) - 25} more)" if len(flagged) > 25 else ""
+            parts.append(f"Non-green data objects (sample): " + "; ".join(bits) + more + ".")
     if "by_status" in metrics:
         parts.append(f"Status distribution: {metrics['by_status']}.")
     if "top_kpi_keys" in metrics:
@@ -151,6 +181,24 @@ def _structured_answer(
         parts.append(
             f"Publish delivery summary ({metrics.get('aggregation')}) — {len(rows)} row(s) "
             f"from delivery logs joined to published services."
+        )
+    if intent == "device_lookup" and rows and dataset == "ai_devices":
+        roster = []
+        for r in rows[:40]:
+            nm = str(r.get("name") or r.get("id") or "").strip()
+            extra = str(r.get("description") or "").strip()
+            if extra:
+                roster.append(f"{nm} ({extra[:120]}{'…' if len(extra) > 120 else ''})")
+            else:
+                roster.append(nm)
+        parts.append("Devices: " + "; ".join(roster) + ("." if len(rows) <= 40 else f" … ({len(rows)} devices in scope)."))
+    if intent == "data_object_catalog" and rows and dataset == "ai_data_objects_latest":
+        lines = [_format_data_object_catalog_row(r) for r in rows[:35]]
+        tail = "." if len(rows) <= 35 else f" … ({len(rows)} objects in scope)."
+        parts.append(
+            "Latest ingested data objects (semantic projection from fieldCatalog when present): "
+            + " | ".join(lines)
+            + tail
         )
     parts.append(f"Retrieved {len(rows)} row(s) from approved dataset {dataset}.")
     return " ".join(parts)[:4000]

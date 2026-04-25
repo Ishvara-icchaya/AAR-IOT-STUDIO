@@ -22,6 +22,7 @@ import {
   type PublishedServiceRow,
 } from "@/api/publishedServices";
 import { apiFetch } from "@/api/client";
+import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { PageShell } from "@/layouts/PageShell";
 import { PageStatus } from "@/components/PageStatus";
@@ -52,6 +53,7 @@ function publishedServiceStatusTone(status: string): DmTableStatusTone {
 
 export function PublishedServicesListPage() {
   const { tryHandleResourceInUseError } = useResourceInUse();
+  const confirm = useConfirmAction();
   const { pushMessage } = useShellMessage();
   const [items, setItems] = useState<PublishedServiceRow[]>([]);
   const [sites, setSites] = useState<SiteOpt[]>([]);
@@ -170,7 +172,14 @@ export function PublishedServicesListPage() {
 
   const onDelete = useCallback(
     async (id: string) => {
-      if (!confirm("Delete this published service?")) return;
+      const ok = await confirm({
+        title: "Delete this published service?",
+        message: "This action cannot be undone.",
+        confirmLabel: "Delete service",
+        variant: "danger",
+        requireText: "DELETE",
+      });
+      if (!ok) return;
       try {
         await deletePublishedService(id);
         pushMessage("success", "Published service deleted.");
@@ -180,7 +189,7 @@ export function PublishedServicesListPage() {
         setErr(e instanceof Error ? e.message : "Delete failed");
       }
     },
-    [load, pushMessage, tryHandleResourceInUseError],
+    [confirm, load, pushMessage, tryHandleResourceInUseError],
   );
 
   return (

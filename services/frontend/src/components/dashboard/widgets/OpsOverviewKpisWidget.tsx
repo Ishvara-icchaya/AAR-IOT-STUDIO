@@ -1,5 +1,6 @@
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { DashboardWidgetFrame } from "@/components/dashboard/DashboardWidgetFrame";
+import { AppIcon } from "@/lib/appIcons";
 import { resolveWidgetPresentation } from "@/lib/widgetPresentation";
 import "@/pages/device-register-page.css";
 
@@ -27,7 +28,10 @@ export function OpsOverviewKpisWidget({ block }: { block: DashboardLiveWidgetDTO
       <section className="dm-kpi-row dm-kpi-row--equal-5 dash-ops-kpi-inner" aria-label="Device summary">
         <div className="dm-kpi dm-kpi--with-deco">
           <div className="dm-kpi__body">
-            <div className="dm-kpi__label">Total devices</div>
+            <div className="dm-kpi__label">
+              <AppIcon name="device" size="card" aria-hidden />
+              Total devices
+            </div>
             <div className="dm-kpi__value">{typeof d.total_devices === "number" ? d.total_devices : "—"}</div>
             <div className="dm-kpi__sub">In scope</div>
           </div>
@@ -35,7 +39,7 @@ export function OpsOverviewKpisWidget({ block }: { block: DashboardLiveWidgetDTO
         <div className="dm-kpi dm-kpi--with-deco">
           <div className="dm-kpi__body">
             <div className="dm-kpi__label">
-              <span className="dm-kpi-dot dm-kpi-dot--online" aria-hidden />
+              <AppIcon name="online" size="card" aria-hidden />
               Online
             </div>
             <div className="dm-kpi__value">{typeof d.online === "number" ? d.online : "—"}</div>
@@ -44,7 +48,7 @@ export function OpsOverviewKpisWidget({ block }: { block: DashboardLiveWidgetDTO
         <div className="dm-kpi dm-kpi--with-deco">
           <div className="dm-kpi__body">
             <div className="dm-kpi__label">
-              <span className="dm-kpi-dot dm-kpi-dot--warn" aria-hidden />
+              <AppIcon name="degraded" size="card" aria-hidden />
               Degraded
             </div>
             <div className="dm-kpi__value">{typeof d.degraded === "number" ? d.degraded : "—"}</div>
@@ -54,7 +58,7 @@ export function OpsOverviewKpisWidget({ block }: { block: DashboardLiveWidgetDTO
         <div className="dm-kpi dm-kpi--with-deco">
           <div className="dm-kpi__body">
             <div className="dm-kpi__label">
-              <span className="dm-kpi-dot dm-kpi-dot--offline" aria-hidden />
+              <AppIcon name="offline" size="card" aria-hidden />
               Offline
             </div>
             <div className="dm-kpi__value">{typeof d.offline === "number" ? d.offline : "—"}</div>
@@ -62,7 +66,10 @@ export function OpsOverviewKpisWidget({ block }: { block: DashboardLiveWidgetDTO
         </div>
         <div className="dm-kpi dm-kpi--with-deco">
           <div className="dm-kpi__body">
-            <div className="dm-kpi__label">Last data received</div>
+            <div className="dm-kpi__label">
+              <AppIcon name="refresh" size="card" aria-hidden />
+              Last data received
+            </div>
             <div className="dm-kpi__value">{d.last_data_relative ?? "—"}</div>
             <div className="dm-kpi__sub">{subLast}</div>
           </div>

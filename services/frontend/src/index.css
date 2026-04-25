@@ -309,8 +309,6 @@
 .page-card.published-services-list-page.page-card--list,
 .page-card.admin-users-page.page-card--list,
 .page-card.admin-sites-page.page-card--list,
-.page-card.data-objects-list-page.page-card--list,
-.page-card.scrubber-stale-page.page-card--list,
 .page-card.scrubber-raw-select-page.page-card--list,
 .page-card.enterprise-ai-page.page-card--list,
 .page-card.ports-config-page.page-card--list {
@@ -321,8 +319,6 @@
 .page-card.published-services-list-page,
 .page-card.admin-users-page,
 .page-card.admin-sites-page,
-.page-card.data-objects-list-page,
-.page-card.scrubber-stale-page,
 .page-card.scrubber-raw-select-page,
 .page-card.enterprise-ai-page,
 .page-card.ports-config-page {

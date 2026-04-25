@@ -24,6 +24,8 @@ def merge_device_object_mapping(existing: dict[str, Any], patch: dict[str, Any])
     for k, v in patch.items():
         if k == "scrubberStudio" and isinstance(v, dict) and isinstance(m.get("scrubberStudio"), dict):
             m["scrubberStudio"] = {**m["scrubberStudio"], **v}
+        elif k == "fieldCatalog" and isinstance(v, dict) and isinstance(m.get("fieldCatalog"), dict):
+            m["fieldCatalog"] = {**m["fieldCatalog"], **v}
         else:
             m[k] = v
     return m

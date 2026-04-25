@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchLlmConfig, putLlmConfig, resetLlmConfig, testLlmConfig } from "@/api/llmConfig";
 import { LlmConfigForm } from "@/components/admin/LlmConfigForm";
+import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellMessage } from "@/layouts/shell";
 import type { LlmConfigDTO, LlmConfigUpdateDTO } from "@/types/llmConfig";
@@ -29,6 +30,7 @@ function dtoToUpdate(d: LlmConfigDTO): LlmConfigUpdateDTO {
 }
 
 export function LlmConfigPage() {
+  const confirm = useConfirmAction();
   const { pushMessage, clearMessages } = useShellMessage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -73,7 +75,13 @@ export function LlmConfigPage() {
   }
 
   async function onReset() {
-    if (!confirm("Reset LLM configuration to environment defaults? Stored overrides will be removed.")) return;
+    const ok = await confirm({
+      title: "Reset LLM configuration?",
+      message: "Stored overrides will be removed and environment defaults restored.",
+      confirmLabel: "Reset configuration",
+      variant: "warning",
+    });
+    if (!ok) return;
     clearMessages();
     setSaving(true);
     try {

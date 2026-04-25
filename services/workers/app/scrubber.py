@@ -13,7 +13,8 @@ from app.alert_emit import emit_alert as worker_emit_alert
 from app.data_object_lifecycle import DATA_COMPILED, DATA_FAILED, DATA_PUBLISHED
 from app.kafka_publish import emit_data_object_created
 from app.logging_setup import configure_logging
-from app.metadata_db import fetch_site_id_and_scrubber_studio, insert_data_object
+from app.field_catalog_service import build_ai_projection_document
+from app.metadata_db import fetch_site_mapping_studio, insert_data_object
 from app.minio_worker import read_object_slice
 from app.pipeline import emit
 from app.scrubber_engine import run_scrubber
@@ -83,7 +84,7 @@ def _process_envelope(env: dict) -> None:
     if content_type is not None and not isinstance(content_type, str):
         content_type = None
 
-    site_id, scrubber_studio = fetch_site_id_and_scrubber_studio(device_id=device_id)
+    site_id, mapping, scrubber_studio = fetch_site_mapping_studio(device_id=device_id)
     if not site_id:
         log.error("scrubber device not found device_id=%s", device_id)
         return
@@ -113,6 +114,7 @@ def _process_envelope(env: dict) -> None:
             lifecycle_status=DATA_FAILED,
             error_message="scrubberStudio missing on device_object",
             trace_id=trace_s,
+            ai_projection=None,
         )
         emit(
             log,
@@ -178,6 +180,7 @@ def _process_envelope(env: dict) -> None:
             lifecycle_status=DATA_FAILED,
             error_message="minio read failed",
             trace_id=trace_s,
+            ai_projection=None,
         )
         emit(
             log,
@@ -232,6 +235,7 @@ def _process_envelope(env: dict) -> None:
             lifecycle_status=DATA_FAILED,
             error_message=str(e)[:2000],
             trace_id=trace_s,
+            ai_projection=None,
         )
         emit(
             log,
@@ -265,6 +269,14 @@ def _process_envelope(env: dict) -> None:
         result.payload, result.kpi, result.health_status
     )
 
+    catalog = mapping.get("fieldCatalog") if isinstance(mapping.get("fieldCatalog"), dict) else None
+    ai_proj = build_ai_projection_document(
+        catalog=catalog,
+        payload=result.payload if isinstance(result.payload, dict) else {},
+        kpi_json=result.kpi if isinstance(result.kpi, dict) else {},
+        object_type=result.object_name,
+    )
+
     oid = insert_data_object(
         customer_id=customer_id,
         site_id=site_id,
@@ -284,6 +296,7 @@ def _process_envelope(env: dict) -> None:
         lifecycle_status=lifecycle,
         error_message=None,
         trace_id=trace_s,
+        ai_projection=ai_proj,
     )
 
     emit(

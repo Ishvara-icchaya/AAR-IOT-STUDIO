@@ -47,7 +47,11 @@ export function AiAnswerCard({
         <span className={mode === "structured_plus_llm" ? "dm-pill dm-pill--neon" : "dm-pill dm-pill--muted"}>
           {mode === "structured_plus_llm" ? "Structured + LLM" : "Structured only"}
         </span>
-        {res.degraded ? <span className="dm-pill dm-pill--warn">Degraded</span> : null}
+        {res.degraded ? (
+          <span className="dm-pill dm-pill--warn" title="Answer uses structured retrieval only; the summarization model did not run.">
+            LLM unavailable
+          </span>
+        ) : null}
         {clamped ? (
           <span
             className="dm-pill dm-pill--warn ea-answer-card__pill--help"

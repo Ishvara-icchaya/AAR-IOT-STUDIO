@@ -1,13 +1,12 @@
 /* Manage Devices — matches ops dashboard mock (charcoal canvas, #1d76ff actions, #a3ff47 success) */
 
 .device-manage-page.page-card,
+.scrubber2-page.page-card,
 .dashboard-list-page.page-card,
 .workflow-list-page.page-card,
 .published-services-list-page.page-card,
 .admin-users-page.page-card,
 .admin-sites-page.page-card,
-.data-objects-list-page.page-card,
-.scrubber-stale-page.page-card,
 .scrubber-raw-select-page.page-card,
 .enterprise-ai-page.page-card,
 .ports-config-page.page-card {
@@ -598,13 +597,6 @@
 .published-services-list-page .dm-data-table__td--actions {
   width: 14.25rem;
   min-width: 14.25rem;
-}
-
-/* Two icon actions (data objects list) */
-.data-objects-list-page .dm-data-table__th--actions,
-.data-objects-list-page .dm-data-table__td--actions {
-  width: 5rem;
-  min-width: 5rem;
 }
 
 /* Ports configuration — charcoal theme + table inputs */

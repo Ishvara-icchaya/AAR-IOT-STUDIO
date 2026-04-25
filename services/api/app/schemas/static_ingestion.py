@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class StaticIngestionValidateRequest(BaseModel):
     site_id: uuid.UUID
+    device_id: uuid.UUID | None = None
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     end_at: datetime | None = None
@@ -55,6 +56,7 @@ class StaticIngestionListItem(BaseModel):
 
     id: uuid.UUID
     site_id: uuid.UUID
+    device_id: uuid.UUID | None
     name: str
     description: str | None
     end_at: datetime | None

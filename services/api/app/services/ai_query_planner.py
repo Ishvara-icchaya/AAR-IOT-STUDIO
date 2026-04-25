@@ -13,6 +13,7 @@ def _dataset_for_intent(intent: str) -> tuple[str, str, int]:
         "comparative_analysis": ("ai_alerts_recent", "count_by_category", 80),
         "report_generation": ("ai_alerts_recent", "count_by_category", 60),
         "health_summary": ("ai_data_objects_latest", "count_by_health", 40),
+        "data_object_catalog": ("ai_data_objects_latest", "none", 100),
         "device_lookup": ("ai_devices", "none", 100),
         "site_lookup": ("ai_sites", "none", 80),
         "kpi_trend": ("ai_kpi_trends", "daily_avg_by_key", 200),

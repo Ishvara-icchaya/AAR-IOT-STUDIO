@@ -27,6 +27,10 @@ class ScrubberPreviewResult(BaseModel):
     health_message: str
     scrubber_version: str | None = None
     health_details: dict[str, Any] | None = None
+    ai_projection: dict[str, Any] | None = Field(
+        default=None,
+        description="Role-bucket projection from device_objects.mapping.fieldCatalog (if defined).",
+    )
 
 
 class ScrubberPreviewResponse(BaseModel):

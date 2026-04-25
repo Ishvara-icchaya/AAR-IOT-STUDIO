@@ -23,6 +23,7 @@ INTENTS = frozenset(
         "publish_delivery_trend",
         "health_trend",
         "raw_debug",
+        "data_object_catalog",
         "unsupported",
     }
 )
@@ -91,6 +92,30 @@ def classify_intent(message: str) -> dict[str, Any]:
         intent = "publish_delivery_trend"
     elif any(k in low for k in ("published service", "mqtt publish", "rest publish")):
         intent = "published_service_lookup"
+    elif re.search(r"\b(fleet|trucks?|truck|vehicle|vehicles)\b", low) and re.search(
+        r"\b(license\s+plates?|plate\s+numbers?|registration|vehicle\s+ids?|\bvin\b)\b",
+        low,
+    ):
+        # Fleet identity lives in ingested data objects (KPI/payload), not IoT platform Device rows.
+        intent = "data_object_catalog"
+    elif re.search(
+        r"\b(license\s+plates?|plate\s+numbers?|registration(\s+numbers?)?|vehicle\s+ids?|vin)\b",
+        low,
+    ) or any(
+        phrase in low
+        for phrase in (
+            "which trucks",
+            "list of trucks",
+            "all the trucks",
+            "every truck",
+            "truck names",
+            "vehicle names",
+            "names of the trucks",
+            "identifiers for",
+        )
+    ):
+        # Roster / identity without fleet context: platform Device list (name, description, …).
+        intent = "device_lookup"
     elif any(
         k in low
         for k in (
@@ -107,7 +132,13 @@ def classify_intent(message: str) -> dict[str, Any]:
         intent = "kpi_trend"
     elif any(k in low for k in ("device", "endpoint", "polling")):
         intent = "device_lookup"
-    elif "site" in low or "corridor" in low or "facility" in low:
+    elif re.search(r"\b(data objects?|ingested objects?)\b", low) and re.search(
+        r"\b(unhealthy|degraded|health|yellow|red|green|status)\b",
+        low,
+    ):
+        # Data-object health questions must not be captured by the site list branch ("sites" contains "site").
+        intent = "health_summary"
+    elif re.search(r"\b(sites?|corridors?|facilities?)\b", low):
         intent = "site_lookup"
     elif ("health" in low or "device health" in low) and (
         any(
@@ -159,6 +190,7 @@ def classify_intent(message: str) -> dict[str, Any]:
         "health_trend",
         "kpi_trend",
         "publish_delivery_trend",
+        "data_object_catalog",
     }
 
     return {

@@ -1,4 +1,9 @@
-"""Validate schedule_json and payload_json for static ingestions."""
+"""Validate schedule_json and payload_json for static ingestions.
+
+Payload objects may include string keys like ``$expr`` for values computed at schedule
+time (evaluated by the static-ingestion worker / workflow runtime); values must remain
+JSON-serializable.
+"""
 
 from __future__ import annotations
 

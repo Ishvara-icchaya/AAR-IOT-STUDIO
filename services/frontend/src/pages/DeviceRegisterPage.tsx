@@ -1,20 +1,12 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   BrushCleaning,
-  CircleAlert,
-  Clock,
   Download,
   FileJson2,
-  Layers,
   Pencil,
-  Power,
   Search,
   Settings2,
-  Signal,
-  Smartphone,
-  Wifi,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { apiFetch } from "@/api/client";
@@ -27,6 +19,7 @@ import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
 import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
 import { ENDPOINT_ACTIVATION_STATUSES, formatActivationLabel } from "@/lib/endpointActivation";
+import { AppIcon, ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
 
 import "./device-register-page.css";
 
@@ -50,7 +43,9 @@ function opsTimeRangeToScope(tr: OpsTimeRange): TimeScope {
 function matchesTimeScope(d: DeviceRead, scope: TimeScope): boolean {
   if (scope === "all") return true;
   const t = lastDataReceivedMs(d);
-  if (t === null) return false;
+  // Newly registered devices (no endpoint / no payload timestamps yet) must stay visible;
+  // only filter out devices whose *last* ingest is older than the shell window.
+  if (t === null) return true;
   const age = Date.now() - t;
   const limits: Record<Exclude<TimeScope, "all">, number> = {
     last_1_hour: 3600 * 1000,
@@ -126,6 +121,7 @@ type ModalMode = "create" | "edit" | null;
 
 function livenessLabel(s: string | null | undefined): string {
   const x = String(s || "waiting_for_first_payload");
+  if (x === "inactive") return "Inactive";
   if (x === "waiting_for_first_payload") return "Waiting first payload";
   if (x === "online") return "Online";
   if (x === "late") return "Late";
@@ -189,9 +185,9 @@ function kpiBucket(d: DeviceRead): "error" | "offline" | "degraded" | "online" |
   const val = d.endpoint?.validation_status;
   if (act === "error" || val === "failed") return "error";
   const live = livenessBucket(d);
-  if (live === "offline") return "offline";
+  if (live === "offline" || live === "inactive") return "offline";
   if (live === "late" || val === "warning") return "degraded";
-  if (live === "online") return "online";
+  if (live === "online" || live === "recovered") return "online";
   return "other";
 }
 
@@ -213,6 +209,7 @@ function connectivityPillClass(d: DeviceRead): string {
 }
 
 function statusLabel(d: DeviceRead): string {
+  if (d.is_active === false) return "Inactive";
   const activation = d.endpoint?.activation_status;
   if (activation === "inactive") return "Inactive";
   if (activation === "error") return "Error";
@@ -220,10 +217,12 @@ function statusLabel(d: DeviceRead): string {
 }
 
 function statusDotKind(d: DeviceRead): "online" | "degraded" | "offline" | "error" | "muted" {
+  if (d.is_active === false) return "muted";
   const activation = d.endpoint?.activation_status;
   if (activation === "error") return "error";
   if (activation === "inactive") return "muted";
   const live = String(displayLivenessState(d));
+  if (live === "inactive") return "muted";
   if (live === "online" || live === "recovered") return "online";
   if (live === "offline") return "offline";
   if (live === "late") return "degraded";
@@ -273,6 +272,7 @@ const HIDE_CONNECTIVITY_OPTIONS: { key: string; label: string }[] = [
 const DEVICE_TABLE_PAGE_SIZE = 25;
 
 const HIDE_STATUS_OPTIONS: { key: string; label: string }[] = [
+  { key: "inactive", label: "Inactive" },
   { key: "waiting_for_first_payload", label: "Waiting first payload" },
   { key: "online", label: "Online" },
   { key: "late", label: "Late" },
@@ -637,7 +637,7 @@ export function DeviceRegisterPage() {
                 disabled={dropdownFiltered.length === 0 || tableLoading}
                 onClick={() => exportDevicesCsv(dropdownFiltered, sitesById)}
               >
-                <Download size={16} strokeWidth={2} aria-hidden />
+                <Download size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 Export
               </button>
               <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
@@ -650,7 +650,7 @@ export function DeviceRegisterPage() {
                 title="Re-run endpoint validation for each device that has a saved endpoint, then refresh connectivity in the table."
                 onClick={() => void checkConnectivityForListedDevices()}
               >
-                <Signal size={16} strokeWidth={2} aria-hidden />
+                <AppIcon name="refresh" size="table" aria-hidden />
                 {checkingConnectivity ? "Checking…" : "Check connectivity"}
               </button>
             </div>
@@ -664,7 +664,7 @@ export function DeviceRegisterPage() {
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <Smartphone size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                <AppIcon name="device" size="card" className="dm-kpi__label-icon" aria-hidden />
                 Total devices
               </div>
               <div className="dm-kpi__value">{kpiStats.total}</div>
@@ -673,72 +673,72 @@ export function DeviceRegisterPage() {
               </div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
-              <Layers size={36} strokeWidth={1.25} />
+              <AppIcon name="device" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <span className="dm-kpi-dot dm-kpi-dot--online" aria-hidden />
+                <AppIcon name="online" size="card" aria-hidden />
                 Online
               </div>
               <div className="dm-kpi__value">{kpiStats.online}</div>
               <div className="dm-kpi__sub">{kpiStats.pctOnline}%</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--online" aria-hidden>
-              <Wifi size={38} strokeWidth={1.35} />
+              <AppIcon name="online" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <span className="dm-kpi-dot dm-kpi-dot--warn" aria-hidden />
+                <AppIcon name="degraded" size="card" aria-hidden />
                 Degraded
               </div>
               <div className="dm-kpi__value">{kpiStats.degraded}</div>
               <div className="dm-kpi__sub">{kpiStats.pctDegraded}%</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--warn" aria-hidden>
-              <AlertTriangle size={36} strokeWidth={1.35} />
+              <AppIcon name="degraded" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <span className="dm-kpi-dot dm-kpi-dot--offline" aria-hidden />
+                <AppIcon name="offline" size="card" aria-hidden />
                 Offline
               </div>
               <div className="dm-kpi__value">{kpiStats.offline}</div>
               <div className="dm-kpi__sub">{kpiStats.pctOffline}%</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--offline" aria-hidden>
-              <Power size={36} strokeWidth={1.35} />
+              <AppIcon name="offline" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <span className="dm-kpi-dot dm-kpi-dot--error" aria-hidden />
+                <AppIcon name="alert" size="card" aria-hidden />
                 Error
               </div>
               <div className="dm-kpi__value">{kpiStats.error}</div>
               <div className="dm-kpi__sub">{kpiStats.pctError}%</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--error" aria-hidden>
-              <CircleAlert size={36} strokeWidth={1.35} />
+              <AppIcon name="alert" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <Clock size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                <AppIcon name="refresh" size="card" className="dm-kpi__label-icon" aria-hidden />
                 Last data received
               </div>
               <div className="dm-kpi__value">{kpiStats.lastRelative}</div>
               <div className="dm-kpi__sub">{kpiStats.lastDeviceName ? `Latest: ${kpiStats.lastDeviceName}` : "No recent payloads"}</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
-              <Clock size={34} strokeWidth={1.25} />
+              <AppIcon name="refresh" size="card" aria-hidden />
             </div>
           </div>
         </section>
@@ -747,7 +747,7 @@ export function DeviceRegisterPage() {
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
               <div className="dm-search-wrap">
-                <Search size={16} strokeWidth={2} aria-hidden />
+                <Search size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 <input
                   className="dm-search-input"
                   value={searchInput}
@@ -814,7 +814,7 @@ export function DeviceRegisterPage() {
         {dropdownFilterActive && dropdownFiltered.length > 0 ? (
           <p className="dm-inline-summary">
             Showing <strong>{dropdownFiltered.length}</strong> of <strong>{timeScopedItems.length}</strong> device
-            {timeScopedItems.length === 1 ? "" : "s"} in the current shell time scope.
+            {timeScopedItems.length === 1 ? "" : "s"} matching the shell time range (devices with no ingest yet stay listed).
           </p>
         ) : null}
 
@@ -925,7 +925,7 @@ export function DeviceRegisterPage() {
                                 title="Endpoint configuration — Manage device"
                                 aria-label={`Endpoint configuration for ${d.name}`}
                               >
-                                <Settings2 size={16} strokeWidth={2} aria-hidden />
+                                <Settings2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </Link>
                               <Link
                                 className="dm-act-grid__btn"
@@ -933,7 +933,7 @@ export function DeviceRegisterPage() {
                                 title="View last sample payload (raw archives)"
                                 aria-label={`View raw sample for ${d.name}`}
                               >
-                                <FileJson2 size={16} strokeWidth={2} aria-hidden />
+                                <FileJson2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </Link>
                               {d.endpoint?.activation_status === "active" ? (
                                 <Link
@@ -942,7 +942,7 @@ export function DeviceRegisterPage() {
                                   title="Scrubber Studio"
                                   aria-label={`Open scrubber for ${d.name}`}
                                 >
-                                  <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                                  <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                 </Link>
                               ) : (
                                 <button
@@ -956,7 +956,7 @@ export function DeviceRegisterPage() {
                                   }
                                   aria-label={`Scrubber unavailable for ${d.name}`}
                                 >
-                                  <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                                  <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                 </button>
                               )}
                               <button
@@ -966,7 +966,7 @@ export function DeviceRegisterPage() {
                                 aria-label={`Edit registration for ${d.name}`}
                                 onClick={() => openEditModal(d)}
                               >
-                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                                <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </button>
                             </div>
                           </td>

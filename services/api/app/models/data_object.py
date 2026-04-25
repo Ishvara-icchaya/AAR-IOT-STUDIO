@@ -53,6 +53,7 @@ class DataObject(Base, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("data_object_details.id", ondelete="SET NULL"), nullable=True
     )
     latest_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ai_projection: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     device: Mapped["Device"] = relationship()
     site: Mapped["Site"] = relationship()

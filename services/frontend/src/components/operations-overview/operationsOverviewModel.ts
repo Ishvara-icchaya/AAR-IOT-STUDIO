@@ -6,6 +6,7 @@ export type OpsOverviewKpiData = {
   degraded?: number;
   offline?: number;
   last_data_relative?: string;
+  /** TODO(liveness): may be absent on Redis-first path until rollup stores tie-broken “latest” (ts + device_id). */
   last_device_name?: string | null;
 };
 

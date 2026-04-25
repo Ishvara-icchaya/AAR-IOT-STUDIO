@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 import httpx
@@ -49,19 +50,29 @@ def call_ollama_chat(
     base = (base_url or settings.ollama_base_url or "").strip().rstrip("/")
     if not base:
         raise RuntimeError("OLLAMA_BASE_URL not set")
-    url = f"{base}/api/chat"
     model_name = (model or settings.ollama_model or "").strip()
     if not model_name:
         raise RuntimeError("OLLAMA model not set")
-    payload = {
+    payload: dict[str, Any] = {
         "model": model_name,
         "messages": messages,
         "stream": False,
     }
-    with httpx.Client(timeout=timeout) as client:
-        resp = client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    ka = _parse_keep_alive(settings.ollama_request_keep_alive)
+    if ka is not None:
+        payload["keep_alive"] = ka
+    opts: dict[str, Any] = {}
+    np = int(settings.ollama_num_predict)
+    if np > 0:
+        opts["num_predict"] = np
+    opts["temperature"] = float(settings.ollama_temperature)
+    if opts:
+        payload["options"] = opts
+
+    client = _ollama_http_client(base)
+    resp = client.post("/api/chat", json=payload, timeout=timeout)
+    resp.raise_for_status()
+    data = resp.json()
     msg = (data.get("message") or {}) if isinstance(data, dict) else {}
     content = msg.get("content") if isinstance(msg, dict) else None
     if isinstance(content, str) and content.strip():

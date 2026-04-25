@@ -68,6 +68,26 @@ class Settings(BaseSettings):
         validation_alias="OLLAMA_BASE_URL",
     )
     ollama_model: str = Field(default="llama3", validation_alias="OLLAMA_MODEL")
+    # Per-request hints to Ollama (/api/chat): extend GPU residency and cap decode cost (see ai_health_service.call_ollama_chat).
+    ollama_request_keep_alive: str = Field(
+        default="30m",
+        validation_alias="OLLAMA_REQUEST_KEEP_ALIVE",
+        description='Go-style duration (e.g. "30m", "2h"), seconds as digits, or -1 to pin until restart.',
+    )
+    ollama_num_predict: int = Field(
+        default=768,
+        ge=0,
+        le=8192,
+        validation_alias="OLLAMA_NUM_PREDICT",
+        description="Max new tokens per completion; 0 = omit (model default).",
+    )
+    ollama_temperature: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=2.0,
+        validation_alias="OLLAMA_TEMPERATURE",
+        description="Sampling temperature for Enterprise AI summaries.",
+    )
     ai_llm_timeout_seconds: float = Field(default=45.0, validation_alias="AI_LLM_TIMEOUT_SECONDS")
     ai_query_timeout_seconds: float = Field(default=12.0, validation_alias="AI_QUERY_TIMEOUT_SECONDS")
     ai_chat_rate_limit_per_minute: int = Field(default=30, ge=5, validation_alias="AI_CHAT_RATE_LIMIT_PER_MINUTE")

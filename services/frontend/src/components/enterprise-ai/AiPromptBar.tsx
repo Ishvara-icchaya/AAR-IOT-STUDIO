@@ -42,7 +42,7 @@ export function AiPromptBar({
           maxLength={MAX_LEN}
           onChange={(e) => onMessageChange(e.target.value)}
           rows={5}
-          placeholder="e.g. In the fleet summary, what were the license plates of all the trucks?"
+          placeholder="e.g. Fleet trucks — license plates? (uses latest ingested data objects + KPI keys; platform Devices are separate)"
         />
         <div className="ea-question-meta">
           <span>

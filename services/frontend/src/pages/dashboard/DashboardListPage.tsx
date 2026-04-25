@@ -3,11 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
-  Building2,
-  Clock,
   Copy,
-  FilePenLine,
-  LayoutDashboard,
   Lock,
   Pencil,
   Plus,
@@ -19,11 +15,13 @@ import { apiFetch } from "@/api/client";
 import * as dashApi from "@/api/dashboard";
 import type { DashboardListItemDTO } from "@/types/dashboard";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
+import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
 import { PageShell } from "@/layouts/PageShell";
 import { PageStatus } from "@/components/PageStatus";
 import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
+import { AppIcon, ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
 
 import "../device-register-page.css";
 
@@ -57,6 +55,7 @@ function dashboardStatusTone(status: string): DmTableStatusTone {
 
 export function DashboardListPage() {
   const { tryHandleResourceInUseError } = useResourceInUse();
+  const confirm = useConfirmAction();
   const { pushMessage } = useShellMessage();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [siteId, setSiteId] = useState("");
@@ -179,7 +178,14 @@ export function DashboardListPage() {
 
   const onDel = useCallback(
     async (id: string) => {
-      if (!confirm("Delete this dashboard?")) return;
+      const ok = await confirm({
+        title: "Delete this dashboard?",
+        message: "This action cannot be undone.",
+        confirmLabel: "Delete dashboard",
+        variant: "danger",
+        requireText: "DELETE",
+      });
+      if (!ok) return;
       setErr(null);
       try {
         await dashApi.deleteDashboard(id);
@@ -190,7 +196,7 @@ export function DashboardListPage() {
         setErr(e instanceof Error ? e.message : "Delete failed");
       }
     },
-    [load, pushMessage, tryHandleResourceInUseError],
+    [confirm, load, pushMessage, tryHandleResourceInUseError],
   );
 
   const onDup = useCallback(
@@ -264,7 +270,7 @@ export function DashboardListPage() {
             </div>
             <div className="dm-page-hero__actions">
               <Link to="/dashboard/create" className="dm-btn dm-btn--primary">
-                <Plus size={16} strokeWidth={2} aria-hidden />
+                <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 Create dashboard
               </Link>
             </div>
@@ -277,14 +283,14 @@ export function DashboardListPage() {
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <LayoutDashboard size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                <AppIcon name="dashboard" size="card" className="dm-kpi__label-icon" aria-hidden />
                 Total dashboards
               </div>
               <div className="dm-kpi__value">{kpiStats.total}</div>
               <div className="dm-kpi__sub">In current list (after search & filters)</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
-              <LayoutDashboard size={36} strokeWidth={1.25} />
+              <AppIcon name="dashboard" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
@@ -297,26 +303,26 @@ export function DashboardListPage() {
               <div className="dm-kpi__sub">{kpiStats.pctDraft}%</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--warn" aria-hidden>
-              <FilePenLine size={36} strokeWidth={1.35} />
+              <AppIcon name="chart" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <span className="dm-kpi-dot dm-kpi-dot--online" aria-hidden />
+                <AppIcon name="settings" size="card" aria-hidden />
                 Frozen
               </div>
               <div className="dm-kpi__value">{kpiStats.frozen}</div>
               <div className="dm-kpi__sub">{kpiStats.pctFrozen}%</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--online" aria-hidden>
-              <Lock size={36} strokeWidth={1.35} />
+              <Lock size={ICON_SIZES.card} strokeWidth={ICON_STROKE_WIDTH} />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <Star size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                <Star size={ICON_SIZES.card} strokeWidth={ICON_STROKE_WIDTH} className="dm-kpi__label-icon" aria-hidden />
                 Primary
               </div>
               <div className="dm-kpi__value">{kpiStats.primary}</div>
@@ -329,27 +335,27 @@ export function DashboardListPage() {
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <Building2 size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                <AppIcon name="device" size="card" className="dm-kpi__label-icon" aria-hidden />
                 Sites
               </div>
               <div className="dm-kpi__value">{kpiStats.siteCount}</div>
               <div className="dm-kpi__sub">Distinct site ids</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
-              <Building2 size={34} strokeWidth={1.25} />
+              <AppIcon name="device" size="card" aria-hidden />
             </div>
           </div>
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
-                <Clock size={14} strokeWidth={2} className="dm-kpi__label-icon" aria-hidden />
+                <AppIcon name="refresh" size="card" className="dm-kpi__label-icon" aria-hidden />
                 Last saved
               </div>
               <div className="dm-kpi__value">{kpiStats.lastRelative}</div>
               <div className="dm-kpi__sub">{kpiStats.lastName ? `Latest: ${kpiStats.lastName}` : "No rows"}</div>
             </div>
             <div className="dm-kpi__deco dm-kpi__deco--muted" aria-hidden>
-              <Clock size={34} strokeWidth={1.25} />
+              <AppIcon name="refresh" size="card" aria-hidden />
             </div>
           </div>
         </section>
@@ -364,7 +370,7 @@ export function DashboardListPage() {
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
               <div className="dm-search-wrap">
-                <Search size={16} strokeWidth={2} aria-hidden />
+                <Search size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 <input
                   className="dm-search-input"
                   value={searchInput}
@@ -499,7 +505,7 @@ export function DashboardListPage() {
                                 title="Live view"
                                 aria-label={`Live view: ${row.name}`}
                               >
-                                <Activity size={16} strokeWidth={2} aria-hidden />
+                                <Activity size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </Link>
                               <Link
                                 className="dm-act-grid__btn"
@@ -507,7 +513,7 @@ export function DashboardListPage() {
                                 title="Open builder"
                                 aria-label={`Edit dashboard ${row.name}`}
                               >
-                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                                <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </Link>
                               <button
                                 type="button"
@@ -516,7 +522,7 @@ export function DashboardListPage() {
                                 aria-label={`Duplicate ${row.name}`}
                                 onClick={() => void onDup(row.id)}
                               >
-                                <Copy size={16} strokeWidth={2} aria-hidden />
+                                <Copy size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </button>
                               <button
                                 type="button"
@@ -525,7 +531,7 @@ export function DashboardListPage() {
                                 aria-label={`Set primary: ${row.name}`}
                                 onClick={() => void onPrimary(row.id)}
                               >
-                                <Star size={16} strokeWidth={2} aria-hidden />
+                                <Star size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </button>
                               <button
                                 type="button"
@@ -534,7 +540,7 @@ export function DashboardListPage() {
                                 aria-label={`Delete ${row.name}`}
                                 onClick={() => void onDel(row.id)}
                               >
-                                <Trash2 size={16} strokeWidth={2} aria-hidden />
+                                <Trash2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </button>
                             </div>
                           </td>

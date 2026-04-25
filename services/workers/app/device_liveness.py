@@ -6,6 +6,7 @@ import logging
 import os
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,7 +14,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 from app.alert_emit import emit_alert
-from app.ingest_archive import db_url
+from app.db_url import db_url
 from app.logging_setup import configure_logging
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
 
@@ -28,6 +29,8 @@ STATE_RECOVERED = "recovered"
 
 _SITE_KEY = "aar:liveness:v1:site:{sid}"
 _CUSTOMER_KEY = "aar:liveness:v1:customer:{cid}"
+_SRV_SITE_KEY = "aar:liveness:srv:v1:site:{sid}"
+_SRV_CUSTOMER_KEY = "aar:liveness:srv:v1:customer:{cid}"
 
 
 def _redis_client() -> Any | None:
@@ -216,6 +219,134 @@ def _update_rollups(conn) -> None:
         log.debug("device_liveness rollup write failed", exc_info=True)
 
 
+def _update_srv_rollups(conn) -> None:
+    """Enriched site/customer rollups for API Redis-first reads (counts mirror PG worker state).
+
+    TODO(liveness): rollups only store ``last_seen_ts_max``; ``last_device_name`` in the API
+    needs a richer structure (e.g. last_seen_ts_max + last_device_id with lexicographic tie-break).
+    """
+    r = _redis_client()
+    if not r:
+        return
+    ts_ms = int(time.time() * 1000)
+    states = (STATE_ONLINE, STATE_LATE, STATE_OFFLINE, STATE_WAITING)
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(
+            f"""
+            SELECT
+              site_id::text AS site_id,
+              COALESCE(NULLIF(TRIM(current_liveness_state), ''), '{STATE_WAITING}') AS st,
+              COUNT(*)::int AS cnt
+            FROM devices
+            WHERE site_id IS NOT NULL
+            GROUP BY site_id,
+              COALESCE(NULLIF(TRIM(current_liveness_state), ''), '{STATE_WAITING}')
+            """
+        )
+        site_counts = cur.fetchall()
+        cur.execute(
+            """
+            SELECT
+              d.site_id::text AS site_id,
+              COALESCE(
+                CAST(
+                  FLOOR(
+                    EXTRACT(EPOCH FROM MAX(COALESCE(de.last_payload_at, d.last_seen_at))) * 1000
+                  ) AS BIGINT
+                ),
+                0::bigint
+              ) AS last_seen_ts_max
+            FROM devices d
+            LEFT JOIN device_endpoints de ON de.device_id = d.id
+            WHERE d.site_id IS NOT NULL
+            GROUP BY d.site_id
+            """
+        )
+        site_max_seen = {str(r["site_id"]): int(r["last_seen_ts_max"] or 0) for r in cur.fetchall()}
+        cur.execute(
+            f"""
+            SELECT
+              customer_id::text AS customer_id,
+              COALESCE(NULLIF(TRIM(current_liveness_state), ''), '{STATE_WAITING}') AS st,
+              COUNT(*)::int AS cnt
+            FROM devices
+            GROUP BY customer_id,
+              COALESCE(NULLIF(TRIM(current_liveness_state), ''), '{STATE_WAITING}')
+            """
+        )
+        cust_counts = cur.fetchall()
+        cur.execute(
+            """
+            SELECT
+              d.customer_id::text AS customer_id,
+              COALESCE(
+                CAST(
+                  FLOOR(
+                    EXTRACT(EPOCH FROM MAX(COALESCE(de.last_payload_at, d.last_seen_at))) * 1000
+                  ) AS BIGINT
+                ),
+                0::bigint
+              ) AS last_seen_ts_max
+            FROM devices d
+            LEFT JOIN device_endpoints de ON de.device_id = d.id
+            GROUP BY d.customer_id
+            """
+        )
+        cust_max_seen = {str(r["customer_id"]): int(r["last_seen_ts_max"] or 0) for r in cur.fetchall()}
+
+    site_roll: dict[str, dict[str, int]] = defaultdict(lambda: {k: 0 for k in states})
+    for row in site_counts:
+        sid = str(row["site_id"])
+        st = str(row["st"])
+        cnt = int(row["cnt"] or 0)
+        if st == STATE_RECOVERED:
+            st = STATE_ONLINE
+        elif st not in states:
+            st = STATE_WAITING
+        site_roll[sid][st] += cnt
+
+    cust_roll: dict[str, dict[str, int]] = defaultdict(lambda: {k: 0 for k in states})
+    for row in cust_counts:
+        cid = str(row["customer_id"])
+        st = str(row["st"])
+        cnt = int(row["cnt"] or 0)
+        if st == STATE_RECOVERED:
+            st = STATE_ONLINE
+        elif st not in states:
+            st = STATE_WAITING
+        cust_roll[cid][st] += cnt
+
+    pipe = r.pipeline()
+    for sid, vals in site_roll.items():
+        total = sum(int(vals[k]) for k in states)
+        mapping = {
+            STATE_ONLINE: str(vals[STATE_ONLINE]),
+            STATE_LATE: str(vals[STATE_LATE]),
+            STATE_OFFLINE: str(vals[STATE_OFFLINE]),
+            STATE_WAITING: str(vals[STATE_WAITING]),
+            "total": str(total),
+            "rollup_updated_at_ms": str(ts_ms),
+            "last_seen_ts_max": str(site_max_seen.get(sid, 0)),
+        }
+        pipe.hset(_SRV_SITE_KEY.format(sid=sid), mapping=mapping)
+    for cid, vals in cust_roll.items():
+        total = sum(int(vals[k]) for k in states)
+        mapping = {
+            STATE_ONLINE: str(vals[STATE_ONLINE]),
+            STATE_LATE: str(vals[STATE_LATE]),
+            STATE_OFFLINE: str(vals[STATE_OFFLINE]),
+            STATE_WAITING: str(vals[STATE_WAITING]),
+            "total": str(total),
+            "rollup_updated_at_ms": str(ts_ms),
+            "last_seen_ts_max": str(cust_max_seen.get(cid, 0)),
+        }
+        pipe.hset(_SRV_CUSTOMER_KEY.format(cid=cid), mapping=mapping)
+    try:
+        pipe.execute()
+    except Exception:
+        log.debug("device_liveness srv rollup write failed", exc_info=True)
+
+
 def _scan_batch(conn, *, limit: int, offset: int) -> list[dict[str, Any]]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -299,6 +430,7 @@ def _process_once(batch_size: int = 500) -> None:
                     )
                 conn.commit()
         _update_rollups(conn)
+        _update_srv_rollups(conn)
     finally:
         conn.close()
 

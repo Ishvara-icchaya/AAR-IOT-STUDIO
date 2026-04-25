@@ -20,8 +20,8 @@ def _db_url() -> str:
     return u.replace("postgresql+psycopg2://", "postgresql://")
 
 
-def fetch_site_id_and_scrubber_studio(*, device_id: str) -> tuple[str | None, dict[str, Any] | None]:
-    """Returns (site_id uuid str or None, scrubberStudio dict or None)."""
+def fetch_site_mapping_studio(*, device_id: str) -> tuple[str | None, dict[str, Any], dict[str, Any] | None]:
+    """Returns (site_id, device_objects.mapping dict, scrubberStudio dict or None)."""
     sql = """
     SELECT d.site_id::text, dobj.mapping
     FROM devices d
@@ -34,13 +34,13 @@ def fetch_site_id_and_scrubber_studio(*, device_id: str) -> tuple[str | None, di
             cur.execute(sql, (device_id,))
             row = cur.fetchone()
             if not row:
-                return None, None
+                return None, {}, None
             site_id, mapping = row[0], row[1]
             if not isinstance(mapping, dict):
                 mapping = {}
             ss = mapping.get("scrubberStudio")
             studio = ss if isinstance(ss, dict) else None
-            return site_id, studio
+            return site_id, mapping, studio
     finally:
         conn.close()
 
@@ -65,6 +65,7 @@ def insert_data_object(
     lifecycle_status: str,
     error_message: str | None,
     trace_id: str | None,
+    ai_projection: dict[str, Any] | None = None,
 ) -> str:
     """Insert metadata row on ``data_objects``, one observed row on ``data_object_details``, then set latest pointers.
 
@@ -77,12 +78,12 @@ def insert_data_object(
       id, customer_id, site_id, device_id, raw_data_object_id, name, payload,
       kpi_json, health_status, health_code, health_message, scrubber_version,
       has_gps, has_kpi, has_health, has_timeseries,
-      lifecycle_status, error_message, trace_id, created_at, updated_at
+      lifecycle_status, error_message, trace_id, ai_projection, created_at, updated_at
     ) VALUES (
       %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, %s,
       %s, %s, %s, %s, %s,
       %s, %s, %s, %s,
-      %s, %s, %s, NOW(), NOW()
+      %s, %s, %s, %s, NOW(), NOW()
     )
     """
     insert_detail = """
@@ -129,6 +130,7 @@ def insert_data_object(
                     lifecycle_status,
                     error_message,
                     trace_id,
+                    Json(ai_projection) if ai_projection is not None else None,
                 ),
             )
             cur.execute(

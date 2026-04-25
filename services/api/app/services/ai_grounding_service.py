@@ -36,7 +36,7 @@ def build_evidence(
 def hints_for_dataset(dataset: str) -> list[str]:
     m = {
         "ai_alerts_recent": ["/alerts", "Alerts & Notifications"],
-        "ai_data_objects_latest": ["/scrubber/data-objects", "Scrubber data objects"],
+        "ai_data_objects_latest": ["/scrubber/raw-select", "Raw sample (archived payloads)"],
         "ai_devices": ["/devices/manage", "Devices"],
         "ai_sites": ["/administration/sites", "Sites"],
         "ai_workflow_results_latest": ["/workflow/list", "Workflows"],
@@ -44,8 +44,8 @@ def hints_for_dataset(dataset: str) -> list[str]:
         "ai_dashboards": ["/dashboard/list", "Dashboards"],
         "ai_monitoring_overview": ["/administration/monitoring", "Monitoring"],
         "ai_published_services": ["/published-services", "Published services"],
-        "ai_kpi_snapshot": ["/scrubber/data-objects", "KPI snapshot (metadata DB)"],
-        "ai_kpi_trends": ["/scrubber/data-objects", "KPI trends (Timescale kpi_history)"],
+        "ai_kpi_snapshot": ["/dashboard/list", "KPI snapshot (dashboards)"],
+        "ai_kpi_trends": ["/dashboard/list", "KPI trends (dashboards)"],
         "ai_health_trends": ["/devices/manage", "Device health history (Timescale health_history)"],
         "ai_publish_delivery_trends": ["/published-services", "Published service delivery logs"],
     }

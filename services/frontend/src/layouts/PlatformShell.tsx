@@ -13,7 +13,7 @@ export function PlatformShell() {
   const { pathname } = useLocation();
   const headerTitle = titleFromPath(pathname);
   /** Manage Devices renders its own title, scope controls, and actions to match the dashboard mock. */
-  const hideShellPageChrome = pathname === "/devices/register";
+  const hideShellPageChrome = pathname === "/devices/register" || pathname.startsWith("/scrubber/v2");
 
   useEffect(() => {
     dbg("PlatformShell mount", pathname);

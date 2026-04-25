@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import uuid
 
+from app.liveness_redis import touch_publish_device_seen
+
 log = logging.getLogger(__name__)
 
 
@@ -33,6 +35,7 @@ def touch_after_archived_success(cur, device_id: uuid.UUID, protocol_source: str
         """,
         (str(device_id),),
     )
+    touch_publish_device_seen(cur, device_id)
 
 
 def record_ingest_failure(cur, device_id: uuid.UUID, protocol_source: str, message: str) -> None:

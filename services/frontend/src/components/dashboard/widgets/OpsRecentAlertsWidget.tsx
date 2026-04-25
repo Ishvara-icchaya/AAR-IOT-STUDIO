@@ -4,6 +4,7 @@ import { DashboardWidgetFrame } from "@/components/dashboard/DashboardWidgetFram
 import { resolveWidgetPresentation } from "@/lib/widgetPresentation";
 import { formatRelativeAgo } from "@/lib/formatRelativeAgo";
 import { OpsListPager } from "@/components/dashboard/widgets/OpsListPager";
+import { AppIcon } from "@/lib/appIcons";
 
 type AlertRow = {
   severity?: string;
@@ -20,6 +21,14 @@ function severityClass(sev: string): string {
   if (s === "info" || s === "informational") return "dash-ops-sev dash-ops-sev--info";
   if (s === "low" || s === "debug") return "dash-ops-sev dash-ops-sev--low";
   return "dash-ops-sev dash-ops-sev--muted";
+}
+
+function severityIconName(sev: string) {
+  const s = sev.trim().toLowerCase();
+  if (s === "critical" || s === "error" || s === "fatal") return "offline";
+  if (s === "warning" || s === "warn") return "degraded";
+  if (s === "info" || s === "informational") return "online";
+  return "alert";
 }
 
 function locationLine(row: AlertRow): string {
@@ -66,7 +75,10 @@ export function OpsRecentAlertsWidget({ block }: { block: DashboardLiveWidgetDTO
             <li key={`${row.created_at ?? ""}-${headline}-${i}`} className="dash-ops-simple-list__row">
               <div className="dash-ops-simple-list__main">
                 <div className="dash-ops-simple-list__title">
-                  <span className={severityClass(sev)}>{sev || "—"}</span>
+                  <span className={severityClass(sev)} style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                    <AppIcon name={severityIconName(sev)} size="table" aria-hidden />
+                    {sev || "—"}
+                  </span>
                   {headline}
                 </div>
                 <div className="dash-ops-simple-list__meta">{locationLine(row)}</div>

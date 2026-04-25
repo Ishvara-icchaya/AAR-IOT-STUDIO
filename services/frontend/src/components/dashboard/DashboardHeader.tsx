@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import * as dashApi from "@/api/dashboard";
+import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { layoutToApiJson, useDashboardBuilderStore } from "@/stores/dashboardBuilderStore";
 
@@ -8,6 +9,7 @@ type Props = { dashboardId: string };
 
 export function DashboardHeader({ dashboardId }: Props) {
   const { tryHandleResourceInUseError } = useResourceInUse();
+  const confirm = useConfirmAction();
   const nav = useNavigate();
   const name = useDashboardBuilderStore((s) => s.name);
   const description = useDashboardBuilderStore((s) => s.description);
@@ -90,11 +92,13 @@ export function DashboardHeader({ dashboardId }: Props) {
   }
 
   async function onResetDefaultLayout() {
-    if (
-      !confirm(
-        "Reset this dashboard to the default layout? This will remove all custom widgets. Dashboard name and ownership are kept.",
-      )
-    ) {
+    const ok = await confirm({
+      title: "Reset to default layout?",
+      message: "This removes all custom widgets. Dashboard name and ownership are kept.",
+      confirmLabel: "Reset layout",
+      variant: "warning",
+    });
+    if (!ok) {
       return;
     }
     setErr(null);
@@ -109,7 +113,14 @@ export function DashboardHeader({ dashboardId }: Props) {
   }
 
   async function onDelete() {
-    if (!confirm("Delete this dashboard?")) return;
+    const ok = await confirm({
+      title: "Delete this dashboard?",
+      message: "This action cannot be undone.",
+      confirmLabel: "Delete dashboard",
+      variant: "danger",
+      requireText: "DELETE",
+    });
+    if (!ok) return;
     setErr(null);
     try {
       await dashApi.deleteDashboard(dashboardId);

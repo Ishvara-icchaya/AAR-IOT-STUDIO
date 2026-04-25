@@ -407,14 +407,22 @@ export function WorkflowEditorPage() {
       if (w.site_id) {
         const [ds, ss, devs] = await Promise.all([
           wfApi.listPublishedDataSources(w.site_id),
-          listStaticIngestions(w.site_id, { active_only: true }),
+          listStaticIngestions({ site_id: w.site_id, active_only: true }),
           listDevices({ site_id: w.site_id }),
         ]);
         setPublishedSources(
           ds?.items?.map((x) => ({ id: x.id, name: x.name, device_id: x.device_id })) ?? [],
         );
         setDeviceNameById(new Map(devs.map((d) => [d.id, d.name])));
-        setStaticSources(ss?.items?.map((x) => ({ id: x.id, name: x.name })) ?? []);
+        const devNames = new Map(devs.map((d) => [d.id, d.name]));
+        setStaticSources(
+          ss?.items?.map((x) => ({
+            id: x.id,
+            name: x.device_id
+              ? `${x.name} — ${devNames.get(x.device_id) ?? x.device_id}`
+              : `${x.name} (site-wide)`,
+          })) ?? [],
+        );
       } else {
         setPublishedSources([]);
         setDeviceNameById(new Map());
@@ -940,7 +948,8 @@ export function WorkflowEditorPage() {
                     </select>
                   </label>
                   <p style={{ fontSize: "0.72rem", color: "var(--color-text-muted)", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
-                    Define payloads under Scrubber → Stale ingestion → Static JSON. The workflow engine loads{" "}
+                    Choose a static source (site-wide or per-device from <strong>Manage device</strong> →{" "}
+                    <strong>Static JSON</strong>). The workflow engine loads{" "}
                     <code style={{ fontSize: "0.7rem" }}>payload_json</code> for this node (no incoming edges).
                   </p>
                   {availableFields.length > 0 ? (

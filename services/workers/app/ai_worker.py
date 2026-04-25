@@ -1,4 +1,8 @@
-"""worker-ai — background AI jobs (scaffold)."""
+"""worker-ai — background AI jobs (scaffold).
+
+Enterprise AI chat today runs synchronously in the API (intent → plan → DB → optional Ollama).
+This worker is reserved for future async jobs (suggestions refresh, batch summaries, Kafka hooks).
+"""
 
 import logging
 import time

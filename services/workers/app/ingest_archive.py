@@ -23,6 +23,7 @@ import psycopg2
 import psycopg2.errors as pg_errors
 from psycopg2.extras import Json
 
+from app.db_url import db_url
 from app.device_endpoint_lifecycle import record_ingest_failure, touch_after_archived_success
 from app.kafka_publish import publish_json
 from app.minio_worker import put_raw_object_bytes, remove_raw_object
@@ -78,11 +79,6 @@ def touch_last_ingest_redis(protocol_source: str) -> None:
                 pass
     except Exception:
         log.debug("last_ingest redis touch failed", exc_info=True)
-
-
-def db_url() -> str:
-    u = os.environ.get("METADATA_DATABASE_URL") or os.environ.get("DATABASE_URL", "")
-    return u.replace("postgresql+psycopg2://", "postgresql://")
 
 
 def truthy(name: str, default: str = "false") -> bool:

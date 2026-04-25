@@ -7,7 +7,9 @@ import { acknowledgeAlert, acknowledgeAllAlerts, getAlert, listAlerts, type Aler
 import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { PageStatus } from "@/components/PageStatus";
 import { useAlertsModal } from "@/contexts/AlertsModalContext";
+import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useOpsShellOptional } from "@/contexts/OpsShellContext";
+import { AppIcon, ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
 
 type SiteOpt = { id: string; name: string };
 
@@ -17,6 +19,14 @@ function sevColor(s: string) {
   if (x === "warning") return "#f9a825";
   if (x === "info") return "#64b5f6";
   return "var(--color-text-muted)";
+}
+
+function sevIconName(s: string) {
+  const x = s.toLowerCase();
+  if (x === "critical") return "offline";
+  if (x === "warning") return "degraded";
+  if (x === "info") return "online";
+  return "alert";
 }
 
 const CATEGORIES = [
@@ -33,6 +43,7 @@ const CATEGORIES = [
 ] as const;
 
 export function UnifiedAlertsModal() {
+  const confirm = useConfirmAction();
   const { isOpen, detailId, close, backToList, openDetail } = useAlertsModal();
   const opsShell = useOpsShellOptional();
   const navigate = useNavigate();
@@ -85,7 +96,12 @@ export function UnifiedAlertsModal() {
         header: "Severity",
         cell: (a) => {
           const s = a.severity ?? "";
-          return <span style={{ color: sevColor(s), fontWeight: 600 }}>{s}</span>;
+          return (
+            <span style={{ color: sevColor(s), fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+              <AppIcon name={sevIconName(s)} size="table" aria-hidden />
+              {s}
+            </span>
+          );
         },
       },
       { id: "category", header: "Category", cell: (a) => a.category },
@@ -254,11 +270,14 @@ export function UnifiedAlertsModal() {
 
   async function onAcknowledgeAll() {
     if (ackFilter === "acked") return;
-    if (
-      !window.confirm(
-        "Acknowledge up to 500 unacknowledged alerts that match the current Site, Severity, Category, and Search filters? (Already-acknowledged rows are skipped.)",
-      )
-    ) {
+    const ok = await confirm({
+      title: "Acknowledge matching alerts?",
+      message:
+        "Acknowledge up to 500 unacknowledged alerts that match current Site, Severity, Category, and Search filters. Already-acknowledged rows are skipped.",
+      confirmLabel: "Acknowledge alerts",
+      variant: "warning",
+    });
+    if (!ok) {
       return;
     }
     setAckingAll(true);
@@ -317,7 +336,7 @@ export function UnifiedAlertsModal() {
             {detailId ? row?.title ?? "Alert" : "Alerts"}
           </h2>
           <button type="button" style={closeBtn} onClick={handleClose} aria-label="Close alerts">
-            <X size={22} strokeWidth={2} aria-hidden />
+            <X size={ICON_SIZES.header} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
           </button>
         </div>
 
@@ -325,7 +344,7 @@ export function UnifiedAlertsModal() {
           <div style={body}>
             <p style={{ marginTop: 0 }}>
               <button type="button" style={linkBtnWithIcon} onClick={backToList}>
-                <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+                <ArrowLeft size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 Back to list
               </button>
             </p>

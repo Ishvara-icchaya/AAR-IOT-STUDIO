@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
+import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { PageShell } from "@/layouts/PageShell";
 import { PageStatus } from "@/components/PageStatus";
 import { apiFetch } from "@/api/client";
@@ -39,6 +40,7 @@ function workflowLifecycleTone(status: string): DmTableStatusTone {
 
 export function WorkflowListPage() {
   const navigate = useNavigate();
+  const confirm = useConfirmAction();
   const [sites, setSites] = useState<SiteOpt[]>([]);
   const [siteId, setSiteId] = useState("");
 
@@ -131,30 +133,46 @@ export function WorkflowListPage() {
   }, [page, pageCount]);
 
   async function handlePublish(wf: WorkflowListItemDTO) {
-    const ok = window.confirm(`Publish workflow "${wf.name}"?`);
+    const ok = await confirm({
+      title: "Publish workflow?",
+      message: `Publish "${wf.name}" and make it live for executions.`,
+      confirmLabel: "Publish workflow",
+      variant: "success",
+    });
     if (!ok) return;
     try {
       await apiFetch(`/workflows/${wf.id}/publish`, { method: "POST" });
       await load();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Publish failed");
+      setError(e instanceof Error ? e.message : "Publish failed");
     }
   }
 
   async function handleStop(wf: WorkflowListItemDTO) {
-    const ok = window.confirm(`Stop published workflow "${wf.name}"?`);
+    const ok = await confirm({
+      title: "Stop published workflow?",
+      message: `This stops "${wf.name}". New executions will not run until it is published again.`,
+      confirmLabel: "Stop workflow",
+      variant: "warning",
+    });
     if (!ok) return;
     try {
       await apiFetch(`/workflows/${wf.id}/stop-publish`, { method: "POST" });
       await load();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Stop failed");
+      setError(e instanceof Error ? e.message : "Stop failed");
     }
   }
 
   async function handleDuplicate(wf: WorkflowListItemDTO) {
-    const name = window.prompt("Name for duplicated workflow?", `${wf.name} (copy)`);
-    if (!name) return;
+    const name = `${wf.name} (copy)`;
+    const ok = await confirm({
+      title: "Duplicate workflow?",
+      message: `Create a duplicate named "${name}".`,
+      confirmLabel: "Duplicate workflow",
+      variant: "default",
+    });
+    if (!ok) return;
     try {
       const created = await apiFetch<{ id: string }>(`/workflows/${wf.id}/duplicate`, {
         method: "POST",
@@ -163,18 +181,24 @@ export function WorkflowListPage() {
       await load();
       if (created?.id) navigate(`/workflow/${created.id}/edit`);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Duplicate failed");
+      setError(e instanceof Error ? e.message : "Duplicate failed");
     }
   }
 
   async function handleDelete(wf: WorkflowListItemDTO) {
-    const ok = window.confirm(`Delete workflow "${wf.name}"? This cannot be undone.`);
+    const ok = await confirm({
+      title: "Delete workflow?",
+      message: `Delete "${wf.name}"? This cannot be undone.`,
+      confirmLabel: "Delete workflow",
+      variant: "danger",
+      requireText: "DELETE",
+    });
     if (!ok) return;
     try {
       await apiFetch(`/workflows/${wf.id}`, { method: "DELETE" });
       await load();
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : "Delete failed");
     }
   }
 
@@ -184,7 +208,13 @@ export function WorkflowListPage() {
         <header className="dm-page-hero">
           <div className="dm-page-hero__top">
             <div className="dm-page-hero__titles">
-              <h1 className="dm-sr-only">Workflows</h1>
+              <h1 className="dm-page-hero__title">Workflows</h1>
+              <p className="dm-page-hero__subtitle">View and manage automation workflows across your sites.</p>
+            </div>
+            <div className="dm-page-hero__actions">
+              <button type="button" className="dm-btn dm-btn--primary" onClick={() => navigate("/workflow/create")}>
+                + Create workflow
+              </button>
             </div>
           </div>
         </header>

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { UnifiedAlertsModal } from "./components/alerts/UnifiedAlertsModal";
 import { AlertsModalProvider } from "./contexts/AlertsModalContext";
+import { ConfirmActionProvider } from "./contexts/ConfirmActionContext";
 import { PlatformShell } from "./layouts/PlatformShell";
 import { dbg } from "./lib/debug";
 import { AdminSitesPage } from "./pages/AdminSitesPage";
@@ -11,9 +12,9 @@ import { DeviceRawDataPage } from "./pages/DeviceRawDataPage";
 import { DeviceRegisterPage } from "./pages/DeviceRegisterPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ScrubberCreatePage } from "./pages/ScrubberCreatePage";
-import { DataObjectsListPage } from "./pages/DataObjectsListPage";
-import { ScrubberStaleIngestionPage } from "./pages/ScrubberStaleIngestionPage";
 import { ScrubberRawSelectPage } from "./pages/ScrubberRawSelectPage";
+import { Scrubber2Page } from "./pages/scrubber2/Scrubber2Page";
+import { ScrubberPipelinesPage } from "./pages/scrubber2/ScrubberPipelinesPage";
 import { RestorePage } from "./pages/RestorePage";
 import { AdminClearOperationalDataPage } from "./pages/AdminClearOperationalDataPage";
 import { WorkflowCreatePage } from "./pages/workflow/WorkflowCreatePage";
@@ -56,8 +57,9 @@ function NavigationLogger() {
 
 export default function App() {
   return (
-    <AlertsModalProvider>
-      <>
+    <ConfirmActionProvider>
+      <AlertsModalProvider>
+        <>
         <NavigationLogger />
         <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -93,10 +95,14 @@ export default function App() {
                 <Route path="/administration/llm-config" element={<LlmConfigPage />} />
                 <Route path="/administration/ports" element={<PortsConfigPage />} />
               </Route>
-              <Route path="/scrubber/data-objects" element={<DataObjectsListPage />} />
-              <Route path="/scrubber/stale-ingestion" element={<ScrubberStaleIngestionPage />} />
+              <Route path="/scrubber/data-objects" element={<Navigate to="/scrubber/raw-select" replace />} />
+              <Route path="/scrubber/stale-ingestion" element={<Navigate to="/scrubber/raw-select" replace />} />
               <Route path="/scrubber/raw-select" element={<ScrubberRawSelectPage />} />
               <Route path="/scrubber/create" element={<ScrubberCreatePage />} />
+              <Route path="/scrubber/v2" element={<Navigate to="/scrubber/v2/pipelines" replace />} />
+              <Route path="/scrubber/v2/pipelines" element={<ScrubberPipelinesPage />} />
+              <Route path="/scrubber/v2/create" element={<Scrubber2Page />} />
+              <Route path="/workflow" element={<Navigate to="/workflow/list" replace />} />
               <Route path="/workflow/list" element={<WorkflowListPage />} />
               <Route path="/workflow/create" element={<WorkflowCreatePage />} />
               <Route path="/workflow/:workflowId/edit" element={<WorkflowEditorPage />} />
@@ -122,7 +128,8 @@ export default function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         <UnifiedAlertsModal />
-      </>
-    </AlertsModalProvider>
+        </>
+      </AlertsModalProvider>
+    </ConfirmActionProvider>
   );
 }
