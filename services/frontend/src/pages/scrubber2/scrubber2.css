@@ -194,55 +194,6 @@
   max-width: 42rem;
 }
 
-.scrubber2-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: rgba(0, 0, 0, 0.55);
-  box-sizing: border-box;
-}
-
-.scrubber2-modal {
-  width: 100%;
-  max-width: 26rem;
-  border-radius: 10px;
-  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.12));
-  background: var(--color-surface-elevated, #161b22);
-  color: var(--color-text, #e6edf3);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-}
-
-.scrubber2-modal__head {
-  padding: 0.85rem 1rem 0.5rem;
-  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
-}
-
-.scrubber2-modal__title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.scrubber2-modal__body {
-  margin: 0;
-  padding: 0.85rem 1rem;
-  font-size: 0.84rem;
-  line-height: 1.5;
-  color: var(--color-text-muted, #b1bac4);
-}
-
-.scrubber2-modal__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: flex-end;
-  padding: 0.65rem 1rem 1rem;
-}
-
 .scrubber2-stepper {
   display: flex;
   gap: 6px;

@@ -1,22 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
+import { ChevronLeft, ChevronRight, Activity, Ban, Copy, Pencil, Rocket, Search, Trash2 } from "lucide-react";
+import { OpsActionButton } from "@/components/ops/OpsActionButton";
+import { OpsDataTable } from "@/components/ops/OpsDataTable";
+import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
+import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
+import { OpsListPage } from "@/components/ops/OpsListPage";
+import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
+import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
-import { PageShell } from "@/layouts/PageShell";
 import { PageStatus } from "@/components/PageStatus";
 import { apiFetch } from "@/api/client";
 import type { WorkflowListItemDTO } from "@/types/workflow";
-import {
-  Activity,
-  Ban,
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Pencil,
-  Rocket,
-  Search,
-  Trash2,
-} from "lucide-react";
 import "../device-register-page.css";
 
 type SiteOpt = { id: string; name: string };
@@ -30,7 +25,7 @@ function formatDateTime(iso: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function workflowLifecycleTone(status: string): DmTableStatusTone {
+function workflowLifecycleTone(status: string): "online" | "degraded" | "offline" | "error" | "muted" {
   const s = (status || "").toLowerCase();
   if (s.includes("error") || s.includes("fail")) return "error";
   if (s.includes("publish") || s.includes("live") || s.includes("active")) return "online";
@@ -203,23 +198,21 @@ export function WorkflowListPage() {
   }
 
   return (
-    <PageShell variant="list" className="workflow-list-page device-manage-page">
-      <div className="dm-root">
-        <header className="dm-page-hero">
-          <div className="dm-page-hero__top">
-            <div className="dm-page-hero__titles">
-              <h1 className="dm-page-hero__title">Workflows</h1>
-              <p className="dm-page-hero__subtitle">View and manage automation workflows across your sites.</p>
-            </div>
-            <div className="dm-page-hero__actions">
-              <button type="button" className="dm-btn dm-btn--primary" onClick={() => navigate("/workflow/create")}>
-                + Create workflow
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <section className="dm-kpi-row dm-kpi-row--equal-5" aria-label="Workflow summary">
+    <OpsListPage
+      className="workflow-list-page device-manage-page"
+      header={
+        <OpsPageHeader
+          title="Workflows"
+          subtitle="View and manage automation workflows across your sites."
+          actions={
+            <button type="button" className="dm-btn dm-btn--primary" onClick={() => navigate("/workflow/create")}>
+              + Create workflow
+            </button>
+          }
+        />
+      }
+      kpiRow={
+        <OpsKpiRow ariaLabel="Workflow summary" className="dm-kpi-row--equal-5">
           <div className="dm-kpi">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">Matching</div>
@@ -257,9 +250,10 @@ export function WorkflowListPage() {
               <div className="dm-kpi__sub">Max updated_at in list</div>
             </div>
           </div>
-        </section>
-
-        <section className="dm-filter-panel" aria-label="Filters">
+        </OpsKpiRow>
+      }
+      filterPanel={
+        <OpsFilterPanel ariaLabel="Filters">
           <div className="dm-controls-form__row">
             <div className="dm-search-wrap">
               <Search size={16} aria-hidden />
@@ -314,11 +308,11 @@ export function WorkflowListPage() {
               />
             </label>
           </div>
-        </section>
-
-        {error ? <PageStatus variant="error">{error}</PageStatus> : null}
-
-        <div className="dm-table-wrap">
+        </OpsFilterPanel>
+      }
+      content={
+        <OpsDataTable>
+          {error ? <PageStatus variant="error">{error}</PageStatus> : null}
           {loading && items.length === 0 ? (
             <p className="dm-empty">Loading…</p>
           ) : filtered.length === 0 ? (
@@ -375,10 +369,7 @@ export function WorkflowListPage() {
                             <small>{siteLabel}</small>
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--center">
-                            <DmTableStatusMetric
-                              label={wf.lifecycle_status}
-                              tone={workflowLifecycleTone(wf.lifecycle_status)}
-                            />
+                            <OpsStatusPill status={wf.lifecycle_status} variant={workflowLifecycleTone(wf.lifecycle_status)} />
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--center">{wf.is_published ? "Yes" : "No"}</td>
                           <td className="dm-data-table__td dm-data-table__td--center">{wf.version}</td>
@@ -404,44 +395,20 @@ export function WorkflowListPage() {
                                 <Activity size={16} strokeWidth={2} aria-hidden />
                               </Link>
                               {!wf.is_published ? (
-                                <button
-                                  type="button"
-                                  className="dm-act-grid__btn"
-                                  title="Publish workflow"
-                                  aria-label={`Publish ${wf.name}`}
-                                  onClick={() => void handlePublish(wf)}
-                                >
+                                <OpsActionButton title="Publish workflow" aria-label={`Publish ${wf.name}`} onClick={() => void handlePublish(wf)}>
                                   <Rocket size={16} strokeWidth={2} aria-hidden />
-                                </button>
+                                </OpsActionButton>
                               ) : (
-                                <button
-                                  type="button"
-                                  className="dm-act-grid__btn"
-                                  title="Stop published workflow"
-                                  aria-label={`Stop published ${wf.name}`}
-                                  onClick={() => void handleStop(wf)}
-                                >
+                                <OpsActionButton title="Stop published workflow" aria-label={`Stop published ${wf.name}`} onClick={() => void handleStop(wf)}>
                                   <Ban size={16} strokeWidth={2} aria-hidden />
-                                </button>
+                                </OpsActionButton>
                               )}
-                              <button
-                                type="button"
-                                className="dm-act-grid__btn"
-                                title="Duplicate workflow"
-                                aria-label={`Duplicate ${wf.name}`}
-                                onClick={() => void handleDuplicate(wf)}
-                              >
+                              <OpsActionButton title="Duplicate workflow" aria-label={`Duplicate ${wf.name}`} onClick={() => void handleDuplicate(wf)}>
                                 <Copy size={16} strokeWidth={2} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                className="dm-act-grid__btn dm-act-grid__btn--danger"
-                                title="Delete workflow"
-                                aria-label={`Delete ${wf.name}`}
-                                onClick={() => void handleDelete(wf)}
-                              >
+                              </OpsActionButton>
+                              <OpsActionButton tone="danger" title="Delete workflow" aria-label={`Delete ${wf.name}`} onClick={() => void handleDelete(wf)}>
                                 <Trash2 size={16} strokeWidth={2} aria-hidden />
-                              </button>
+                              </OpsActionButton>
                             </div>
                           </td>
                         </tr>
@@ -452,6 +419,9 @@ export function WorkflowListPage() {
               </div>
             </div>
           )}
+        </OpsDataTable>
+      }
+      pagination={
           <div className="dm-table-pager" role="navigation" aria-label="Pagination">
             <span className="dm-table-pager__meta">
               {filtered.length === 0
@@ -482,8 +452,7 @@ export function WorkflowListPage() {
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </PageShell>
+      }
+    />
   );
 }

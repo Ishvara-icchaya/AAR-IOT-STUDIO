@@ -1,4 +1,5 @@
 import { MessageCircle } from "lucide-react";
+import { AarPill } from "@/components/system/AarPill";
 import type { AIChatResponse } from "@/types/ai";
 
 function formatUtcRange(ev: AIChatResponse["evidence"]) {
@@ -44,21 +45,22 @@ export function AiAnswerCard({
   return (
     <div className={compact ? "ea-answer-card ea-answer-card--compact" : "ea-answer-card"}>
       <div className="ea-answer-card__meta">
-        <span className={mode === "structured_plus_llm" ? "dm-pill dm-pill--neon" : "dm-pill dm-pill--muted"}>
+        <AarPill tone={mode === "structured_plus_llm" ? "neon" : "muted"}>
           {mode === "structured_plus_llm" ? "Structured + LLM" : "Structured only"}
-        </span>
+        </AarPill>
         {res.degraded ? (
-          <span className="dm-pill dm-pill--warn" title="Answer uses structured retrieval only; the summarization model did not run.">
+          <AarPill tone="warn" title="Answer uses structured retrieval only; the summarization model did not run.">
             LLM unavailable
-          </span>
+          </AarPill>
         ) : null}
         {clamped ? (
-          <span
-            className="dm-pill dm-pill--warn ea-answer-card__pill--help"
+          <AarPill
+            tone="warn"
+            className="ea-answer-card__pill--help"
             title={ev.warnings?.join(" ") || "Results were limited by row or time caps."}
           >
             Limited sample
-          </span>
+          </AarPill>
         ) : null}
       </div>
       {(ev.time_range || rangeLine) && (

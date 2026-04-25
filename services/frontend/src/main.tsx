@@ -4,6 +4,8 @@ import { BrowserRouter } from "react-router-dom";
 import { AuthProvider } from "@/auth/AuthContext";
 import App from "./App";
 import { dbg } from "./lib/debug";
+import "./styles/design-tokens.css";
+import "./components/system/aar-components.css";
 import "./index.css";
 import "./styles/design-system.css";
 import "./styles/ops-theme.css";

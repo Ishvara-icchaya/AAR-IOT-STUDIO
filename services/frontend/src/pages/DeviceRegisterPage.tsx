@@ -2,6 +2,8 @@ import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BrushCleaning,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileJson2,
   Pencil,
@@ -14,6 +16,13 @@ import { validateDeviceEndpoint } from "@/api/deviceEndpoints";
 import { createDevice, listDevices, updateDevice, type DeviceRead } from "@/api/devices";
 import { useOpsShell, type OpsTimeRange } from "@/contexts/OpsShellContext";
 import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
+import { OpsScopeBar } from "@/components/ops/OpsScopeBar";
+import { OpsDataTable } from "@/components/ops/OpsDataTable";
+import { OpsActionButton } from "@/components/ops/OpsActionButton";
+import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
+import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
+import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
+import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
@@ -191,21 +200,21 @@ function kpiBucket(d: DeviceRead): "error" | "offline" | "degraded" | "online" |
   return "other";
 }
 
-function activationPillClass(status: string | undefined): string {
-  if (!status) return "dm-pill dm-pill--muted";
-  if (status === "active") return "dm-pill dm-pill--neon";
-  if (status === "error") return "dm-pill dm-pill--bad";
-  if (status === "waiting_for_first_payload") return "dm-pill dm-pill--warn";
-  return "dm-pill dm-pill--muted";
+function activationPillVariant(status: string | undefined): "online" | "degraded" | "offline" | "error" | "muted" {
+  if (!status) return "muted";
+  if (status === "active") return "online";
+  if (status === "error") return "error";
+  if (status === "waiting_for_first_payload") return "degraded";
+  return "muted";
 }
 
-function connectivityPillClass(d: DeviceRead): string {
-  if (!d.endpoint) return "dm-pill dm-pill--muted";
+function connectivityPillVariant(d: DeviceRead): "online" | "degraded" | "offline" | "error" | "muted" {
+  if (!d.endpoint) return "muted";
   const v = d.endpoint.validation_status;
-  if (v === "ok") return "dm-pill dm-pill--neon";
-  if (v === "warning") return "dm-pill dm-pill--warn";
-  if (v === "failed") return "dm-pill dm-pill--bad";
-  return "dm-pill dm-pill--muted";
+  if (v === "ok") return "online";
+  if (v === "warning") return "degraded";
+  if (v === "failed") return "error";
+  return "muted";
 }
 
 function statusLabel(d: DeviceRead): string {
@@ -227,28 +236,6 @@ function statusDotKind(d: DeviceRead): "online" | "degraded" | "offline" | "erro
   if (live === "offline") return "offline";
   if (live === "late") return "degraded";
   return "muted";
-}
-
-function activationMetricWrapClass(status: string | undefined): string {
-  if (!status) return "dm-metric-wrap dm-metric-wrap--tone-neutral";
-  if (status === "active") return "dm-metric-wrap dm-metric-wrap--tone-ok";
-  if (status === "error") return "dm-metric-wrap dm-metric-wrap--tone-bad";
-  if (status === "waiting_for_first_payload") return "dm-metric-wrap dm-metric-wrap--tone-warn";
-  if (status === "inactive") return "dm-metric-wrap dm-metric-wrap--tone-muted";
-  return "dm-metric-wrap dm-metric-wrap--tone-muted";
-}
-
-function connectivityMetricWrapClass(d: DeviceRead): string {
-  if (!d.endpoint) return "dm-metric-wrap dm-metric-wrap--tone-neutral";
-  const v = d.endpoint.validation_status;
-  if (v === "ok") return "dm-metric-wrap dm-metric-wrap--tone-ok";
-  if (v === "warning") return "dm-metric-wrap dm-metric-wrap--tone-warn";
-  if (v === "failed") return "dm-metric-wrap dm-metric-wrap--tone-bad";
-  return "dm-metric-wrap dm-metric-wrap--tone-muted";
-}
-
-function statusMetricWrapClass(d: DeviceRead): string {
-  return `dm-metric-wrap dm-metric-wrap--tone-${statusDotKind(d)}`;
 }
 
 const HIDE_ACTIVATION_OPTIONS: { key: string; label: string }[] = [
@@ -624,13 +611,16 @@ export function DeviceRegisterPage() {
   return (
     <PageShell variant="list" className="device-manage-page">
       <div className="dm-root">
-        <header className="dm-page-hero">
-          <div className="dm-page-hero__top">
-            <div className="dm-page-hero__titles">
-              <h1 className="dm-page-hero__title">Manage Devices</h1>
-              <p className="dm-page-hero__subtitle">View and manage all devices across your sites.</p>
-            </div>
-            <div className="dm-page-hero__actions">
+        <OpsScopeBar>
+          <div className="dm-page-scope-strip">
+            <OpsScopeControls variant="inline" timeRangeLabel="Range" />
+          </div>
+        </OpsScopeBar>
+        <OpsPageHeader
+          title="Manage Devices"
+          subtitle="View and manage all devices across your sites."
+          actions={
+            <>
               <button
                 type="button"
                 className="dm-btn dm-btn--outline"
@@ -653,14 +643,11 @@ export function DeviceRegisterPage() {
                 <AppIcon name="refresh" size="table" aria-hidden />
                 {checkingConnectivity ? "Checking…" : "Check connectivity"}
               </button>
-            </div>
-          </div>
-          <div className="dm-page-hero__scope">
-            <OpsScopeControls variant="inline" timeRangeLabel="Time range" />
-          </div>
-        </header>
+            </>
+          }
+        />
 
-        <section className="dm-kpi-row" aria-label="Device summary">
+        <OpsKpiRow ariaLabel="Device summary">
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
@@ -741,9 +728,9 @@ export function DeviceRegisterPage() {
               <AppIcon name="refresh" size="card" aria-hidden />
             </div>
           </div>
-        </section>
+        </OpsKpiRow>
 
-        <section className="dm-filter-panel" aria-label="Search and filters">
+        <OpsFilterPanel ariaLabel="Search and filters">
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
               <div className="dm-search-wrap">
@@ -809,7 +796,7 @@ export function DeviceRegisterPage() {
               </button>
             </div>
           </form>
-        </section>
+        </OpsFilterPanel>
 
         {dropdownFilterActive && dropdownFiltered.length > 0 ? (
           <p className="dm-inline-summary">
@@ -818,7 +805,7 @@ export function DeviceRegisterPage() {
           </p>
         ) : null}
 
-        <div className="dm-table-wrap" id="registered-devices-table">
+        <OpsDataTable id="registered-devices-table">
           {loading && items.length === 0 ? (
             <p className="dm-empty">Loading…</p>
           ) : items.length === 0 ? (
@@ -890,31 +877,21 @@ export function DeviceRegisterPage() {
                           <td className="dm-data-table__td">{protocolLabel(d)}</td>
                           <td className="dm-data-table__td dm-data-table__td--center">
                             {d.endpoint?.activation_status ? (
-                              <div className={activationMetricWrapClass(d.endpoint.activation_status)}>
-                                <span className={activationPillClass(d.endpoint.activation_status)}>
-                                  {formatActivationLabel(d.endpoint.activation_status)}
-                                </span>
-                              </div>
+                              <OpsStatusPill
+                                status={formatActivationLabel(d.endpoint.activation_status)}
+                                variant={activationPillVariant(d.endpoint.activation_status)}
+                              />
                             ) : (
-                              <div className={`${activationMetricWrapClass(undefined)} dm-metric-wrap--empty`}>
-                                <span className="dm-pill dm-pill--muted">—</span>
-                              </div>
+                              <OpsStatusPill status="—" variant="muted" />
                             )}
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--center">
-                            <div className={connectivityMetricWrapClass(d)}>
-                              <span className={connectivityPillClass(d)} title={connectivityTitle(d)}>
-                                {connectivityLabel(d)}
-                              </span>
-                            </div>
+                            <span title={connectivityTitle(d)}>
+                              <OpsStatusPill status={connectivityLabel(d)} variant={connectivityPillVariant(d)} />
+                            </span>
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--center">
-                            <div className={statusMetricWrapClass(d)}>
-                              <span className={`dm-status-line dm-status-line--${kind}`}>
-                                <span className={`dm-status-dot dm-status-dot--${kind}`} aria-hidden />
-                                {statusLabel(d)}
-                              </span>
-                            </div>
+                            <OpsStatusPill status={statusLabel(d)} variant={kind} />
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--muted">{lastDataSummary(d)}</td>
                           <td className="dm-data-table__td dm-data-table__td--actions">
@@ -945,9 +922,8 @@ export function DeviceRegisterPage() {
                                   <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                 </Link>
                               ) : (
-                                <button
-                                  type="button"
-                                  className="dm-act-grid__btn dm-act-grid__btn--disabled"
+                                <OpsActionButton
+                                  className="dm-act-grid__btn--disabled"
                                   disabled
                                   title={
                                     d.endpoint
@@ -957,17 +933,11 @@ export function DeviceRegisterPage() {
                                   aria-label={`Scrubber unavailable for ${d.name}`}
                                 >
                                   <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                                </button>
+                                </OpsActionButton>
                               )}
-                              <button
-                                type="button"
-                                className="dm-act-grid__btn dm-act-grid__btn--plain"
-                                title="Edit device info"
-                                aria-label={`Edit registration for ${d.name}`}
-                                onClick={() => openEditModal(d)}
-                              >
+                              <OpsActionButton tone="plain" title="Edit device info" aria-label={`Edit registration for ${d.name}`} onClick={() => openEditModal(d)}>
                                 <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </button>
+                              </OpsActionButton>
                             </div>
                           </td>
                         </tr>
@@ -985,29 +955,31 @@ export function DeviceRegisterPage() {
                   <div className="dm-table-pager__controls">
                     <button
                       type="button"
-                      className="dm-table-pager__btn"
+                      className="dm-act-grid__btn dm-act-grid__btn--text"
                       disabled={deviceTablePage <= 1}
                       onClick={() => setDeviceTablePage((p) => Math.max(1, p - 1))}
                     >
-                      Previous
+                      <ChevronLeft size={16} aria-hidden />
+                      Prev
                     </button>
                     <span className="dm-table-pager__page">
                       Page {deviceTablePage} / {deviceTableTotalPages}
                     </span>
                     <button
                       type="button"
-                      className="dm-table-pager__btn"
+                      className="dm-act-grid__btn dm-act-grid__btn--text"
                       disabled={deviceTablePage >= deviceTableTotalPages}
                       onClick={() => setDeviceTablePage((p) => Math.min(deviceTableTotalPages, p + 1))}
                     >
                       Next
+                      <ChevronRight size={16} aria-hidden />
                     </button>
                   </div>
                 </div>
               ) : null}
             </div>
           )}
-        </div>
+        </OpsDataTable>
       </div>
 
       {modalMode ? (

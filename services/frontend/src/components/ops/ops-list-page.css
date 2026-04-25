@@ -1,0 +1,24 @@
+/* Shared operations list layout (canonical baseline: Manage Devices). */
+
+/* Scope strip sits above the page title (Manage Devices / Scrubber Pipelines pattern). */
+.ops-list-page__scope {
+  margin: 0 0 0.5rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+}
+
+.ops-list-page__section {
+  width: 100%;
+}
+
+.ops-list-page__pagination {
+  width: 100%;
+}
+
+.ops-list-page__empty {
+  color: var(--dm-muted, var(--color-text-muted));
+  padding: 1.25rem;
+  margin: 0;
+  font-size: 0.9rem;
+}

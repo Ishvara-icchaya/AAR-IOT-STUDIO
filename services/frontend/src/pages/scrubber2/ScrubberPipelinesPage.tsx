@@ -3,9 +3,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Eye, GitBranch, Pencil, RefreshCw, Search } from "lucide-react";
 import { apiFetch } from "@/api/client";
 import { listDevices, type DeviceRead } from "@/api/devices";
-import { PageShell } from "@/layouts/PageShell";
 import { PageStatus } from "@/components/PageStatus";
-import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
+import { OpsActionButton } from "@/components/ops/OpsActionButton";
+import { OpsDataTable } from "@/components/ops/OpsDataTable";
+import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
+import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
+import { OpsListPage } from "@/components/ops/OpsListPage";
+import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
+import { OpsScopeBar } from "@/components/ops/OpsScopeBar";
+import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
+import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
@@ -63,7 +70,7 @@ function toMs(iso: string | null | undefined): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
-function toneForStatus(s: PipelineStatus): DmTableStatusTone {
+function toneForStatus(s: PipelineStatus): "online" | "degraded" | "offline" | "error" | "muted" {
   if (s === "active") return "online";
   if (s === "draft") return "muted";
   if (s === "disabled") return "offline";
@@ -196,15 +203,14 @@ export function ScrubberPipelinesPage() {
   useEffect(() => setPage(0), [appliedSearch, status, protocol, opsSiteId]);
 
   return (
-    <PageShell variant="list" className="scrubber-pipelines-page device-manage-page">
-      <div className="dm-root">
-        <header className="dm-page-hero">
-          <div className="dm-page-hero__top">
-            <div className="dm-page-hero__titles">
-              <h1 className="dm-page-hero__title">Scrubber Pipelines</h1>
-              <p className="dm-page-hero__subtitle">Manage active data transformation pipelines.</p>
-            </div>
-            <div className="dm-page-hero__actions">
+    <OpsListPage
+      className="scrubber-pipelines-page device-manage-page"
+      header={
+        <OpsPageHeader
+          title="Scrubber Pipelines"
+          subtitle="Manage active data transformation pipelines."
+          actions={
+            <>
               <button type="button" className="dm-btn dm-btn--outline" onClick={() => void load()} disabled={loading}>
                 <RefreshCw size={16} aria-hidden />
                 Refresh
@@ -217,21 +223,28 @@ export function ScrubberPipelinesPage() {
               >
                 Create Pipeline
               </button>
-            </div>
+            </>
+          }
+        />
+      }
+      scopeBar={
+        <OpsScopeBar>
+          <div className="dm-page-scope-strip">
+            <OpsScopeControls variant="inline" timeRangeLabel="Range" />
           </div>
-        </header>
-
-        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-
-        <section className="dm-kpi-row dm-kpi-row--equal-5" aria-label="Scrubber pipeline summary">
+        </OpsScopeBar>
+      }
+      kpiRow={
+        <OpsKpiRow ariaLabel="Scrubber pipeline summary" className="dm-kpi-row--equal-5">
           <div className="dm-kpi"><div className="dm-kpi__body"><div className="dm-kpi__label">Total</div><div className="dm-kpi__value">{kpi.total}</div></div></div>
           <div className="dm-kpi"><div className="dm-kpi__body"><div className="dm-kpi__label">Active</div><div className="dm-kpi__value">{kpi.active}</div></div></div>
           <div className="dm-kpi"><div className="dm-kpi__body"><div className="dm-kpi__label">Draft</div><div className="dm-kpi__value">{kpi.draft}</div></div></div>
           <div className="dm-kpi"><div className="dm-kpi__body"><div className="dm-kpi__label">Disabled</div><div className="dm-kpi__value">{kpi.disabled}</div></div></div>
           <div className="dm-kpi"><div className="dm-kpi__body"><div className="dm-kpi__label">Errors</div><div className="dm-kpi__value">{kpi.error}</div></div></div>
-        </section>
-
-        <section className="dm-filter-panel" aria-label="Pipeline filters">
+        </OpsKpiRow>
+      }
+      filterPanel={
+        <OpsFilterPanel ariaLabel="Pipeline filters">
           <div className="dm-controls-form__row">
             <div className="dm-search-wrap">
               <Search size={16} aria-hidden />
@@ -281,9 +294,12 @@ export function ScrubberPipelinesPage() {
               </select>
             </label>
           </div>
-        </section>
+        </OpsFilterPanel>
+      }
+      content={
+        <OpsDataTable>
+          {err ? <PageStatus variant="error">{err}</PageStatus> : null}
 
-        <div className="dm-table-wrap">
           <div className="dm-device-table-shell">
             <div className="dm-table-scroll">
               <table className="dm-data-table">
@@ -324,7 +340,7 @@ export function ScrubberPipelinesPage() {
                         <td className="dm-data-table__td">{r.protocol}</td>
                         <td className="dm-data-table__td dm-data-table__td--center">{r.version}</td>
                         <td className="dm-data-table__td dm-data-table__td--center">
-                          <DmTableStatusMetric label={r.status} tone={toneForStatus(r.status)} />
+                          <OpsStatusPill status={r.status} variant={toneForStatus(r.status)} />
                         </td>
                         <td className="dm-data-table__td dm-data-table__td--muted">{r.lastPublished}</td>
                         <td className="dm-data-table__td dm-data-table__td--muted">{r.lastData}</td>
@@ -336,9 +352,9 @@ export function ScrubberPipelinesPage() {
                             <Link className="dm-act-grid__btn dm-act-grid__btn--plain" to={`/devices/manage?device=${encodeURIComponent(r.deviceId)}`} title="View device">
                               <Eye size={16} aria-hidden />
                             </Link>
-                            <button type="button" className="dm-act-grid__btn dm-act-grid__btn--plain" title="Versions (coming soon)" disabled>
+                            <OpsActionButton tone="plain" title="Versions (coming soon)" disabled>
                               <GitBranch size={16} aria-hidden />
-                            </button>
+                            </OpsActionButton>
                           </div>
                         </td>
                       </tr>
@@ -348,6 +364,9 @@ export function ScrubberPipelinesPage() {
               </table>
             </div>
           </div>
+        </OpsDataTable>
+      }
+      pagination={
           <div className="dm-table-pager" role="navigation" aria-label="Pagination">
             <span className="dm-table-pager__meta">
               {filtered.length === 0
@@ -368,8 +387,7 @@ export function ScrubberPipelinesPage() {
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </PageShell>
+      }
+    />
   );
 }

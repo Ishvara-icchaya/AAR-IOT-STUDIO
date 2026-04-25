@@ -6,24 +6,27 @@ type AlertTone = "none" | "critical" | "warning" | "info";
 export function AlertsToolbar({
   unacked,
   alertTone,
+  className,
 }: {
   unacked: number;
   alertTone: AlertTone;
+  className?: string;
 }) {
   const { openList } = useAlertsModal();
+
+  const toneClass =
+    alertTone === "critical"
+      ? " shell__alert-link--critical"
+      : alertTone === "warning"
+        ? " shell__alert-link--warning"
+        : alertTone === "info"
+          ? " shell__alert-link--info"
+          : "";
 
   return (
     <button
       type="button"
-      className={`shell__alert-link${
-        alertTone === "critical"
-          ? " shell__alert-link--critical"
-          : alertTone === "warning"
-            ? " shell__alert-link--warning"
-            : alertTone === "info"
-              ? " shell__alert-link--info"
-              : ""
-      }`}
+      className={["shell__alert-link", toneClass, className].filter(Boolean).join(" ")}
       title="Unified alerts"
       aria-label="Open alerts"
       onClick={() => openList()}

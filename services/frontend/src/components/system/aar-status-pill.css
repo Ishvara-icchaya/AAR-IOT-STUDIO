@@ -1,0 +1,79 @@
+/* Status display — use AarStatusPill / OpsStatusPill; tokens: aar-* with dm-* fallback on older shells. */
+
+.aar-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--dm-border-strong, var(--aar-border-strong, rgba(255, 255, 255, 0.12)));
+  background: var(--dm-surface-2, var(--aar-surface-2, #0d121a));
+  color: var(--dm-text, var(--aar-text, #f4f6f8));
+  font-size: 0.72rem;
+  font-weight: var(--aar-font-weight-semibold, 600);
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.aar-status-pill--online,
+.aar-status-pill--active,
+.aar-status-pill--valid {
+  border-color: color-mix(
+    in oklab,
+    var(--dm-neon, var(--aar-status-online, #a3ff47)) 55%,
+    var(--dm-border, var(--aar-border, rgba(255, 255, 255, 0.08)))
+  );
+}
+
+.aar-status-pill--degraded,
+.aar-status-pill--warning {
+  border-color: color-mix(
+    in oklab,
+    var(--dm-warn, var(--aar-status-degraded, #f59e0b)) 55%,
+    var(--dm-border, var(--aar-border))
+  );
+}
+
+.aar-status-pill--offline,
+.aar-status-pill--invalid {
+  border-color: color-mix(
+    in oklab,
+    var(--dm-danger, var(--aar-status-offline, #ef4444)) 50%,
+    var(--dm-border, var(--aar-border))
+  );
+}
+
+.aar-status-pill--error {
+  border-color: color-mix(
+    in oklab,
+    var(--dm-error-purple, var(--aar-status-error, #a855f7)) 55%,
+    var(--dm-border, var(--aar-border))
+  );
+}
+
+.aar-status-pill--muted,
+.aar-status-pill--draft,
+.aar-status-pill--frozen,
+.aar-status-pill--disabled {
+  color: var(--dm-muted, var(--aar-muted));
+}
+
+.aar-status-pill--draft {
+  border-color: color-mix(in oklab, var(--aar-status-draft, #94a3b8) 45%, var(--dm-border, var(--aar-border)));
+}
+
+.aar-status-pill--published {
+  border-color: color-mix(in oklab, var(--dm-neon, var(--aar-accent-green)) 40%, var(--dm-border, var(--aar-border)));
+}
+
+.aar-status-pill--frozen {
+  border-color: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 35%, var(--dm-border, var(--aar-border)));
+}
+
+.aar-status-pill--disabled {
+  opacity: 0.55;
+}
+
+.aar-status-pill--waiting {
+  border-color: color-mix(in oklab, var(--dm-warn, var(--aar-accent-amber)) 42%, var(--dm-border, var(--aar-border)));
+}

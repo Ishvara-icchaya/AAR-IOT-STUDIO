@@ -797,7 +797,7 @@ function normalizeGpsTimestamp(v: unknown): string | null {
 function applyGpsMapping(payload: Record<string, unknown>, spec: unknown): void {
   if (!spec || typeof spec !== "object" || Array.isArray(spec)) return;
   const s = spec as Record<string, unknown>;
-  if (!Boolean(s.enabled)) return;
+  if (!s.enabled) return;
 
   const out: Record<string, unknown> = {};
   const problems: string[] = [];
@@ -2028,7 +2028,7 @@ function renderStepEditor(
       <>
         <div style={subhead}>Literal attributes</div>
         <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)", marginBottom: "0.35rem" }}>
-          Example: Key <code>site</code>, Value <code>"Factory-A"</code>
+          Example: Key <code>site</code>, Value <code>{'"Factory-A"'}</code>
         </div>
         {form.attrLiterals.map((row, i) => (
           <div key={i} style={pairRow}>

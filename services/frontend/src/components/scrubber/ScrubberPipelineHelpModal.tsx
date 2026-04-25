@@ -157,7 +157,8 @@ function TabPanelFunctionBased() {
       <p style={{ marginTop: 0 }}>
         Define <code>def transform(payload):</code> returning a dict of <strong>scalar</strong> fields only.{" "}
         <code>payload</code> is the dict <strong>after</strong> drop, flatten, attributes, and derived fields — use{" "}
-        <code>payload.get("readings_temp_c")</code> on flat data, or <code>payload.get("readings", {}).get("temp_c")</code>{" "}
+        <code>{'payload.get("readings_temp_c")'}</code> on flat data, or{" "}
+        <code>{'payload.get("readings", {}).get("temp_c")'}</code>{" "}
         if still nested.
       </p>
       <JsonBlock

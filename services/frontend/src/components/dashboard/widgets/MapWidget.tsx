@@ -20,7 +20,7 @@ import type { MarkerRec } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { apiMarkersToMarkerRecs } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { markersToViewModels, type MapPointVM, type MapProfile } from "@/lib/dashboard/mapViewModel";
 
-function useClusterEffective(list: MarkerRec[], controls: MapControlsVM): boolean {
+function computeClusterEffective(list: MarkerRec[], controls: MapControlsVM): boolean {
   const n = list.length;
   const max = Math.max(10, Math.min(500, controls.max_direct_markers ?? 80));
   if (n > max) return true;
@@ -35,7 +35,7 @@ function markersFingerprint(list: MarkerRec[]): string {
 }
 
 function dataSyncKey(list: MarkerRec[], controls: MapControlsVM): string {
-  const cluster = useClusterEffective(list, controls) ? "1" : "0";
+  const cluster = computeClusterEffective(list, controls) ? "1" : "0";
   const mc = JSON.stringify(controls);
   return `${markersFingerprint(list)}|${cluster}|${mc}`;
 }
@@ -359,7 +359,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       const chromeNow = adaptMapChrome(b);
       const ctrl = chromeNow.mapControls;
       const init = mapInitApiRef.current ?? chromeNow.mapInitHint;
-      const useCluster = useClusterEffective(list, ctrl);
+      const useCluster = computeClusterEffective(list, ctrl);
       const profile: MapProfile = chromeNow.mapProfile === "fleet" ? "fleet" : "site";
       const vms = markersToViewModels(list, profile);
 

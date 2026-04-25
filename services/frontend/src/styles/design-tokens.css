@@ -1,0 +1,59 @@
+/**
+ * Global AAR design tokens (enterprise console / ops surfaces).
+ * Import once from app entry (see main.tsx). Prefer var(--aar-*) in new UI.
+ * Legacy Manage Devices theme maps --dm-* → --aar-* on ops shells (see device-register-page.css).
+ */
+
+:root {
+  /* --- Colors (canonical ops charcoal) --- */
+  --aar-bg: #0a0e14;
+  --aar-surface: #111822;
+  --aar-surface-2: #0d121a;
+  --aar-surface-3: #0f1622;
+  --aar-border: rgba(255, 255, 255, 0.08);
+  --aar-border-strong: rgba(255, 255, 255, 0.12);
+  --aar-text: #f4f6f8;
+  --aar-muted: #9aa3b2;
+  --aar-accent-blue: #1d76ff;
+  --aar-accent-green: #a3ff47;
+  --aar-accent-amber: #f59e0b;
+  --aar-accent-red: #ef4444;
+  --aar-accent-purple: #a855f7;
+
+  /* --- Spacing (8px rhythm) --- */
+  --aar-space-1: 4px;
+  --aar-space-2: 8px;
+  --aar-space-3: 12px;
+  --aar-space-4: 16px;
+  --aar-space-5: 20px;
+  --aar-space-6: 24px;
+  --aar-space-8: 32px;
+
+  /* --- Radius --- */
+  --aar-radius-sm: 6px;
+  --aar-radius-md: 8px;
+  --aar-radius-lg: 10px;
+  --aar-radius-xl: 12px;
+
+  /* --- Typography --- */
+  --aar-font-size-xs: 0.62rem;
+  --aar-font-size-sm: 0.78rem;
+  --aar-font-size-md: 0.88rem;
+  --aar-font-size-lg: 1rem;
+  --aar-font-size-xl: clamp(1.35rem, 2.2vw, 1.65rem);
+  --aar-font-weight-medium: 500;
+  --aar-font-weight-semibold: 600;
+  --aar-font-weight-bold: 800;
+
+  /* --- Shadows --- */
+  --aar-shadow-card: 0 10px 28px rgba(0, 0, 0, 0.35);
+  --aar-shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.45);
+
+  /* --- Status (semantic; use in pills / KPI accents) --- */
+  --aar-status-online: var(--aar-accent-green);
+  --aar-status-degraded: var(--aar-accent-amber);
+  --aar-status-offline: var(--aar-accent-red);
+  --aar-status-error: var(--aar-accent-purple);
+  --aar-status-draft: #94a3b8;
+  --aar-status-active: var(--aar-accent-green);
+}

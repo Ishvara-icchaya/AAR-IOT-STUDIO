@@ -1,0 +1,405 @@
+/* Enterprise control-plane top navigation — uses global --aar-* tokens (+ fallbacks). */
+
+.aar-topnav {
+  --aar-topnav-accent-glow: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 22%, transparent);
+  --aar-topnav-surface-veil: color-mix(in oklab, var(--aar-surface, #111822) 92%, #000 8%);
+  height: 64px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--aar-space-3, 12px) var(--aar-space-4, 16px);
+  padding: 0 var(--aar-space-4, 16px);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--aar-surface-2, #0d121a) 88%, transparent), var(--aar-topnav-surface-veil)),
+    var(--aar-surface, #111822);
+  border-bottom: 1px solid var(--aar-border-strong, rgba(255, 255, 255, 0.12));
+  color: var(--aar-text, #f4f6f8);
+  position: relative;
+  z-index: 60;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.aar-topnav__menu-toggle {
+  display: none;
+  grid-area: toggle;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid var(--aar-border, rgba(255, 255, 255, 0.08));
+  background: color-mix(in oklab, var(--aar-surface-2, #0d121a) 85%, var(--aar-text) 4%);
+  color: var(--aar-text, #f4f6f8);
+  cursor: pointer;
+}
+
+.aar-topnav__brand {
+  grid-area: brand;
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--aar-space-3, 12px);
+}
+
+.aar-topnav__logo {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--aar-radius-lg, 10px);
+  display: grid;
+  place-items: center;
+  font-weight: var(--aar-font-weight-bold, 800);
+  color: var(--aar-text, #fff);
+  background: linear-gradient(135deg, var(--aar-accent-blue, #1d76ff), color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 55%, #42d6ff));
+  box-shadow: 0 0 20px var(--aar-topnav-accent-glow);
+  flex-shrink: 0;
+}
+
+.aar-topnav__brand-text {
+  min-width: 0;
+}
+
+.aar-topnav__product {
+  font-size: var(--aar-font-size-md, 0.88rem);
+  font-weight: var(--aar-font-weight-bold, 800);
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
+.aar-topnav__context {
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: var(--aar-font-size-xs, 0.62rem);
+  color: var(--aar-muted, #9aa3b2);
+}
+
+.aar-topnav__context-label {
+  white-space: nowrap;
+}
+
+.aar-topnav__context-strong {
+  color: color-mix(in oklab, var(--aar-muted, #9aa3b2) 55%, var(--aar-text, #f4f6f8));
+  font-weight: var(--aar-font-weight-semibold, 600);
+}
+
+.aar-topnav__dot {
+  opacity: 0.45;
+  color: var(--aar-muted, #9aa3b2);
+}
+
+.aar-topnav__site-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.aar-topnav__site {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in oklab, var(--aar-muted, #9aa3b2) 45%, var(--aar-text, #f4f6f8));
+  font: inherit;
+  font-size: inherit;
+  font-weight: var(--aar-font-weight-semibold, 600);
+  cursor: pointer;
+  max-width: min(12rem, 28vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aar-topnav__site:hover {
+  color: var(--aar-text, #f4f6f8);
+}
+
+.aar-topnav__site:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.aar-topnav__site-chevron {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.aar-topnav__site-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 12rem;
+  max-height: min(50vh, 18rem);
+  overflow: auto;
+  padding: var(--aar-space-2, 8px);
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid var(--aar-border-strong, rgba(255, 255, 255, 0.12));
+  background: var(--aar-surface, #111822);
+  box-shadow: var(--aar-shadow-elevated, 0 16px 48px rgba(0, 0, 0, 0.45));
+  z-index: 80;
+}
+
+.aar-topnav__site-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  margin: 0;
+  border: 0;
+  border-radius: var(--aar-radius-sm, 6px);
+  background: transparent;
+  color: var(--aar-text, #f4f6f8);
+  font: inherit;
+  font-size: var(--aar-font-size-sm, 0.78rem);
+  cursor: pointer;
+}
+
+.aar-topnav__site-option:hover {
+  background: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 12%, var(--aar-surface-2, #0d121a));
+}
+
+.aar-topnav__site-option--active {
+  background: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 18%, var(--aar-surface-2, #0d121a));
+}
+
+.aar-topnav__nav {
+  grid-area: nav;
+  height: 44px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--aar-space-2, 8px);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.aar-topnav__item {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--aar-muted, #9aa3b2);
+  font-size: var(--aar-font-size-sm, 0.78rem);
+  font-weight: var(--aar-font-weight-semibold, 600);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.aar-topnav__item:hover {
+  background: color-mix(in oklab, var(--aar-text, #fff) 6%, transparent);
+  color: var(--aar-text, #f4f6f8);
+  border-color: var(--aar-border, rgba(255, 255, 255, 0.08));
+}
+
+.aar-topnav__item--active {
+  color: var(--aar-text, #f4f6f8);
+  background: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 16%, transparent);
+  border-color: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 52%, var(--aar-border-strong, rgba(255, 255, 255, 0.12)));
+  box-shadow: inset 0 -2px 0 var(--aar-accent-blue, #1d76ff);
+}
+
+.aar-topnav__utilities {
+  grid-area: util;
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--aar-space-2, 8px);
+}
+
+.aar-topnav__utility {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid var(--aar-border, rgba(255, 255, 255, 0.08));
+  background: color-mix(in oklab, var(--aar-text, #fff) 4%, transparent);
+  color: var(--aar-text, #f4f6f8);
+  padding: 0 10px;
+  font-size: var(--aar-font-size-sm, 0.78rem);
+  font-weight: var(--aar-font-weight-semibold, 600);
+  cursor: pointer;
+}
+
+.aar-topnav__utility:hover {
+  background: color-mix(in oklab, var(--aar-text, #fff) 8%, transparent);
+  border-color: var(--aar-border-strong, rgba(255, 255, 255, 0.12));
+}
+
+.aar-topnav__utility-label {
+  font-weight: var(--aar-font-weight-semibold, 600);
+}
+
+/* Alerts: inherit shell tone classes; align with utility chrome */
+.aar-topnav__alerts.shell__alert-link {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid var(--aar-border, rgba(255, 255, 255, 0.08));
+  background: color-mix(in oklab, var(--aar-text, #fff) 4%, transparent);
+  color: var(--aar-text, #f4f6f8);
+  padding: 0 10px;
+  font-size: var(--aar-font-size-sm, 0.78rem);
+  font-weight: var(--aar-font-weight-semibold, 600);
+}
+
+.aar-topnav__alerts.shell__alert-link:hover {
+  background: color-mix(in oklab, var(--aar-text, #fff) 8%, transparent);
+  border-color: var(--aar-border-strong, rgba(255, 255, 255, 0.12));
+}
+
+.aar-topnav__alerts.shell__alert-link--critical {
+  color: color-mix(in oklab, var(--aar-accent-red, #ef4444) 35%, var(--aar-text, #f4f6f8));
+  border-color: color-mix(in oklab, var(--aar-accent-red, #ef4444) 55%, var(--aar-border, rgba(255, 255, 255, 0.08)));
+  background: color-mix(in oklab, var(--aar-accent-red, #ef4444) 10%, transparent);
+}
+
+.aar-topnav__user .shell-toolbar-btn {
+  height: 36px;
+  min-width: 2.25rem;
+  border-color: var(--aar-border, rgba(255, 255, 255, 0.08));
+  background: color-mix(in oklab, var(--aar-text, #fff) 4%, transparent);
+  color: var(--aar-text, #f4f6f8);
+}
+
+.aar-topnav__backdrop {
+  display: none;
+}
+
+.aar-topnav__menu-toggle,
+.aar-topnav__brand,
+.aar-topnav__utilities {
+  position: relative;
+  z-index: 50;
+}
+
+.aar-topnav__nav--mobile-open {
+  position: relative;
+  z-index: 48;
+}
+
+/* Narrow desktop: icon-first nav + utilities, keep layout stable */
+@media (max-width: 1180px) and (min-width: 1041px) {
+  .aar-topnav {
+    gap: var(--aar-space-2, 8px) var(--aar-space-3, 12px);
+  }
+
+  .aar-topnav__item-label,
+  .aar-topnav__utility-label {
+    display: none;
+  }
+
+  .aar-topnav__item {
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .aar-topnav__utility {
+    width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+/* Mobile: menu toggle + drawer */
+@media (max-width: 1040px) {
+  .aar-topnav {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "toggle brand util"
+      "nav nav nav";
+    height: auto;
+    min-height: 56px;
+    padding: var(--aar-space-2, 8px) var(--aar-space-3, 12px);
+    row-gap: var(--aar-space-2, 8px);
+  }
+
+  .aar-topnav__menu-toggle {
+    display: inline-flex;
+  }
+
+  .aar-topnav__utilities {
+    margin-left: unset;
+    justify-self: end;
+  }
+
+  .aar-topnav__nav {
+    flex: unset;
+    justify-content: flex-start;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    gap: var(--aar-space-2, 8px);
+    padding: var(--aar-space-2, 8px) 0 0;
+    overflow: visible;
+  }
+
+  .aar-topnav__nav--mobile-open {
+    display: flex;
+  }
+
+  .aar-topnav__item {
+    width: 100%;
+    justify-content: flex-start;
+    height: auto;
+    min-height: 42px;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .aar-topnav__item-label,
+  .aar-topnav__utility-label {
+    display: inline;
+  }
+
+  .aar-topnav__utility {
+    width: auto;
+    padding: 0 10px;
+  }
+
+  .aar-topnav__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    background: color-mix(in oklab, #000 55%, transparent);
+  }
+}
+
+.shell-header.shell-header--aar-topnav {
+  flex-shrink: 0;
+  padding: 0;
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  gap: 0;
+}
+

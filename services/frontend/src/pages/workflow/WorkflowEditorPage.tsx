@@ -601,7 +601,7 @@ export function WorkflowEditorPage() {
         } else {
           setUpstreamPreview(null);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setNodePreview(null);
           setUpstreamPreview(null);

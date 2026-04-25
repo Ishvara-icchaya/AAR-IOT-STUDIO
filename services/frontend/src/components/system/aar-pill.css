@@ -1,0 +1,36 @@
+/* Compact badges (Enterprise AI meta, etc.) — use AarPill, not dm-pill. */
+
+.aar-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  font-size: var(--aar-font-size-xs, 0.62rem);
+  font-weight: var(--aar-font-weight-semibold, 600);
+  border: 1px solid var(--aar-border, rgba(255, 255, 255, 0.08));
+  text-transform: capitalize;
+  box-sizing: border-box;
+}
+
+.aar-pill--neon {
+  background: color-mix(in oklab, var(--aar-accent-green, #a3ff47) 14%, #0f1724);
+  border-color: color-mix(in oklab, var(--aar-accent-green, #a3ff47) 42%, var(--aar-border));
+  color: var(--aar-accent-green, #a3ff47);
+}
+
+.aar-pill--warn {
+  background: color-mix(in oklab, var(--aar-accent-amber, #f59e0b) 16%, #0f1724);
+  border-color: color-mix(in oklab, var(--aar-accent-amber, #f59e0b) 45%, var(--aar-border));
+  color: #fcd34d;
+}
+
+.aar-pill--bad {
+  background: color-mix(in oklab, var(--aar-accent-red, #ef4444) 14%, #0f1724);
+  border-color: color-mix(in oklab, var(--aar-accent-red, #ef4444) 45%, var(--aar-border));
+  color: #fecaca;
+}
+
+.aar-pill--muted {
+  color: var(--aar-muted, #9aa3b2);
+  background: color-mix(in oklab, var(--aar-muted, #9aa3b2) 8%, transparent);
+}

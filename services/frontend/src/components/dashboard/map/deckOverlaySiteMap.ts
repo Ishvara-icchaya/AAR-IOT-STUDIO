@@ -140,6 +140,7 @@ export function attachDeckSiteMapOverlay(
   map.on("zoomend", onMove);
 
   const updatePoints = (points: MapPointVM[], useCluster: boolean) => {
+    lastPoints = points;
     useClusterMode = useCluster;
     const feats = toFeatures(points);
     cached = feats;

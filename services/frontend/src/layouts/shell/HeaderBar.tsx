@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
+import { useOpsShell } from "@/contexts/OpsShellContext";
 import { getAlertsSummary } from "@/api/alerts";
-import { AlertsToolbar } from "./AlertsToolbar";
-import { MainNav } from "./MainNav";
+import { AarTopNav } from "./AarTopNav";
 
 type SiteRow = { id: string; name: string };
 
 export function HeaderBar() {
   const { me } = useAuth();
+  const { siteId, setSiteId, triggerRefresh } = useOpsShell();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [unacked, setUnacked] = useState(0);
   const [alertTone, setAlertTone] = useState<"none" | "critical" | "warning" | "info">("none");
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,48 +60,22 @@ export function HeaderBar() {
   }, []);
 
   const customerLabel = (me?.customer_name || "").trim() || "—";
-  let siteLabel = "—";
-  if (sites.length === 1) siteLabel = sites[0].name;
-  else if (sites.length > 1) siteLabel = `${sites.length} sites`;
+  let siteSummary = "—";
+  if (sites.length === 1) siteSummary = sites[0].name;
+  else if (sites.length > 1) siteSummary = `${sites.length} sites`;
 
   return (
-    <header className="shell-header" aria-label="Application header">
-      <div className="shell-header__left">
-        <button
-          type="button"
-          className="shell-header__menu-toggle"
-          aria-expanded={mobileNavOpen}
-          aria-controls="shell-primary-nav"
-          onClick={() => setMobileNavOpen((o) => !o)}
-        >
-          ☰
-        </button>
-        <div className="shell-header__brand">
-          <span className="shell-header__product">AAR-IoT-Studio</span>
-          <span className="shell-header__context" title={`Customer: ${customerLabel} · Site: ${siteLabel}`}>
-            <span className="shell-header__ctx-item">
-              Customer: <strong>{customerLabel}</strong>
-            </span>
-            <span className="shell-header__ctx-sep" aria-hidden>
-              |
-            </span>
-            <span className="shell-header__ctx-item">
-              Site: <strong>{siteLabel}</strong>
-            </span>
-          </span>
-        </div>
-      </div>
-
-      <div className="shell-header__center">
-        <MainNav
-          mobileOpen={mobileNavOpen}
-          onNavigate={() => setMobileNavOpen(false)}
-        />
-      </div>
-
-      <div className="shell-header__right">
-        <AlertsToolbar unacked={unacked} alertTone={alertTone} />
-      </div>
+    <header className="shell-header shell-header--aar-topnav" aria-label="Application header">
+      <AarTopNav
+        customerName={customerLabel}
+        siteSummary={siteSummary}
+        sites={sites}
+        selectedSiteId={siteId}
+        onSiteChange={setSiteId}
+        alertCount={unacked}
+        alertTone={alertTone}
+        onRefresh={triggerRefresh}
+      />
     </header>
   );
 }

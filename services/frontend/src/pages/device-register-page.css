@@ -10,18 +10,19 @@
 .scrubber-raw-select-page.page-card,
 .enterprise-ai-page.page-card,
 .ports-config-page.page-card {
-  --dm-bg: #0a0e14;
-  --dm-surface: #111822;
-  --dm-surface-2: #0d121a;
-  --dm-border: rgba(255, 255, 255, 0.08);
-  --dm-border-strong: rgba(255, 255, 255, 0.12);
-  --dm-text: #f4f6f8;
-  --dm-muted: #9aa3b2;
-  --dm-accent-blue: #1d76ff;
-  --dm-neon: #a3ff47;
-  --dm-warn: #f59e0b;
-  --dm-danger: #ef4444;
-  --dm-error-purple: #a855f7;
+  /* Legacy dm-* names map to global aar-* tokens (single source of truth). */
+  --dm-bg: var(--aar-bg);
+  --dm-surface: var(--aar-surface);
+  --dm-surface-2: var(--aar-surface-2);
+  --dm-border: var(--aar-border);
+  --dm-border-strong: var(--aar-border-strong);
+  --dm-text: var(--aar-text);
+  --dm-muted: var(--aar-muted);
+  --dm-accent-blue: var(--aar-accent-blue);
+  --dm-neon: var(--aar-accent-green);
+  --dm-warn: var(--aar-accent-amber);
+  --dm-danger: var(--aar-accent-red);
+  --dm-error-purple: var(--aar-accent-purple);
 
   max-width: none;
   width: 100%;
@@ -95,6 +96,18 @@
   border-top: 1px solid var(--dm-border);
 }
 
+/* Site / range / refresh toolbar — above page title, thin rules top & bottom */
+.dm-page-scope-strip {
+  margin: 0 0 0.5rem;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--dm-border);
+  border-bottom: 1px solid var(--dm-border);
+}
+
+.dm-page-scope-strip + .dm-page-hero {
+  padding-top: 0.25rem;
+}
+
 /* Section title inside filter / ops panels (uppercase label) */
 .dm-section-heading {
   margin: 0;
@@ -149,6 +162,26 @@
 .dm-btn--outline {
   background: var(--dm-surface-2);
   color: var(--dm-text);
+}
+
+.dm-btn--danger {
+  border: none;
+  background: var(--dm-danger, var(--aar-accent-red));
+  color: #fff;
+}
+
+.dm-btn--danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.dm-btn--warning {
+  border: none;
+  background: var(--dm-warn, var(--aar-accent-amber));
+  color: #111827;
+}
+
+.dm-btn--warning:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 .dm-btn--search {
@@ -669,28 +702,6 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.dm-table-pager__btn {
-  padding: 0.28rem 0.65rem;
-  border-radius: 6px;
-  border: 1px solid var(--dm-border-strong);
-  background: var(--dm-surface);
-  color: var(--dm-text);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.dm-table-pager__btn:hover:not(:disabled) {
-  border-color: color-mix(in oklab, var(--dm-accent-blue) 45%, var(--dm-border));
-  color: var(--dm-accent-blue);
-}
-
-.dm-table-pager__btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* —— Pills + status —— */

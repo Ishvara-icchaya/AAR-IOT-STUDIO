@@ -1,0 +1,83 @@
+/* Atomic layout / surfaces — compose with OpsListPage; prefer tokens. */
+
+.aar-card {
+  border-radius: var(--aar-radius-lg, 10px);
+  border: 1px solid var(--dm-border, var(--aar-border));
+  background: var(--dm-surface, var(--aar-surface));
+  box-shadow: var(--aar-shadow-card);
+  padding: var(--aar-space-4, 16px);
+  box-sizing: border-box;
+}
+
+.aar-kpi-card {
+  border-radius: var(--aar-radius-lg, 10px);
+  border: 1px solid var(--dm-border, var(--aar-border));
+  background: var(--dm-surface, var(--aar-surface));
+  padding: var(--aar-space-3, 12px) var(--aar-space-4, 16px);
+  min-height: 4.5rem;
+  box-sizing: border-box;
+}
+
+.aar-page-header {
+  padding: var(--aar-space-1, 4px) 0 var(--aar-space-2, 8px);
+  border-bottom: 1px solid var(--dm-border, var(--aar-border));
+  margin-bottom: var(--aar-space-1, 4px);
+}
+
+.aar-page-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.aar-page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.aar-page-header__title {
+  margin: 0;
+  font-size: var(--aar-font-size-xl, clamp(1.35rem, 2.2vw, 1.65rem));
+  font-weight: var(--aar-font-weight-bold, 800);
+  letter-spacing: -0.03em;
+  color: var(--dm-text, var(--aar-text));
+  line-height: 1.15;
+}
+
+.aar-page-header__subtitle {
+  margin: var(--aar-space-2, 8px) 0 0;
+  font-size: var(--aar-font-size-md, 0.88rem);
+  color: var(--dm-muted, var(--aar-muted));
+  line-height: 1.45;
+  max-width: 40rem;
+}
+
+.aar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--aar-space-3, 12px);
+}
+
+.aar-input,
+.aar-select {
+  padding: 0.38rem 0.55rem;
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid var(--dm-border-strong, var(--aar-border-strong));
+  background: var(--dm-surface-2, var(--aar-surface-2));
+  color: var(--dm-text, var(--aar-text));
+  font-size: var(--aar-font-size-sm, 0.78rem);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.aar-input:focus,
+.aar-select:focus {
+  outline: none;
+  border-color: color-mix(in oklab, var(--dm-accent-blue, var(--aar-accent-blue)) 55%, var(--dm-border, var(--aar-border)));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--dm-accent-blue, var(--aar-accent-blue)) 22%, transparent);
+}

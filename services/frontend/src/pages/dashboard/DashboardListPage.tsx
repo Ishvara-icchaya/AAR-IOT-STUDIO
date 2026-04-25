@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Activity,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Lock,
   Pencil,
@@ -16,8 +18,13 @@ import * as dashApi from "@/api/dashboard";
 import type { DashboardListItemDTO } from "@/types/dashboard";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
-import { DmTableStatusMetric, type DmTableStatusTone } from "@/components/app";
-import { PageShell } from "@/layouts/PageShell";
+import { OpsActionButton } from "@/components/ops/OpsActionButton";
+import { OpsDataTable } from "@/components/ops/OpsDataTable";
+import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
+import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
+import { OpsListPage } from "@/components/ops/OpsListPage";
+import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
+import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { PageStatus } from "@/components/PageStatus";
 import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
@@ -46,7 +53,7 @@ function formatRelativeShort(iso: string | null | undefined): string {
   }
 }
 
-function dashboardStatusTone(status: string): DmTableStatusTone {
+function dashboardStatusTone(status: string): "online" | "degraded" | "offline" | "error" | "muted" {
   const s = status.toLowerCase();
   if (s === "frozen") return "online";
   if (s === "draft") return "degraded";
@@ -258,28 +265,22 @@ export function DashboardListPage() {
   };
 
   return (
-    <PageShell variant="list" className="dashboard-list-page device-manage-page">
-      <div className="dm-root">
-        <header className="dm-page-hero">
-          <div className="dm-page-hero__top">
-            <div className="dm-page-hero__titles">
-              <h1 className="dm-sr-only">Dashboards</h1>
-              <p className="dm-page-hero__subtitle" style={{ marginTop: 0 }}>
-                Browse dashboards, see aggregation for the current list, and open live or builder views.
-              </p>
-            </div>
-            <div className="dm-page-hero__actions">
-              <Link to="/dashboard/create" className="dm-btn dm-btn--primary">
-                <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                Create dashboard
-              </Link>
-            </div>
-          </div>
-        </header>
-
-        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-
-        <section className="dm-kpi-row" aria-label="Dashboard aggregation">
+    <OpsListPage
+      className="dashboard-list-page device-manage-page"
+      header={
+        <OpsPageHeader
+          title="Dashboards"
+          subtitle="Browse dashboards, see aggregation for the current list, and open live or builder views."
+          actions={
+            <Link to="/dashboard/create" className="dm-btn dm-btn--primary">
+              <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+              Create dashboard
+            </Link>
+          }
+        />
+      }
+      kpiRow={
+        <OpsKpiRow ariaLabel="Dashboard aggregation">
           <div className="dm-kpi dm-kpi--with-deco">
             <div className="dm-kpi__body">
               <div className="dm-kpi__label">
@@ -358,15 +359,10 @@ export function DashboardListPage() {
               <AppIcon name="refresh" size="card" aria-hidden />
             </div>
           </div>
-        </section>
-
-        {(kpiStats.inactive > 0 || kpiStats.archived > 0) && (
-          <p className="dm-inline-summary" style={{ marginTop: 0 }}>
-            Also in list: <strong>{kpiStats.inactive}</strong> inactive, <strong>{kpiStats.archived}</strong> archived.
-          </p>
-        )}
-
-        <section className="dm-filter-panel" aria-label="Search and filters">
+        </OpsKpiRow>
+      }
+      filterPanel={
+        <OpsFilterPanel ariaLabel="Search and filters">
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
               <div className="dm-search-wrap">
@@ -424,7 +420,17 @@ export function DashboardListPage() {
               </button>
             </div>
           </form>
-        </section>
+        </OpsFilterPanel>
+      }
+      content={
+        <OpsDataTable className="dashboard-list-table-wrap" id="dashboard-list-table">
+          {err ? <PageStatus variant="error">{err}</PageStatus> : null}
+
+        {(kpiStats.inactive > 0 || kpiStats.archived > 0) && (
+          <p className="dm-inline-summary" style={{ marginTop: 0 }}>
+            Also in list: <strong>{kpiStats.inactive}</strong> inactive, <strong>{kpiStats.archived}</strong> archived.
+          </p>
+        )}
 
         {filterActive && filtered.length > 0 && items.length > 0 ? (
           <p className="dm-inline-summary">
@@ -433,7 +439,6 @@ export function DashboardListPage() {
           </p>
         ) : null}
 
-        <div className="dm-table-wrap dashboard-list-table-wrap" id="dashboard-list-table">
           {loading && items.length === 0 ? (
             <p className="dm-empty">Loading…</p>
           ) : items.length === 0 ? (
@@ -489,10 +494,10 @@ export function DashboardListPage() {
                             <small>{siteLabel}</small>
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--center">
-                            <DmTableStatusMetric label={row.status} tone={dashboardStatusTone(row.status)} />
+                            <OpsStatusPill status={row.status} variant={dashboardStatusTone(row.status)} />
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--center">
-                            {row.is_primary ? <span className="dm-pill dm-pill--neon">Yes</span> : "—"}
+                            {row.is_primary ? <OpsStatusPill status="Yes" variant="online" /> : "—"}
                           </td>
                           <td className="dm-data-table__td dm-data-table__td--muted">
                             {new Date(row.updated_at).toLocaleString()}
@@ -515,33 +520,15 @@ export function DashboardListPage() {
                               >
                                 <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </Link>
-                              <button
-                                type="button"
-                                className="dm-act-grid__btn dm-act-grid__btn--plain"
-                                title="Duplicate dashboard"
-                                aria-label={`Duplicate ${row.name}`}
-                                onClick={() => void onDup(row.id)}
-                              >
+                              <OpsActionButton tone="plain" title="Duplicate dashboard" aria-label={`Duplicate ${row.name}`} onClick={() => void onDup(row.id)}>
                                 <Copy size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                className="dm-act-grid__btn dm-act-grid__btn--plain"
-                                title="Set as primary"
-                                aria-label={`Set primary: ${row.name}`}
-                                onClick={() => void onPrimary(row.id)}
-                              >
+                              </OpsActionButton>
+                              <OpsActionButton tone="plain" title="Set as primary" aria-label={`Set primary: ${row.name}`} onClick={() => void onPrimary(row.id)}>
                                 <Star size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </button>
-                              <button
-                                type="button"
-                                className="dm-act-grid__btn dm-act-grid__btn--danger"
-                                title="Delete dashboard"
-                                aria-label={`Delete ${row.name}`}
-                                onClick={() => void onDel(row.id)}
-                              >
+                              </OpsActionButton>
+                              <OpsActionButton tone="danger" title="Delete dashboard" aria-label={`Delete ${row.name}`} onClick={() => void onDel(row.id)}>
                                 <Trash2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </button>
+                              </OpsActionButton>
                             </div>
                           </td>
                         </tr>
@@ -552,37 +539,39 @@ export function DashboardListPage() {
               </div>
               {totalPages > 1 ? (
                 <div className="dm-table-pager" role="navigation" aria-label="Dashboard table pages">
-                  <span className="dm-table-pager__range">
+                  <span className="dm-table-pager__meta">
                     {(tablePage - 1) * DASH_TABLE_PAGE_SIZE + 1}–
                     {Math.min(filtered.length, tablePage * DASH_TABLE_PAGE_SIZE)} of {filtered.length}
                   </span>
                   <div className="dm-table-pager__controls">
                     <button
                       type="button"
-                      className="dm-table-pager__btn"
+                      className="dm-act-grid__btn dm-act-grid__btn--text"
                       disabled={tablePage <= 1}
                       onClick={() => setTablePage((p) => Math.max(1, p - 1))}
                     >
-                      Previous
+                      <ChevronLeft size={16} aria-hidden />
+                      Prev
                     </button>
                     <span className="dm-table-pager__page">
                       Page {tablePage} / {totalPages}
                     </span>
                     <button
                       type="button"
-                      className="dm-table-pager__btn"
+                      className="dm-act-grid__btn dm-act-grid__btn--text"
                       disabled={tablePage >= totalPages}
                       onClick={() => setTablePage((p) => Math.min(totalPages, p + 1))}
                     >
                       Next
+                      <ChevronRight size={16} aria-hidden />
                     </button>
                   </div>
                 </div>
               ) : null}
             </div>
           )}
-        </div>
-      </div>
-    </PageShell>
+        </OpsDataTable>
+      }
+    />
   );
 }
