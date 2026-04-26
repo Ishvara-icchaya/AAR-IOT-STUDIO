@@ -1,0 +1,278 @@
+"""V2 ingest endpoints — CRUD and bounded lists (resolved devices, LDS, scrubbed history)."""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import Session
+
+from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.api.deps import get_current_user
+from app.db.session import get_db
+from app.models.endpoint import Endpoint
+from app.models.latest_device_state import LatestDeviceState
+from app.models.resolved_device import ResolvedDevice
+from app.models.scrubbed_event import ScrubbedEvent
+from app.models.user import User
+from app.schemas.endpoint import (
+    EndpointCreate,
+    EndpointListResponse,
+    EndpointRead,
+    EndpointUpdate,
+    LatestDeviceStateListResponse,
+    LatestDeviceStateRead,
+    ResolvedDeviceListResponse,
+    ResolvedDeviceRead,
+    ScrubbedEventListResponse,
+    ScrubbedEventRead,
+)
+
+router = APIRouter()
+log = logging.getLogger(__name__)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _load_endpoint(db: Session, endpoint_id: uuid.UUID, customer_id: uuid.UUID) -> Endpoint | None:
+    return db.execute(
+        select(Endpoint).where(Endpoint.id == endpoint_id, Endpoint.customer_id == customer_id)
+    ).scalar_one_or_none()
+
+
+def _ensure_endpoint_visible(ep: Endpoint, user: User, allowed: list[uuid.UUID] | None) -> None:
+    if not user_may_access_site(user, ep.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted for this user")
+
+
+def _normalize_key_list(raw: list[Any]) -> list[str]:
+    return [str(x).strip() for x in raw if str(x).strip()]
+
+
+@router.get("", response_model=EndpointListResponse)
+def list_endpoints(
+    site_id: uuid.UUID | None = Query(None),
+    q: str | None = Query(None, description="Substring match on endpoint_name (case-insensitive)"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    if allowed is not None and len(allowed) == 0:
+        return EndpointListResponse(items=[])
+
+    stmt = select(Endpoint).where(Endpoint.customer_id == user.customer_id).order_by(Endpoint.endpoint_name)
+    if allowed is not None:
+        stmt = stmt.where(Endpoint.site_id.in_(allowed))
+    if site_id is not None:
+        if allowed is not None and site_id not in allowed:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+        stmt = stmt.where(Endpoint.site_id == site_id)
+    if q and (qs := q.strip()):
+        stmt = stmt.where(Endpoint.endpoint_name.ilike(f"%{qs}%"))
+
+    rows = db.scalars(stmt).all()
+    return EndpointListResponse(items=[EndpointRead.model_validate(r) for r in rows])
+
+
+@router.post("", response_model=EndpointRead, status_code=status.HTTP_201_CREATED)
+def create_endpoint(
+    body: EndpointCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
+    if not site:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown site for this tenant")
+    if not user_may_access_site(user, body.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot create endpoint for this site")
+
+    pk_fields = _normalize_key_list(body.primary_device_key_fields)
+    if not pk_fields:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "primary_device_key_fields must not be empty")
+
+    ep = Endpoint(
+        id=uuid.uuid4(),
+        customer_id=user.customer_id,
+        site_id=body.site_id,
+        endpoint_name=body.endpoint_name.strip(),
+        protocol=body.protocol.strip().lower()[:32],
+        object_name=body.object_name.strip(),
+        primary_device_key_fields=pk_fields,
+        device_label_fields=_normalize_key_list(body.device_label_fields) if body.device_label_fields else None,
+        location_fields=body.location_fields,
+        auth_config=body.auth_config,
+        enabled=body.enabled,
+    )
+    db.add(ep)
+    db.commit()
+    db.refresh(ep)
+    log.debug("endpoints.create id=%s site_id=%s object_name=%s", ep.id, ep.site_id, ep.object_name)
+    return EndpointRead.model_validate(ep)
+
+
+@router.get("/{endpoint_id}", response_model=EndpointRead)
+def get_endpoint(
+    endpoint_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+    return EndpointRead.model_validate(ep)
+
+
+@router.patch("/{endpoint_id}", response_model=EndpointRead)
+def update_endpoint(
+    endpoint_id: uuid.UUID,
+    body: EndpointUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+
+    data = body.model_dump(exclude_unset=True)
+    if "primary_device_key_fields" in data and data["primary_device_key_fields"] is not None:
+        pk_fields = _normalize_key_list(data["primary_device_key_fields"])
+        if not pk_fields:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "primary_device_key_fields must not be empty")
+        ep.primary_device_key_fields = pk_fields
+    if "device_label_fields" in data:
+        raw = data["device_label_fields"]
+        ep.device_label_fields = _normalize_key_list(raw) if raw else None
+    if "endpoint_name" in data and data["endpoint_name"] is not None:
+        ep.endpoint_name = data["endpoint_name"].strip()
+    if "protocol" in data and data["protocol"] is not None:
+        ep.protocol = data["protocol"].strip().lower()[:32]
+    if "object_name" in data and data["object_name"] is not None:
+        ep.object_name = data["object_name"].strip()
+    if "location_fields" in data:
+        ep.location_fields = data["location_fields"]
+    if "auth_config" in data:
+        ep.auth_config = data["auth_config"]
+    if "enabled" in data and data["enabled"] is not None:
+        ep.enabled = data["enabled"]
+
+    ep.updated_at = _utcnow()
+    db.add(ep)
+    db.commit()
+    db.refresh(ep)
+    return EndpointRead.model_validate(ep)
+
+
+@router.get("/{endpoint_id}/resolved-devices", response_model=ResolvedDeviceListResponse)
+def list_resolved_devices(
+    endpoint_id: uuid.UUID,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+
+    stmt = (
+        select(ResolvedDevice)
+        .where(ResolvedDevice.endpoint_id == endpoint_id)
+        .order_by(ResolvedDevice.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = db.scalars(stmt).all()
+    return ResolvedDeviceListResponse(items=[ResolvedDeviceRead.model_validate(r) for r in rows])
+
+
+@router.get("/{endpoint_id}/latest-device-states", response_model=LatestDeviceStateListResponse)
+def list_latest_device_states(
+    endpoint_id: uuid.UUID,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+
+    stmt = (
+        select(LatestDeviceState)
+        .where(LatestDeviceState.endpoint_id == endpoint_id)
+        .order_by(LatestDeviceState.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    rows = db.scalars(stmt).all()
+    return LatestDeviceStateListResponse(items=[LatestDeviceStateRead.model_validate(r) for r in rows])
+
+
+@router.get("/{endpoint_id}/scrubbed-events", response_model=ScrubbedEventListResponse)
+def list_scrubbed_events(
+    endpoint_id: uuid.UUID,
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str | None = Query(
+        None,
+        description="Pagination: scrubbed_events.id from the previous page (older events).",
+    ),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+
+    stmt = (
+        select(ScrubbedEvent)
+        .where(ScrubbedEvent.endpoint_id == endpoint_id)
+        .where(ScrubbedEvent.customer_id == user.customer_id)
+        .order_by(ScrubbedEvent.event_ts.desc(), ScrubbedEvent.id.desc())
+    )
+
+    if cursor and (c := cursor.strip()):
+        try:
+            cid = uuid.UUID(c)
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid cursor UUID") from e
+        brow = db.get(ScrubbedEvent, cid)
+        if (
+            not brow
+            or brow.endpoint_id != endpoint_id
+            or brow.customer_id != user.customer_id
+        ):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cursor does not match this endpoint")
+        stmt = stmt.where(
+            or_(
+                ScrubbedEvent.event_ts < brow.event_ts,
+                and_(ScrubbedEvent.event_ts == brow.event_ts, ScrubbedEvent.id < brow.id),
+            )
+        )
+
+    stmt = stmt.limit(limit + 1)
+    rows = list(db.scalars(stmt).all())
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    next_cursor: str | None = str(page[-1].id) if has_more and page else None
+
+    return ScrubbedEventListResponse(
+        items=[ScrubbedEventRead.model_validate(r) for r in page],
+        next_cursor=next_cursor,
+    )

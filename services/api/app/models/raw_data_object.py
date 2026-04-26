@@ -10,6 +10,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.device import Device
+    from app.models.endpoint import Endpoint
 
 
 class RawDataObject(Base):
@@ -40,5 +41,9 @@ class RawDataObject(Base):
     protocol_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     ingest_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    registered_endpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("endpoints.id", ondelete="SET NULL"), nullable=True
+    )
 
     device: Mapped["Device"] = relationship(back_populates="raw_objects")
+    registered_endpoint: Mapped["Endpoint | None"] = relationship()

@@ -9,6 +9,10 @@ from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.device import Device
 from app.models.health_threshold_reference import HealthThresholdReference
 from app.models.device_endpoint import DeviceEndpoint
+from app.models.endpoint import Endpoint
+from app.models.latest_device_state import LatestDeviceState
+from app.models.resolved_device import ResolvedDevice
+from app.models.scrubbed_event import ScrubbedEvent
 from app.models.device_object import DeviceObject
 from app.models.monitoring_config import MonitoringConfig
 from app.models.platform_port import PlatformPort, PlatformPortSettings
@@ -41,6 +45,10 @@ __all__ = [
     "Device",
     "HealthThresholdReference",
     "DeviceEndpoint",
+    "Endpoint",
+    "LatestDeviceState",
+    "ResolvedDevice",
+    "ScrubbedEvent",
     "DeviceObject",
     "MonitoringConfig",
     "PlatformPort",
