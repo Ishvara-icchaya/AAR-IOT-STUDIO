@@ -24,6 +24,7 @@ def parse_raw_ingest_envelope_v1(payload: dict[str, Any]) -> dict[str, Any]:
         "raw_object_id",
         "customer_id",
         "device_id",
+        "endpoint_id",
         "storage_key",
         "size_bytes",
         "ingested_at",
@@ -35,6 +36,7 @@ def parse_raw_ingest_envelope_v1(payload: dict[str, Any]) -> dict[str, Any]:
         uuid.UUID(str(payload["raw_object_id"]))
         uuid.UUID(str(payload["customer_id"]))
         uuid.UUID(str(payload["device_id"]))
+        uuid.UUID(str(payload["endpoint_id"]))
     except ValueError as e:
         raise RawIngestEnvelopeError("invalid uuid in envelope") from e
     if not isinstance(payload.get("size_bytes"), int) or payload["size_bytes"] < 0:

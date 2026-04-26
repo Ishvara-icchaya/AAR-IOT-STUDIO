@@ -25,6 +25,10 @@ class RawIngestEnvelopeV1(BaseModel):
     raw_object_id: UUID
     customer_id: UUID
     device_id: UUID
+    endpoint_id: UUID = Field(
+        ...,
+        description="Mandatory v2 endpoint identity for downstream processing.",
+    )
     storage_key: str
     content_type: str | None = None
     size_bytes: int = Field(ge=0)
@@ -56,6 +60,7 @@ class RawIngestHttpResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     raw_object_id: UUID
+    endpoint_id: UUID
     device_id: UUID
     customer_id: UUID
     storage_key: str
@@ -105,6 +110,7 @@ def build_envelope(
     raw_object_id: UUID,
     customer_id: UUID,
     device_id: UUID,
+    endpoint_id: UUID,
     storage_key: str,
     content_type: str | None,
     size_bytes: int,
@@ -121,6 +127,7 @@ def build_envelope(
         raw_object_id=raw_object_id,
         customer_id=customer_id,
         device_id=device_id,
+        endpoint_id=endpoint_id,
         storage_key=storage_key,
         content_type=content_type,
         size_bytes=size_bytes,

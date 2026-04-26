@@ -39,6 +39,7 @@ def _parse_captured_at(raw: str | None) -> datetime | None:
 @router.post("/raw", response_model=RawIngestHttpResponse, status_code=status.HTTP_201_CREATED)
 async def post_raw_ingest(
     device_id: uuid.UUID = Form(..., description="Registered device to attach this blob to"),
+    endpoint_id: uuid.UUID = Form(..., description="Resolved v2 endpoint identity (required)"),
     file: UploadFile = File(..., description="Raw payload bytes"),
     captured_at: str | None = Form(
         None,
@@ -62,6 +63,7 @@ async def post_raw_ingest(
             db=db,
             user=user,
             device_id=device_id,
+            endpoint_id=endpoint_id,
             file=file,
             captured_at=cap,
             protocol_id=(protocol_id.strip() if protocol_id else None),

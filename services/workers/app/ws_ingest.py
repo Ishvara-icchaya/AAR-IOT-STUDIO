@@ -12,7 +12,7 @@ import psycopg2
 import websockets
 
 from app.db_url import db_url
-from app.ingest_archive import ingest_json_payload_for_device
+from app.ingest_archive import ingest_json_payload_for_endpoint
 from app.ingress_redis_metrics import (
     record_ingest_error,
     record_ingest_success,
@@ -114,12 +114,11 @@ async def _device_loop(endpoint_id: uuid.UUID, device_id: uuid.UUID, config: dic
                     body = json.dumps(data, separators=(",", ":"), sort_keys=True).encode(
                         "utf-8"
                     )
-                    ok = ingest_json_payload_for_device(
+                    ok = ingest_json_payload_for_endpoint(
                         data,
                         body,
-                        device_id=device_id,
-                        protocol_source="websocket",
                         device_endpoint_id=endpoint_id,
+                        protocol_source="websocket",
                     )
                     if ok:
                         record_ingest_success("websocket", health_status="connected")

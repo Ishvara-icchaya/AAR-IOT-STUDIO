@@ -32,6 +32,7 @@ from app.core.raw_lifecycle import (
     VERIFY_SIZE_MISMATCH,
 )
 from app.models.device import Device
+from app.models.endpoint import Endpoint
 from app.models.raw_data_object import RawDataObject
 from app.models.user import User
 from app.schemas.raw_ingest_contract import (
@@ -80,6 +81,7 @@ async def ingest_raw_upload(
     db: Session,
     user: User,
     device_id: uuid.UUID,
+    endpoint_id: uuid.UUID,
     file: UploadFile,
     captured_at: datetime | None,
     protocol_id: str | None,
@@ -102,6 +104,17 @@ async def ingest_raw_upload(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     if not device.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Device is inactive")
+    endpoint = db.execute(
+        select(Endpoint).where(
+            Endpoint.id == endpoint_id,
+            Endpoint.customer_id == user.customer_id,
+            Endpoint.enabled.is_(True),
+        )
+    ).scalar_one_or_none()
+    if not endpoint:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "endpoint_id not found or disabled")
+    if endpoint.site_id != device.site_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "endpoint_id site does not match device site")
 
     body = await file.read(settings.raw_ingest_max_bytes + 1)
     if len(body) > settings.raw_ingest_max_bytes:
@@ -159,6 +172,7 @@ async def ingest_raw_upload(
         ingest_status=INGEST_ARCHIVED,
         verify_status=VERIFY_NEVER,
         protocol_source=raw_row_protocol_source(norm_protocol),
+        registered_endpoint_id=endpoint.id,
     )
     db.add(row)
     try:
@@ -205,6 +219,7 @@ async def ingest_raw_upload(
             raw_object_id=raw_id,
             customer_id=user.customer_id,
             device_id=device_id,
+            endpoint_id=endpoint.id,
             storage_key=storage_key,
             content_type=ct,
             size_bytes=len(body),
@@ -252,6 +267,7 @@ async def ingest_raw_upload(
     assert final is not None
     return RawIngestHttpResponse(
         raw_object_id=raw_id,
+        endpoint_id=endpoint.id,
         device_id=device_id,
         customer_id=user.customer_id,
         storage_key=storage_key,
