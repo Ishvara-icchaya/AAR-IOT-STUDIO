@@ -1,6 +1,6 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BrushCleaning, ClipboardCheck, Loader2, Save, X } from "lucide-react";
+import { BrushCleaning, ClipboardCheck, Loader2, Save, X } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import type { DeviceRead } from "@/api/devices";
@@ -11,19 +11,7 @@ import {
   type DeviceEndpointRead,
 } from "@/api/deviceEndpoints";
 import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
-import {
-  AppButton,
-  AppCard,
-  AppEmptyState,
-  AppField,
-  AppGrid,
-  AppInput,
-  AppSelect,
-  AppTabs,
-  AppTextarea,
-  AppToolbar,
-  appButtonClassName,
-} from "@/components/app";
+import { AppButton, AppCard, AppEmptyState, AppField, AppGrid, AppInput, AppSelect, AppTabs, AppTextarea, AppToolbar } from "@/components/app";
 import { DeviceEndpointStaticJsonPanel } from "@/components/device/DeviceEndpointStaticJsonPanel";
 import { ConfigDrawer } from "@/components/ops/ConfigDrawer";
 import { PageStatus } from "@/components/PageStatus";
@@ -50,6 +38,8 @@ import {
   type WebSocketFields,
 } from "@/lib/deviceEndpointConfig";
 import { activationStatusStyle, formatActivationLabel } from "@/lib/endpointActivation";
+
+import "./device-register-page.css";
 
 type SiteRow = { id: string; name: string };
 
@@ -568,89 +558,96 @@ export function DeviceManagePage() {
             <AppToolbar
               className="device-endpoint-drawer-toolbar"
               left={
-                <>
-                <AppButton
-                  variant="icon"
-                  onClick={cancelEdit}
-                  title="Back to Register devices — device list"
-                  aria-label="Back to device list"
-                >
-                  <ArrowLeft size={18} strokeWidth={2} aria-hidden />
-                </AppButton>
-                <span style={breadcrumbSep} aria-hidden>
-                  /
-                </span>
-                <span style={breadcrumbCurrent}>Edit · {editingDevice.name}</span>
-                </>
+                <nav className="device-endpoint-drawer__subnav" aria-label="Manage devices navigation">
+                  <Link
+                    to="/devices/register#registered-devices-table"
+                    className="device-endpoint-drawer__device-list-link"
+                    title="Return to Manage Devices — device table"
+                  >
+                    Device List
+                  </Link>
+                  <span className="device-endpoint-drawer__subnav-hint">
+                    {" "}
+                    / Manage Devices; return to the list anytime.
+                  </span>
+                  <span style={breadcrumbSep} aria-hidden>
+                    {" "}
+                    /{" "}
+                  </span>
+                  <span style={breadcrumbCurrent}>Edit · {editingDevice.name}</span>
+                </nav>
               }
               right={
                 <>
-                <AppButton
-                  variant="icon"
-                  disabled={validating || submitting}
-                  title={
-                    savedEndpoint
-                      ? "Validate: checks broker/URL connectivity, payload receipt in Postgres, refreshes bridge observability, and reloads latest archived raw + preview."
-                      : "Validate: requires a saved endpoint first — use Save, then Validate (or try now to see the server message)."
-                  }
-                  aria-label={validating ? "Validating endpoint" : "Validate endpoint"}
-                  onClick={() => void runValidation()}
-                >
-                  {validating ? (
-                    <Loader2 size={18} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
-                  ) : (
-                    <ClipboardCheck size={18} strokeWidth={2} aria-hidden />
-                  )}
-                </AppButton>
-                {scrubberUnlocked ? (
-                  <Link
-                    to="/scrubber/raw-select"
-                    className={appButtonClassName("icon")}
-                    style={{ textDecoration: "none" }}
-                    title="Open Raw sample — pick archived raw, then Scrubber Studio"
-                    aria-label="Open Raw sample for Scrubber Studio"
+                  <button
+                    type="button"
+                    className="dm-btn dm-btn--outline"
+                    disabled={validating || submitting}
+                    title={
+                      savedEndpoint
+                        ? "Validate: checks broker/URL connectivity, payload receipt in Postgres, refreshes bridge observability, and reloads latest archived raw + preview."
+                        : "Validate: requires a saved endpoint first — use Save, then Validate (or try now to see the server message)."
+                    }
+                    onClick={() => void runValidation()}
                   >
-                    <BrushCleaning size={18} strokeWidth={2} aria-hidden />
-                  </Link>
-                ) : (
-                  <AppButton
-                    variant="icon"
-                    disabled
-                    title="Scrubber unlocks after the first archived payload is available (or once raw preview loads)."
-                    aria-label="Scrubber (locked until first payload or raw preview)"
-                  >
-                    <BrushCleaning size={18} strokeWidth={2} aria-hidden />
-                  </AppButton>
-                )}
-                <AppButton
-                  type="submit"
-                  form="device-endpoint-form"
-                  variant="iconPrimary"
-                  disabled={!canSaveConfiguration || submitting}
-                  title={
-                    !configStructureMatches && savedEndpoint && savedEndpoint.protocol === protocol
-                      ? "Save blocked: configuration layout (keys / nested shape) must match the saved configuration — only values may change."
-                      : canSaveConfiguration
-                        ? "Save configuration — persist protocol, polling, and connection settings."
-                        : "Save is available when there are changes, structure matches the saved layout, and validation is warning or ok (not failed)."
-                  }
-                  aria-label={submitting ? "Saving configuration" : "Save configuration"}
-                >
-                  {submitting ? (
-                    <Loader2 size={18} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
+                    {validating ? (
+                      <Loader2 size={16} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
+                    ) : (
+                      <ClipboardCheck size={16} strokeWidth={2} aria-hidden />
+                    )}
+                    {validating ? "Validating…" : "Validate"}
+                  </button>
+                  {scrubberUnlocked ? (
+                    <Link
+                      to="/scrubber/raw-select"
+                      className="dm-btn dm-btn--outline"
+                      style={{ textDecoration: "none" }}
+                      title="Open Raw sample — pick archived raw, then Scrubber Studio"
+                    >
+                      <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                      Scrubber
+                    </Link>
                   ) : (
-                    <Save size={18} strokeWidth={2} aria-hidden />
+                    <button
+                      type="button"
+                      className="dm-btn dm-btn--outline"
+                      disabled
+                      title="Scrubber unlocks after the first archived payload is available (or once raw preview loads)."
+                    >
+                      <BrushCleaning size={16} strokeWidth={2} aria-hidden />
+                      Scrubber
+                    </button>
                   )}
-                </AppButton>
-                <AppButton
-                  variant="icon"
-                  onClick={cancelEdit}
-                  disabled={submitting}
-                  title="Close without saving — return to Register devices"
-                  aria-label="Cancel and close"
-                >
-                  <X size={18} strokeWidth={2} aria-hidden />
-                </AppButton>
+                  <button
+                    type="submit"
+                    form="device-endpoint-form"
+                    className="dm-btn dm-btn--outline"
+                    disabled={!canSaveConfiguration || submitting}
+                    title={
+                      !configStructureMatches && savedEndpoint && savedEndpoint.protocol === protocol
+                        ? "Save blocked: configuration layout (keys / nested shape) must match the saved configuration — only values may change."
+                        : canSaveConfiguration
+                          ? "Save configuration — persist protocol, polling, and connection settings."
+                          : "Save is available when there are changes, structure matches the saved layout, and validation is warning or ok (not failed)."
+                    }
+                  >
+                    {submitting ? (
+                      <Loader2 size={16} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
+                    ) : (
+                      <Save size={16} strokeWidth={2} aria-hidden />
+                    )}
+                    {submitting ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    className="dm-btn dm-btn--outline"
+                    onClick={cancelEdit}
+                    disabled={submitting}
+                    title="Close without saving — return to Register devices"
+                  >
+                    <X size={16} strokeWidth={2} aria-hidden />
+                    Cancel
+                  </button>
                 </>
               }
             />

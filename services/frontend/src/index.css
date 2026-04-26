@@ -2359,6 +2359,31 @@ a:hover {
   gap: var(--space-md);
 }
 
+/*
+ * Dashboard editor: keep outline buttons visibly bordered (scrubber “Validate”–style).
+ * Declared here so borders survive Tailwind preflight / load order vs lazy `device-register-page.css`.
+ */
+.dash-builder-page .dm-btn.dm-btn--outline,
+.dash-builder-page a.dm-btn.dm-btn--outline {
+  border: 1px solid var(--dm-border-strong, var(--aar-border-strong, rgba(255, 255, 255, 0.12)));
+  background: var(--dm-surface-2, var(--color-surface-elevated, var(--color-surface)));
+  color: var(--dm-text, var(--color-text));
+}
+
+.dash-builder-page .dm-btn.dm-btn--outline:hover:not(:disabled),
+.dash-builder-page a.dm-btn.dm-btn--outline:hover:not(:disabled) {
+  border-color: color-mix(
+    in oklab,
+    var(--dm-accent-blue, var(--color-accent)) 45%,
+    var(--dm-border, var(--color-border))
+  );
+  background: color-mix(
+    in oklab,
+    var(--dm-surface, var(--color-surface)) 85%,
+    var(--dm-accent-blue, var(--color-accent)) 15%
+  );
+}
+
 .dash-header {
   display: flex;
   flex-wrap: wrap;
@@ -2369,6 +2394,74 @@ a:hover {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
+}
+
+/* Breadcrumb row — same rhythm as scrubber2-subnav / Manage device. */
+.dash-header__subnav {
+  flex: 1 1 100%;
+  width: 100%;
+  margin: 0;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+  font-size: 0.82rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.dash-header__subnav-hint {
+  color: var(--dm-muted, var(--color-text-muted));
+  font-weight: 400;
+}
+
+/* Dashboard create: back link + hint (scrubber2.css not loaded on this route). */
+.dash-page-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  margin: 0 0 1rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--dm-border, var(--color-border));
+}
+
+.dash-page-subnav__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--dm-accent-blue, var(--color-accent));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dash-page-subnav__back:hover {
+  text-decoration: underline;
+}
+
+.dash-page-subnav__hint {
+  color: var(--dm-muted, var(--color-text-muted));
+  font-weight: 400;
+}
+
+.dash-header__subnav .scrubber2-subnav__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--dm-accent-blue, var(--color-accent));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.dash-header__subnav .scrubber2-subnav__back:hover {
+  text-decoration: underline;
+}
+
+.dash-header__actions a.dm-btn,
+.dash-header__actions button.dm-btn {
+  text-decoration: none;
+  box-sizing: border-box;
 }
 
 .dash-header__titles {
@@ -2436,14 +2529,21 @@ a:hover {
 }
 
 .dash-btn {
+  min-height: 2.1rem;
   padding: 0.45rem 0.65rem;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   background: var(--color-surface-elevated);
   color: var(--color-text);
   font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
   font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .dash-btn:disabled {
@@ -2473,8 +2573,7 @@ a:hover {
 
 .dash-btn--link {
   text-decoration: none;
-  display: inline-flex;
-  align-items: center;
+  color: var(--color-text);
 }
 
 .dash-toolbar-link {

@@ -248,48 +248,46 @@ export function AdminUsersPage() {
           ) : (
             <div className="dm-device-table-shell" aria-busy={loading}>
               {loading && items.length > 0 ? <p className="dm-table-loading">Updating list…</p> : null}
-              <div className="dm-table-scroll">
-                <table className="dm-data-table">
-                  <thead>
-                    <tr>
-                      <th className="dm-data-table__th" scope="col">
-                        Email
-                      </th>
-                      <th className="dm-data-table__th" scope="col">
-                        Display name
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Role
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Active
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Sites
-                      </th>
+              <table className="dm-data-table">
+                <thead>
+                  <tr>
+                    <th className="dm-data-table__th" scope="col">
+                      Email
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Display name
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Role
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Active
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Sites
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageItems.map((r) => (
+                    <tr key={r.id} className="dm-data-table__row">
+                      <td className="dm-data-table__td">
+                        <strong>{r.email}</strong>
+                      </td>
+                      <td className="dm-data-table__td">{r.full_name || "—"}</td>
+                      <td className="dm-data-table__td dm-data-table__td--center">{r.role}</td>
+                      <td className="dm-data-table__td dm-data-table__td--center">{r.is_active ? "Yes" : "No"}</td>
+                      <td className="dm-data-table__td dm-data-table__td--center dm-data-table__td--muted">
+                        <small>
+                          {r.site_ids?.length
+                            ? `${r.site_ids.length} id${r.site_ids.length === 1 ? "" : "s"}`
+                            : "—"}
+                        </small>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {pageItems.map((r) => (
-                      <tr key={r.id} className="dm-data-table__row">
-                        <td className="dm-data-table__td">
-                          <strong>{r.email}</strong>
-                        </td>
-                        <td className="dm-data-table__td">{r.full_name || "—"}</td>
-                        <td className="dm-data-table__td dm-data-table__td--center">{r.role}</td>
-                        <td className="dm-data-table__td dm-data-table__td--center">{r.is_active ? "Yes" : "No"}</td>
-                        <td className="dm-data-table__td dm-data-table__td--center dm-data-table__td--muted">
-                          <small>
-                            {r.site_ids?.length
-                              ? `${r.site_ids.length} id${r.site_ids.length === 1 ? "" : "s"}`
-                              : "—"}
-                          </small>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
           <div className="dm-table-pager" role="navigation" aria-label="Pagination">

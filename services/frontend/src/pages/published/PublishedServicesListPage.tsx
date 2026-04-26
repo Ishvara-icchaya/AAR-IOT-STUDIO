@@ -347,7 +347,6 @@ export function PublishedServicesListPage() {
 
         <div className="dm-table-wrap published-services-list__table">
           <div className="dm-device-table-shell">
-            <div className="dm-table-scroll">
               <table className="dm-data-table">
                 <thead>
                   <tr>
@@ -429,12 +428,28 @@ export function PublishedServicesListPage() {
                           <td className="dm-data-table__td dm-data-table__td--actions">
                             <div className="dm-act-grid">
                               <Link
+                                className="dm-act-grid__btn dm-act-grid__btn--plain"
+                                to={`/published-services/${s.id}/edit`}
+                                title="Edit service"
+                                aria-label={`Edit ${s.name}`}
+                              >
+                                <Pencil size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <Link
                                 className="dm-act-grid__btn"
                                 to={`/published-services/${s.id}`}
                                 title="View service"
                                 aria-label={`View ${s.name}`}
                               >
                                 <Eye size={16} strokeWidth={2} aria-hidden />
+                              </Link>
+                              <Link
+                                className="dm-act-grid__btn dm-act-grid__btn--plain"
+                                to={`/published-services/${s.id}/test`}
+                                title="Test service"
+                                aria-label={`Test ${s.name}`}
+                              >
+                                <FlaskConical size={16} strokeWidth={2} aria-hidden />
                               </Link>
                               <button
                                 type="button"
@@ -463,22 +478,6 @@ export function PublishedServicesListPage() {
                               >
                                 <RotateCw size={16} strokeWidth={2} aria-hidden />
                               </button>
-                              <Link
-                                className="dm-act-grid__btn dm-act-grid__btn--plain"
-                                to={`/published-services/${s.id}/edit`}
-                                title="Edit service"
-                                aria-label={`Edit ${s.name}`}
-                              >
-                                <Pencil size={16} strokeWidth={2} aria-hidden />
-                              </Link>
-                              <Link
-                                className="dm-act-grid__btn dm-act-grid__btn--plain"
-                                to={`/published-services/${s.id}/test`}
-                                title="Test service"
-                                aria-label={`Test ${s.name}`}
-                              >
-                                <FlaskConical size={16} strokeWidth={2} aria-hidden />
-                              </Link>
                               <button
                                 type="button"
                                 className="dm-act-grid__btn dm-act-grid__btn--danger"
@@ -496,7 +495,6 @@ export function PublishedServicesListPage() {
                   )}
                 </tbody>
               </table>
-            </div>
           </div>
           <div className="dm-table-pager" role="navigation" aria-label="Pagination">
             <span className="dm-table-pager__meta">

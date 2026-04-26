@@ -3,6 +3,8 @@
 .device-manage-page.page-card,
 .scrubber2-page.page-card,
 .dashboard-list-page.page-card,
+/* Dashboard editor uses dm-btn but is not wrapped in page-card — scope tokens here so borders resolve. */
+.dash-builder-page,
 .workflow-list-page.page-card,
 .published-services-list-page.page-card,
 .admin-users-page.page-card,
@@ -28,6 +30,48 @@
   width: 100%;
   margin: 0;
   color: var(--dm-text);
+}
+
+/* ConfigDrawer portals to `document.body` — map legacy dm-* tokens so dm-btn borders/colors match list pages. */
+.config-drawer {
+  --dm-bg: var(--aar-bg);
+  --dm-surface: var(--aar-surface);
+  --dm-surface-2: var(--aar-surface-2);
+  --dm-border: var(--aar-border);
+  --dm-border-strong: var(--aar-border-strong);
+  --dm-text: var(--aar-text);
+  --dm-muted: var(--aar-muted);
+  --dm-accent-blue: var(--aar-accent-blue);
+  --dm-neon: var(--aar-accent-green);
+  --dm-warn: var(--aar-accent-amber);
+  --dm-danger: var(--aar-accent-red);
+  --dm-error-purple: var(--aar-accent-purple);
+  color: var(--dm-text);
+}
+
+/* Device endpoint drawer toolbar — list link + hint (only “Device List” is linked). */
+.device-endpoint-drawer__subnav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.25rem;
+  min-width: 0;
+  font-size: 0.82rem;
+}
+
+.device-endpoint-drawer__device-list-link {
+  color: var(--dm-accent-blue, var(--color-accent));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.device-endpoint-drawer__device-list-link:hover {
+  text-decoration: underline;
+}
+
+.device-endpoint-drawer__subnav-hint {
+  color: var(--dm-muted, var(--color-text-muted));
+  font-weight: 400;
 }
 
 /* Screen-reader page title when the shell already shows the same label visually */
@@ -73,6 +117,19 @@
   letter-spacing: -0.03em;
   color: var(--dm-text);
   line-height: 1.15;
+}
+
+/* Dashboard list: only the title phrase is linked; keep list accent color. */
+.dm-page-hero__title .dm-page-hero__title-link {
+  color: var(--dm-accent-blue, var(--aar-accent-blue, var(--color-accent)));
+  text-decoration: none;
+  font-weight: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+}
+
+.dm-page-hero__title .dm-page-hero__title-link:hover {
+  text-decoration: underline;
 }
 
 .dm-page-hero__subtitle {

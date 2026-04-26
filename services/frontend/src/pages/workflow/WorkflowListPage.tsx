@@ -322,101 +322,99 @@ export function WorkflowListPage() {
           ) : (
             <div className="dm-device-table-shell" aria-busy={loading}>
               {loading && items.length > 0 ? <p className="dm-table-loading">Updating list…</p> : null}
-              <div className="dm-table-scroll">
-                <table className="dm-data-table">
-                  <thead>
-                    <tr>
-                      <th className="dm-data-table__th" scope="col">
-                        Name
-                      </th>
-                      <th className="dm-data-table__th" scope="col">
-                        Site
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Status
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Published
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Version
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Inputs
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Terminates
-                      </th>
-                      <th className="dm-data-table__th" scope="col">
-                        Updated
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageItems.map((wf) => {
-                      const siteLabel = wf.site_id ? sitesById.get(wf.site_id) || wf.site_id : "—";
-                      return (
-                        <tr key={wf.id} className="dm-data-table__row">
-                          <td className="dm-data-table__td">
-                            <Link className="dm-name-link" to={`/workflow/${wf.id}/edit`}>
-                              {wf.name}
+              <table className="dm-data-table">
+                <thead>
+                  <tr>
+                    <th className="dm-data-table__th" scope="col">
+                      Name
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Site
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Status
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Published
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Version
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Inputs
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Terminates
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Updated
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageItems.map((wf) => {
+                    const siteLabel = wf.site_id ? sitesById.get(wf.site_id) || wf.site_id : "—";
+                    return (
+                      <tr key={wf.id} className="dm-data-table__row">
+                        <td className="dm-data-table__td">
+                          <Link className="dm-name-link" to={`/workflow/${wf.id}/edit`}>
+                            {wf.name}
+                          </Link>
+                        </td>
+                        <td className="dm-data-table__td">
+                          <small>{siteLabel}</small>
+                        </td>
+                        <td className="dm-data-table__td dm-data-table__td--center">
+                          <OpsStatusPill status={wf.lifecycle_status} variant={workflowLifecycleTone(wf.lifecycle_status)} />
+                        </td>
+                        <td className="dm-data-table__td dm-data-table__td--center">{wf.is_published ? "Yes" : "No"}</td>
+                        <td className="dm-data-table__td dm-data-table__td--center">{wf.version}</td>
+                        <td className="dm-data-table__td dm-data-table__td--center">{wf.input_count}</td>
+                        <td className="dm-data-table__td dm-data-table__td--center">{wf.terminate_count}</td>
+                        <td className="dm-data-table__td dm-data-table__td--muted">{formatDateTime(wf.updated_at)}</td>
+                        <td className="dm-data-table__td dm-data-table__td--actions">
+                          <div className="dm-act-grid">
+                            <Link
+                              className="dm-act-grid__btn"
+                              to={`/workflow/${wf.id}/edit`}
+                              title="Open editor"
+                              aria-label={`Open editor for ${wf.name}`}
+                            >
+                              <Pencil size={16} strokeWidth={2} aria-hidden />
                             </Link>
-                          </td>
-                          <td className="dm-data-table__td">
-                            <small>{siteLabel}</small>
-                          </td>
-                          <td className="dm-data-table__td dm-data-table__td--center">
-                            <OpsStatusPill status={wf.lifecycle_status} variant={workflowLifecycleTone(wf.lifecycle_status)} />
-                          </td>
-                          <td className="dm-data-table__td dm-data-table__td--center">{wf.is_published ? "Yes" : "No"}</td>
-                          <td className="dm-data-table__td dm-data-table__td--center">{wf.version}</td>
-                          <td className="dm-data-table__td dm-data-table__td--center">{wf.input_count}</td>
-                          <td className="dm-data-table__td dm-data-table__td--center">{wf.terminate_count}</td>
-                          <td className="dm-data-table__td dm-data-table__td--muted">{formatDateTime(wf.updated_at)}</td>
-                          <td className="dm-data-table__td dm-data-table__td--actions">
-                            <div className="dm-act-grid">
-                              <Link
-                                className="dm-act-grid__btn"
-                                to={`/workflow/${wf.id}/edit`}
-                                title="Open editor"
-                                aria-label={`Open editor for ${wf.name}`}
-                              >
-                                <Pencil size={16} strokeWidth={2} aria-hidden />
-                              </Link>
-                              <Link
-                                className="dm-act-grid__btn"
-                                to={`/workflow/${wf.id}/live`}
-                                title="Live runs and results"
-                                aria-label={`Live view for ${wf.name}`}
-                              >
-                                <Activity size={16} strokeWidth={2} aria-hidden />
-                              </Link>
-                              {!wf.is_published ? (
-                                <OpsActionButton title="Publish workflow" aria-label={`Publish ${wf.name}`} onClick={() => void handlePublish(wf)}>
-                                  <Rocket size={16} strokeWidth={2} aria-hidden />
-                                </OpsActionButton>
-                              ) : (
-                                <OpsActionButton title="Stop published workflow" aria-label={`Stop published ${wf.name}`} onClick={() => void handleStop(wf)}>
-                                  <Ban size={16} strokeWidth={2} aria-hidden />
-                                </OpsActionButton>
-                              )}
-                              <OpsActionButton title="Duplicate workflow" aria-label={`Duplicate ${wf.name}`} onClick={() => void handleDuplicate(wf)}>
-                                <Copy size={16} strokeWidth={2} aria-hidden />
+                            <Link
+                              className="dm-act-grid__btn"
+                              to={`/workflow/${wf.id}/live`}
+                              title="Live runs and results"
+                              aria-label={`Live view for ${wf.name}`}
+                            >
+                              <Activity size={16} strokeWidth={2} aria-hidden />
+                            </Link>
+                            {!wf.is_published ? (
+                              <OpsActionButton title="Publish workflow" aria-label={`Publish ${wf.name}`} onClick={() => void handlePublish(wf)}>
+                                <Rocket size={16} strokeWidth={2} aria-hidden />
                               </OpsActionButton>
-                              <OpsActionButton tone="danger" title="Delete workflow" aria-label={`Delete ${wf.name}`} onClick={() => void handleDelete(wf)}>
-                                <Trash2 size={16} strokeWidth={2} aria-hidden />
+                            ) : (
+                              <OpsActionButton title="Stop published workflow" aria-label={`Stop published ${wf.name}`} onClick={() => void handleStop(wf)}>
+                                <Ban size={16} strokeWidth={2} aria-hidden />
                               </OpsActionButton>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            )}
+                            <OpsActionButton title="Duplicate workflow" aria-label={`Duplicate ${wf.name}`} onClick={() => void handleDuplicate(wf)}>
+                              <Copy size={16} strokeWidth={2} aria-hidden />
+                            </OpsActionButton>
+                            <OpsActionButton tone="danger" title="Delete workflow" aria-label={`Delete ${wf.name}`} onClick={() => void handleDelete(wf)}>
+                              <Trash2 size={16} strokeWidth={2} aria-hidden />
+                            </OpsActionButton>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </OpsDataTable>

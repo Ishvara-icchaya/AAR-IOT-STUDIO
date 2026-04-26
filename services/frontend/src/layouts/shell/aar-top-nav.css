@@ -3,20 +3,27 @@
 .aar-topnav {
   --aar-topnav-accent-glow: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 22%, transparent);
   --aar-topnav-surface-veil: color-mix(in oklab, var(--aar-surface, #111822) 92%, #000 8%);
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
   height: 64px;
-  display: flex;
-  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) max-content;
+  grid-template-areas: "brand nav util";
   align-items: center;
-  gap: var(--aar-space-3, 12px) var(--aar-space-4, 16px);
+  gap: var(--aar-space-3, 12px);
   padding: 0 var(--aar-space-4, 16px);
-  background: linear-gradient(180deg, color-mix(in oklab, var(--aar-surface-2, #0d121a) 88%, transparent), var(--aar-topnav-surface-veil)),
+  background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--aar-surface-2, #0d121a) 88%, transparent),
+      var(--aar-topnav-surface-veil)
+    ),
     var(--aar-surface, #111822);
   border-bottom: 1px solid var(--aar-border-strong, rgba(255, 255, 255, 0.12));
   color: var(--aar-text, #f4f6f8);
   position: relative;
   z-index: 60;
-  width: 100%;
-  box-sizing: border-box;
 }
 
 .aar-topnav__menu-toggle {
@@ -36,7 +43,6 @@
 
 .aar-topnav__brand {
   grid-area: brand;
-  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -169,13 +175,14 @@
 
 .aar-topnav__nav {
   grid-area: nav;
+  width: 100%;
+  min-width: 0;
   height: 44px;
   display: flex;
-  justify-content: center;
+  justify-content: space-evenly;
   align-items: center;
   flex-wrap: nowrap;
   gap: var(--aar-space-2, 8px);
-  min-width: 0;
   overflow: hidden;
 }
 
@@ -183,6 +190,9 @@
   height: 38px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
+  min-width: 110px;
   gap: 7px;
   padding: 0 12px;
   border-radius: var(--aar-radius-md, 8px);
@@ -216,8 +226,8 @@
 
 .aar-topnav__utilities {
   grid-area: util;
-  flex: 0 0 auto;
-  margin-left: auto;
+  min-width: max-content;
+  justify-self: end;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -298,13 +308,24 @@
   z-index: 48;
 }
 
-/* Narrow desktop: icon-first nav + utilities, keep layout stable */
-@media (max-width: 1180px) and (min-width: 1041px) {
+@media (max-width: 1280px) {
   .aar-topnav {
-    gap: var(--aar-space-2, 8px) var(--aar-space-3, 12px);
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) max-content;
+  }
+
+  .aar-topnav__item {
+    min-width: 96px;
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .aar-topnav {
+    gap: var(--aar-space-2, 8px);
   }
 
   .aar-topnav__item-label,
+  .aar-topnav__item span,
   .aar-topnav__utility-label {
     display: none;
   }
@@ -323,13 +344,13 @@
 }
 
 /* Mobile: menu toggle + drawer */
-@media (max-width: 1040px) {
+@media (max-width: 860px) {
   .aar-topnav {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: 1fr auto;
     grid-template-rows: auto auto;
     grid-template-areas:
-      "toggle brand util"
+      "brand util"
       "nav nav nav";
     height: auto;
     min-height: 56px;
@@ -338,11 +359,11 @@
   }
 
   .aar-topnav__menu-toggle {
-    display: inline-flex;
+    display: none;
   }
 
   .aar-topnav__utilities {
-    margin-left: unset;
+    margin-left: 0;
     justify-self: end;
   }
 
@@ -393,13 +414,26 @@
   }
 }
 
+/* Own full header row: base `.shell-header` is flex + flex-grow:0 children, which shrinks AarTopNav to content width. */
 .shell-header.shell-header--aar-topnav {
   flex-shrink: 0;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
   padding: 0;
+  margin: 0;
   background: transparent;
   border-bottom: none;
   box-shadow: none;
   backdrop-filter: none;
   gap: 0;
+}
+
+.shell-header.shell-header--aar-topnav > .aar-topnav {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
 }
 

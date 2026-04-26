@@ -1,10 +1,13 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import * as dashApi from "@/api/dashboard";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
+
+import "../device-register-page.css";
 
 type SiteRow = { id: string; name: string };
 
@@ -67,7 +70,17 @@ export function DashboardCreatePage() {
   }
 
   return (
-    <PageShell>
+    <PageShell className="device-manage-page">
+      <nav className="dash-page-subnav" aria-label="Dashboard navigation">
+        <Link to="/dashboard/list" className="dash-page-subnav__back">
+          <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+          Dashboard List
+        </Link>
+        <span className="dash-page-subnav__hint">
+          {" "}
+          / Create dashboard — build or edit Dashboard; return to the list anytime.
+        </span>
+      </nav>
       <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>
         New dashboards start as <strong>draft</strong> with the default Operations Overview layout. Adjust in the
         editor, then freeze for live use.

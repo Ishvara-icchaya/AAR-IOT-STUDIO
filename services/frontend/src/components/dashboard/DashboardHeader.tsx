@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import * as dashApi from "@/api/dashboard";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
+import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
 import { layoutToApiJson, useDashboardBuilderStore } from "@/stores/dashboardBuilderStore";
 
 type Props = { dashboardId: string };
@@ -11,24 +13,19 @@ export function DashboardHeader({ dashboardId }: Props) {
   const { tryHandleResourceInUseError } = useResourceInUse();
   const confirm = useConfirmAction();
   const nav = useNavigate();
+  const { pushMessage } = useShellMessage();
   const name = useDashboardBuilderStore((s) => s.name);
   const description = useDashboardBuilderStore((s) => s.description);
   const status = useDashboardBuilderStore((s) => s.status);
-  const isPrimary = useDashboardBuilderStore((s) => s.isPrimary);
   const layout = useDashboardBuilderStore((s) => s.layout);
-  const dirty = useDashboardBuilderStore((s) => s.dirty);
   const setName = useDashboardBuilderStore((s) => s.setName);
   const setDescription = useDashboardBuilderStore((s) => s.setDescription);
   const markClean = useDashboardBuilderStore((s) => s.markClean);
-  const setPreviewPayload = useDashboardBuilderStore((s) => s.setPreviewPayload);
-  const setDashboardSettings = useDashboardBuilderStore((s) => s.setDashboardSettings);
 
-  const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function onSave() {
     setErr(null);
-    setMsg(null);
     try {
       await dashApi.updateDashboard(dashboardId, {
         name: name.trim(),
@@ -36,19 +33,12 @@ export function DashboardHeader({ dashboardId }: Props) {
         layout: layoutToApiJson(layout),
       });
       markClean();
-      setMsg("Saved");
+      pushMessage("success", `Dashboard "${name.trim() || "Untitled"}" saved.`);
+      nav("/dashboard/list");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Save failed");
-    }
-  }
-
-  async function onPreview() {
-    setErr(null);
-    try {
-      const live = await dashApi.previewDashboard(dashboardId, { layout: layoutToApiJson(layout) });
-      setPreviewPayload(live);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Preview failed");
+      const message = e instanceof Error ? e.message : "Save failed";
+      setErr(message);
+      pushMessage("error", `Save failed: ${message}`);
     }
   }
 
@@ -57,12 +47,13 @@ export function DashboardHeader({ dashboardId }: Props) {
     try {
       await dashApi.updateDashboard(dashboardId, { layout: layoutToApiJson(layout) });
       await dashApi.freezeDashboard(dashboardId);
-      const d = await dashApi.getDashboard(dashboardId);
-      useDashboardBuilderStore.getState().resetFromServer(d!);
-      setMsg("Frozen — opening live…");
-      nav(`/dashboard/${dashboardId}/live`);
+      markClean();
+      pushMessage("success", `Dashboard "${name.trim() || "Untitled"}" frozen and saved.`);
+      nav("/dashboard/list");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Freeze failed");
+      const message = e instanceof Error ? e.message : "Freeze failed";
+      setErr(message);
+      pushMessage("error", `Freeze failed: ${message}`);
     }
   }
 
@@ -72,22 +63,29 @@ export function DashboardHeader({ dashboardId }: Props) {
       await dashApi.unfreezeDashboard(dashboardId);
       const d = await dashApi.getDashboard(dashboardId);
       useDashboardBuilderStore.getState().resetFromServer(d!);
-      setMsg("Unfrozen");
+      pushMessage("success", `Dashboard "${name.trim() || "Untitled"}" unfrozen.`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Unfreeze failed");
+      const message = e instanceof Error ? e.message : "Unfreeze failed";
+      setErr(message);
+      pushMessage("error", `Unfreeze failed: ${message}`);
     }
   }
 
   async function onPrimary() {
     setErr(null);
     try {
+      await dashApi.updateDashboard(dashboardId, { layout: layoutToApiJson(layout) });
+      if (!frozen) {
+        await dashApi.freezeDashboard(dashboardId);
+      }
       await dashApi.setPrimaryDashboard(dashboardId);
-      const d = await dashApi.getDashboard(dashboardId);
-      useDashboardBuilderStore.getState().resetFromServer(d!);
-      setMsg("Set as primary — opening live…");
-      nav(`/dashboard/${dashboardId}/live`);
+      markClean();
+      pushMessage("success", `Dashboard "${name.trim() || "Untitled"}" set as primary.`);
+      nav("/dashboard/list");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Set primary failed");
+      const message = e instanceof Error ? e.message : "Set primary failed";
+      setErr(message);
+      pushMessage("error", `Set primary failed: ${message}`);
     }
   }
 
@@ -102,13 +100,14 @@ export function DashboardHeader({ dashboardId }: Props) {
       return;
     }
     setErr(null);
-    setMsg(null);
     try {
       const d = await dashApi.resetDashboardDefaultLayout(dashboardId);
       useDashboardBuilderStore.getState().resetFromServer(d!);
-      setMsg("Layout reset to default template");
+      pushMessage("success", "Dashboard layout reset to default template.");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Reset failed");
+      const message = e instanceof Error ? e.message : "Reset failed";
+      setErr(message);
+      pushMessage("error", `Reset failed: ${message}`);
     }
   }
 
@@ -124,20 +123,30 @@ export function DashboardHeader({ dashboardId }: Props) {
     setErr(null);
     try {
       await dashApi.deleteDashboard(dashboardId);
+      pushMessage("success", "Dashboard deleted.");
       nav("/dashboard/list");
     } catch (e) {
       if (tryHandleResourceInUseError(e)) return;
-      setErr(e instanceof Error ? e.message : "Delete failed");
+      const message = e instanceof Error ? e.message : "Delete failed";
+      setErr(message);
+      pushMessage("error", `Delete failed: ${message}`);
     }
   }
 
   const frozen = status === "frozen";
-  const refreshSec = layout.settings?.refreshIntervalSec ?? 30;
-  const mapStyleUrl = layout.settings?.mapStyleUrl ?? "";
 
   return (
-    <>
     <header className="dash-header">
+      <nav className="dash-header__subnav" aria-label="Dashboard navigation">
+        <Link to="/dashboard/list" className="scrubber2-subnav__back">
+          <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+          Dashboard List
+        </Link>
+        <span className="dash-header__subnav-hint">
+          {" "}
+          / Create dashboard — build or edit Dashboard; return to the list anytime.
+        </span>
+      </nav>
       <div className="dash-header__titles">
         <label className="dash-header__label">
           Name
@@ -158,85 +167,35 @@ export function DashboardHeader({ dashboardId }: Props) {
           />
         </label>
       </div>
-      <div className="dash-header__meta">
-        <span className="dash-header__badge">{status}</span>
-        {isPrimary && <span className="dash-header__badge dash-header__badge--accent">primary</span>}
-        {dirty && <span className="dash-header__badge">unsaved</span>}
-      </div>
       <div className="dash-header__actions">
-        {msg && <span className="dash-header__ok">{msg}</span>}
         {err && <span className="dash-header__err">{err}</span>}
-        <button type="button" className="dash-btn" onClick={() => void onSave()} disabled={frozen}>
-          Save draft
-        </button>
-        <button type="button" className="dash-btn dash-btn--secondary" onClick={() => void onPreview()}>
-          Preview
+        <button type="button" className="dm-btn dm-btn--outline" onClick={() => void onSave()}>
+          Save
         </button>
         {frozen ? (
-          <button type="button" className="dash-btn" onClick={() => void onUnfreeze()}>
+          <button type="button" className="dm-btn dm-btn--outline" onClick={() => void onUnfreeze()}>
             Unfreeze
           </button>
         ) : (
-          <button type="button" className="dash-btn dash-btn--accent" onClick={() => void onFreeze()}>
+          <button type="button" className="dm-btn dm-btn--outline" onClick={() => void onFreeze()}>
             Freeze
           </button>
         )}
-        <button type="button" className="dash-btn" onClick={() => void onPrimary()} disabled={!frozen}>
+        <button type="button" className="dm-btn dm-btn--outline" onClick={() => void onPrimary()}>
           Set primary
         </button>
-        <Link to={`/dashboard/${dashboardId}/live`} className="dash-btn dash-btn--link">
+        <Link to={`/dashboard/${dashboardId}/live`} className="dm-btn dm-btn--outline">
           Live
         </Link>
         {!frozen ? (
-          <button type="button" className="dash-btn dash-btn--secondary" onClick={() => void onResetDefaultLayout()}>
-            Reset to default layout
+          <button type="button" className="dm-btn dm-btn--outline" onClick={() => void onResetDefaultLayout()}>
+            Reset to Default
           </button>
         ) : null}
-        <button type="button" className="dash-btn dash-btn--danger" onClick={() => void onDelete()}>
+        <button type="button" className="dm-btn dm-btn--outline" onClick={() => void onDelete()}>
           Delete
         </button>
       </div>
     </header>
-    <details className="dash-header-settings" style={{ marginTop: "0.25rem" }}>
-      <summary style={{ cursor: "pointer", fontSize: "0.85rem", color: "var(--color-text-muted)" }}>
-        Dashboard settings (live refresh & map style)
-      </summary>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "0.75rem",
-          marginTop: "0.5rem",
-          padding: "0.5rem 0",
-        }}
-      >
-        <label className="dash-header__label">
-          Live refresh interval (seconds, 5–3600)
-          <input
-            type="number"
-            min={5}
-            max={3600}
-            className="dash-header__input"
-            disabled={frozen}
-            value={refreshSec}
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (Number.isFinite(n)) setDashboardSettings({ refreshIntervalSec: Math.min(3600, Math.max(5, n)) });
-            }}
-          />
-        </label>
-        <label className="dash-header__label">
-          Map style URL (optional; overrides server default — see docs/DASHBOARD_MAP_TILES.md)
-          <input
-            className="dash-header__input dash-header__input--wide"
-            disabled={frozen}
-            placeholder="https://…"
-            value={mapStyleUrl}
-            onChange={(e) => setDashboardSettings({ mapStyleUrl: e.target.value.trim() || undefined })}
-          />
-        </label>
-      </div>
-    </details>
-    </>
   );
 }

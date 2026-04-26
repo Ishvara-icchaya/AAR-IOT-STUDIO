@@ -896,6 +896,9 @@ export function DeviceRegisterPage() {
                           <td className="dm-data-table__td dm-data-table__td--muted">{lastDataSummary(d)}</td>
                           <td className="dm-data-table__td dm-data-table__td--actions">
                             <div className="dm-act-grid">
+                              <OpsActionButton tone="plain" title="Edit device info" aria-label={`Edit registration for ${d.name}`} onClick={() => openEditModal(d)}>
+                                <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                              </OpsActionButton>
                               <Link
                                 className="dm-act-grid__btn"
                                 to={`/devices/manage?device=${encodeURIComponent(d.id)}`}
@@ -935,9 +938,6 @@ export function DeviceRegisterPage() {
                                   <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                 </OpsActionButton>
                               )}
-                              <OpsActionButton tone="plain" title="Edit device info" aria-label={`Edit registration for ${d.name}`} onClick={() => openEditModal(d)}>
-                                <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </OpsActionButton>
                             </div>
                           </td>
                         </tr>

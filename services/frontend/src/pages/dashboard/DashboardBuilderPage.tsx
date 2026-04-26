@@ -18,6 +18,7 @@ import { DashboardPreviewPanel } from "@/components/dashboard/DashboardPreviewPa
 import { DashboardWidgetConfigDrawer } from "@/components/dashboard/DashboardWidgetConfigDrawer";
 import { paletteDropWidget, useDashboardBuilderStore } from "@/stores/dashboardBuilderStore";
 import { PageShell } from "@/layouts/PageShell";
+import "../device-register-page.css";
 
 export function DashboardBuilderPage() {
   const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -99,7 +100,7 @@ export function DashboardBuilderPage() {
                 <DashboardRowBuilder key={row.rowId} row={row} />
               ))}
             </SortableContext>
-            <button type="button" className="dash-btn" disabled={frozen} onClick={() => addRow()}>
+            <button type="button" className="dm-btn dm-btn--outline" disabled={frozen} onClick={() => addRow()}>
               Add row
             </button>
           </main>

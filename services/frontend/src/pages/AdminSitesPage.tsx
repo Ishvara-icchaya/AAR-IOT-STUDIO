@@ -169,40 +169,38 @@ export function AdminSitesPage() {
           ) : (
             <div className="dm-device-table-shell" aria-busy={loading}>
               {loading && items.length > 0 ? <p className="dm-table-loading">Updating list…</p> : null}
-              <div className="dm-table-scroll">
-                <table className="dm-data-table">
-                  <thead>
-                    <tr>
-                      <th className="dm-data-table__th" scope="col">
-                        Name
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--desc" scope="col">
-                        Description
-                      </th>
-                      <th className="dm-data-table__th" scope="col">
-                        Id
-                      </th>
+              <table className="dm-data-table">
+                <thead>
+                  <tr>
+                    <th className="dm-data-table__th" scope="col">
+                      Name
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--desc" scope="col">
+                      Description
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Id
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageItems.map((s) => (
+                    <tr key={s.id} className="dm-data-table__row">
+                      <td className="dm-data-table__td">
+                        <strong>{s.name}</strong>
+                      </td>
+                      <td className="dm-data-table__td dm-data-table__td--desc">
+                        <span title={s.description ?? undefined}>
+                          {s.description?.trim() ? s.description : "—"}
+                        </span>
+                      </td>
+                      <td className="dm-data-table__td dm-data-table__td--muted">
+                        <code style={{ fontSize: "0.72rem" }}>{s.id.length > 12 ? `${s.id.slice(0, 12)}…` : s.id}</code>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {pageItems.map((s) => (
-                      <tr key={s.id} className="dm-data-table__row">
-                        <td className="dm-data-table__td">
-                          <strong>{s.name}</strong>
-                        </td>
-                        <td className="dm-data-table__td dm-data-table__td--desc">
-                          <span title={s.description ?? undefined}>
-                            {s.description?.trim() ? s.description : "—"}
-                          </span>
-                        </td>
-                        <td className="dm-data-table__td dm-data-table__td--muted">
-                          <code style={{ fontSize: "0.72rem" }}>{s.id.length > 12 ? `${s.id.slice(0, 12)}…` : s.id}</code>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
           <div className="dm-table-pager" role="navigation" aria-label="Pagination">

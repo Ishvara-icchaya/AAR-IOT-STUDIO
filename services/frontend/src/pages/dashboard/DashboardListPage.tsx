@@ -269,8 +269,12 @@ export function DashboardListPage() {
       className="dashboard-list-page device-manage-page"
       header={
         <OpsPageHeader
-          title="Dashboards"
-          subtitle="Browse dashboards, see aggregation for the current list, and open live or builder views."
+          title={
+            <Link to="/dashboard/list" className="dm-page-hero__title-link">
+              Dashboard List
+            </Link>
+          }
+          subtitle=" / Create dashboard — build or edit Dashboard; return to the list anytime."
           actions={
             <Link to="/dashboard/create" className="dm-btn dm-btn--primary">
               <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
@@ -453,90 +457,88 @@ export function DashboardListPage() {
           ) : (
             <div className="dm-device-table-shell" aria-busy={tableLoading}>
               {tableLoading ? <p className="dm-table-loading">Updating list…</p> : null}
-              <div className="dm-table-scroll">
-                <table className="dm-data-table">
-                  <thead>
-                    <tr>
-                      <th className="dm-data-table__th" scope="col">
-                        Name
-                      </th>
-                      <th className="dm-data-table__th" scope="col">
-                        Site
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Status
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                        Primary
-                      </th>
-                      <th className="dm-data-table__th" scope="col">
-                        Updated
-                      </th>
-                      <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.map((row) => {
-                      const sid = row.site_id;
-                      const siteLabel = sid ? sitesById[sid] ?? `${sid.slice(0, 8)}…` : "—";
-                      return (
-                        <tr key={row.id} className="dm-data-table__row">
-                          <td className="dm-data-table__td">
-                            <span title={row.name} style={tdDesc}>
-                              <Link className="dm-name-link" to={`/dashboard/${row.id}/live`}>
-                                {row.name}
-                              </Link>
-                            </span>
-                          </td>
-                          <td className="dm-data-table__td">
-                            <small>{siteLabel}</small>
-                          </td>
-                          <td className="dm-data-table__td dm-data-table__td--center">
-                            <OpsStatusPill status={row.status} variant={dashboardStatusTone(row.status)} />
-                          </td>
-                          <td className="dm-data-table__td dm-data-table__td--center">
-                            {row.is_primary ? <OpsStatusPill status="Yes" variant="online" /> : "—"}
-                          </td>
-                          <td className="dm-data-table__td dm-data-table__td--muted">
-                            {new Date(row.updated_at).toLocaleString()}
-                          </td>
-                          <td className="dm-data-table__td dm-data-table__td--actions">
-                            <div className="dm-act-grid">
-                              <Link
-                                className="dm-act-grid__btn"
-                                to={`/dashboard/${row.id}/live`}
-                                title="Live view"
-                                aria-label={`Live view: ${row.name}`}
-                              >
-                                <Activity size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </Link>
-                              <Link
-                                className="dm-act-grid__btn"
-                                to={`/dashboard/${row.id}/edit`}
-                                title="Open builder"
-                                aria-label={`Edit dashboard ${row.name}`}
-                              >
-                                <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </Link>
-                              <OpsActionButton tone="plain" title="Duplicate dashboard" aria-label={`Duplicate ${row.name}`} onClick={() => void onDup(row.id)}>
-                                <Copy size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </OpsActionButton>
-                              <OpsActionButton tone="plain" title="Set as primary" aria-label={`Set primary: ${row.name}`} onClick={() => void onPrimary(row.id)}>
-                                <Star size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </OpsActionButton>
-                              <OpsActionButton tone="danger" title="Delete dashboard" aria-label={`Delete ${row.name}`} onClick={() => void onDel(row.id)}>
-                                <Trash2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </OpsActionButton>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <table className="dm-data-table">
+                <thead>
+                  <tr>
+                    <th className="dm-data-table__th" scope="col">
+                      Name
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Site
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Status
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      Primary
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Updated
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((row) => {
+                    const sid = row.site_id;
+                    const siteLabel = sid ? sitesById[sid] ?? `${sid.slice(0, 8)}…` : "—";
+                    return (
+                      <tr key={row.id} className="dm-data-table__row">
+                        <td className="dm-data-table__td">
+                          <span title={row.name} style={tdDesc}>
+                            <Link className="dm-name-link" to={`/dashboard/${row.id}/live`}>
+                              {row.name}
+                            </Link>
+                          </span>
+                        </td>
+                        <td className="dm-data-table__td">
+                          <small>{siteLabel}</small>
+                        </td>
+                        <td className="dm-data-table__td dm-data-table__td--center">
+                          <OpsStatusPill status={row.status} variant={dashboardStatusTone(row.status)} />
+                        </td>
+                        <td className="dm-data-table__td dm-data-table__td--center">
+                          {row.is_primary ? <OpsStatusPill status="Yes" variant="online" /> : "—"}
+                        </td>
+                        <td className="dm-data-table__td dm-data-table__td--muted">
+                          {new Date(row.updated_at).toLocaleString()}
+                        </td>
+                        <td className="dm-data-table__td dm-data-table__td--actions">
+                          <div className="dm-act-grid">
+                            <Link
+                              className="dm-act-grid__btn"
+                              to={`/dashboard/${row.id}/edit`}
+                              title="Open builder"
+                              aria-label={`Edit dashboard ${row.name}`}
+                            >
+                              <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                            </Link>
+                            <Link
+                              className="dm-act-grid__btn"
+                              to={`/dashboard/${row.id}/live`}
+                              title="Live view"
+                              aria-label={`Live view: ${row.name}`}
+                            >
+                              <Activity size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                            </Link>
+                            <OpsActionButton tone="plain" title="Duplicate dashboard" aria-label={`Duplicate ${row.name}`} onClick={() => void onDup(row.id)}>
+                              <Copy size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                            </OpsActionButton>
+                            <OpsActionButton tone="plain" title="Set as primary" aria-label={`Set primary: ${row.name}`} onClick={() => void onPrimary(row.id)}>
+                              <Star size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                            </OpsActionButton>
+                            <OpsActionButton tone="danger" title="Delete dashboard" aria-label={`Delete ${row.name}`} onClick={() => void onDel(row.id)}>
+                              <Trash2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                            </OpsActionButton>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
               {totalPages > 1 ? (
                 <div className="dm-table-pager" role="navigation" aria-label="Dashboard table pages">
                   <span className="dm-table-pager__meta">

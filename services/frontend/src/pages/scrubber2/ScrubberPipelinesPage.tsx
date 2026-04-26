@@ -301,68 +301,66 @@ export function ScrubberPipelinesPage() {
           {err ? <PageStatus variant="error">{err}</PageStatus> : null}
 
           <div className="dm-device-table-shell">
-            <div className="dm-table-scroll">
-              <table className="dm-data-table">
-                <thead>
+            <table className="dm-data-table">
+              <thead>
+                <tr>
+                  <th className="dm-data-table__th">Pipeline</th>
+                  <th className="dm-data-table__th">Device</th>
+                  <th className="dm-data-table__th">Site</th>
+                  <th className="dm-data-table__th">Protocol</th>
+                  <th className="dm-data-table__th dm-data-table__th--center">Version</th>
+                  <th className="dm-data-table__th dm-data-table__th--center">Status</th>
+                  <th className="dm-data-table__th">Last published</th>
+                  <th className="dm-data-table__th">Last data</th>
+                  <th className="dm-data-table__th dm-data-table__th--actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
                   <tr>
-                    <th className="dm-data-table__th">Pipeline</th>
-                    <th className="dm-data-table__th">Device</th>
-                    <th className="dm-data-table__th">Site</th>
-                    <th className="dm-data-table__th">Protocol</th>
-                    <th className="dm-data-table__th dm-data-table__th--center">Version</th>
-                    <th className="dm-data-table__th dm-data-table__th--center">Status</th>
-                    <th className="dm-data-table__th">Last published</th>
-                    <th className="dm-data-table__th">Last data</th>
-                    <th className="dm-data-table__th dm-data-table__th--actions">Actions</th>
+                    <td className="dm-data-table__empty" colSpan={9}>
+                      Loading…
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td className="dm-data-table__empty" colSpan={9}>
-                        Loading…
+                ) : pageRows.length === 0 ? (
+                  <tr>
+                    <td className="dm-data-table__empty" colSpan={9}>
+                      No scrubber pipelines match the current filters.
+                    </td>
+                  </tr>
+                ) : (
+                  pageRows.map((r) => (
+                    <tr key={r.deviceId} className="dm-data-table__row">
+                      <td className="dm-data-table__td">{r.pipelineName}</td>
+                      <td className="dm-data-table__td">{r.deviceName}</td>
+                      <td className="dm-data-table__td">
+                        <small>{sitesById[r.siteId] ?? `${r.siteId.slice(0, 8)}…`}</small>
+                      </td>
+                      <td className="dm-data-table__td">{r.protocol}</td>
+                      <td className="dm-data-table__td dm-data-table__td--center">{r.version}</td>
+                      <td className="dm-data-table__td dm-data-table__td--center">
+                        <OpsStatusPill status={r.status} variant={toneForStatus(r.status)} />
+                      </td>
+                      <td className="dm-data-table__td dm-data-table__td--muted">{r.lastPublished}</td>
+                      <td className="dm-data-table__td dm-data-table__td--muted">{r.lastData}</td>
+                      <td className="dm-data-table__td dm-data-table__td--actions">
+                        <div className="dm-act-grid">
+                          <Link className="dm-act-grid__btn" to={`/scrubber/v2/create?deviceId=${encodeURIComponent(r.deviceId)}`} title="Edit pipeline">
+                            <Pencil size={16} aria-hidden />
+                          </Link>
+                          <Link className="dm-act-grid__btn dm-act-grid__btn--plain" to={`/devices/manage?device=${encodeURIComponent(r.deviceId)}`} title="View device">
+                            <Eye size={16} aria-hidden />
+                          </Link>
+                          <OpsActionButton tone="plain" title="Versions (coming soon)" disabled>
+                            <GitBranch size={16} aria-hidden />
+                          </OpsActionButton>
+                        </div>
                       </td>
                     </tr>
-                  ) : pageRows.length === 0 ? (
-                    <tr>
-                      <td className="dm-data-table__empty" colSpan={9}>
-                        No scrubber pipelines match the current filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    pageRows.map((r) => (
-                      <tr key={r.deviceId} className="dm-data-table__row">
-                        <td className="dm-data-table__td">{r.pipelineName}</td>
-                        <td className="dm-data-table__td">{r.deviceName}</td>
-                        <td className="dm-data-table__td">
-                          <small>{sitesById[r.siteId] ?? `${r.siteId.slice(0, 8)}…`}</small>
-                        </td>
-                        <td className="dm-data-table__td">{r.protocol}</td>
-                        <td className="dm-data-table__td dm-data-table__td--center">{r.version}</td>
-                        <td className="dm-data-table__td dm-data-table__td--center">
-                          <OpsStatusPill status={r.status} variant={toneForStatus(r.status)} />
-                        </td>
-                        <td className="dm-data-table__td dm-data-table__td--muted">{r.lastPublished}</td>
-                        <td className="dm-data-table__td dm-data-table__td--muted">{r.lastData}</td>
-                        <td className="dm-data-table__td dm-data-table__td--actions">
-                          <div className="dm-act-grid">
-                            <Link className="dm-act-grid__btn" to={`/scrubber/v2/create?deviceId=${encodeURIComponent(r.deviceId)}`} title="Edit pipeline">
-                              <Pencil size={16} aria-hidden />
-                            </Link>
-                            <Link className="dm-act-grid__btn dm-act-grid__btn--plain" to={`/devices/manage?device=${encodeURIComponent(r.deviceId)}`} title="View device">
-                              <Eye size={16} aria-hidden />
-                            </Link>
-                            <OpsActionButton tone="plain" title="Versions (coming soon)" disabled>
-                              <GitBranch size={16} aria-hidden />
-                            </OpsActionButton>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </OpsDataTable>
       }
