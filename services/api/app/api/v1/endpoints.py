@@ -20,6 +20,8 @@ from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
 from app.models.user import User
 from app.schemas.endpoint import (
+    MapMarkerListResponse,
+    MapMarkerRead,
     EndpointCreate,
     EndpointListResponse,
     EndpointRead,
@@ -226,7 +228,7 @@ def list_latest_device_states(
 @router.get("/{endpoint_id}/scrubbed-events", response_model=ScrubbedEventListResponse)
 def list_scrubbed_events(
     endpoint_id: uuid.UUID,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(5, ge=1, le=200),
     cursor: str | None = Query(
         None,
         description="Pagination: scrubbed_events.id from the previous page (older events).",
@@ -276,3 +278,87 @@ def list_scrubbed_events(
         items=[ScrubbedEventRead.model_validate(r) for r in page],
         next_cursor=next_cursor,
     )
+
+
+@router.get(
+    "/{endpoint_id}/resolved-devices/{resolved_device_id}/latest-device-state",
+    response_model=LatestDeviceStateRead,
+)
+def get_latest_state_for_resolved_device(
+    endpoint_id: uuid.UUID,
+    resolved_device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+
+    row = db.execute(
+        select(LatestDeviceState).where(
+            LatestDeviceState.endpoint_id == endpoint_id,
+            LatestDeviceState.resolved_device_id == resolved_device_id,
+            LatestDeviceState.customer_id == user.customer_id,
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "latest_device_state not found")
+    return LatestDeviceStateRead.model_validate(row)
+
+
+@router.get("/{endpoint_id}/map-markers", response_model=MapMarkerListResponse)
+def list_endpoint_map_markers(
+    endpoint_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+
+    rows = db.scalars(
+        select(LatestDeviceState)
+        .where(
+            LatestDeviceState.endpoint_id == endpoint_id,
+            LatestDeviceState.customer_id == user.customer_id,
+        )
+        .order_by(LatestDeviceState.updated_at.desc())
+    ).all()
+
+    markers: list[MapMarkerRead] = []
+    for row in rows:
+        loc = row.location_json if isinstance(row.location_json, dict) else {}
+        lat = loc.get("lat", loc.get("latitude"))
+        lon = loc.get("lon", loc.get("longitude"))
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+        except (TypeError, ValueError):
+            continue
+        heading: float | None = None
+        h = loc.get("heading")
+        if h is not None:
+            try:
+                heading = float(h)
+            except (TypeError, ValueError):
+                heading = None
+        markers.append(
+            MapMarkerRead(
+                resolved_device_id=row.resolved_device_id,
+                latest_device_state_id=row.id,
+                object_name=row.object_name,
+                latitude=lat_f,
+                longitude=lon_f,
+                heading=heading,
+                updated_at=row.updated_at,
+                identity_json=row.identity_json if isinstance(row.identity_json, dict) else {},
+                display_json=row.display_json if isinstance(row.display_json, dict) else {},
+                kpi_json=row.kpi_json if isinstance(row.kpi_json, dict) else {},
+                health_json=row.health_json if isinstance(row.health_json, dict) else None,
+            )
+        )
+    return MapMarkerListResponse(items=markers)

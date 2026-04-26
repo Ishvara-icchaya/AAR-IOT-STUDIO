@@ -130,3 +130,21 @@ class LatestDeviceStateRead(BaseModel):
 
 class LatestDeviceStateListResponse(BaseModel):
     items: list[LatestDeviceStateRead]
+
+
+class MapMarkerRead(BaseModel):
+    resolved_device_id: uuid.UUID
+    latest_device_state_id: uuid.UUID
+    object_name: str
+    latitude: float
+    longitude: float
+    heading: float | None = None
+    updated_at: datetime
+    identity_json: dict[str, Any]
+    display_json: dict[str, Any]
+    kpi_json: dict[str, Any]
+    health_json: dict[str, Any] | None
+
+
+class MapMarkerListResponse(BaseModel):
+    items: list[MapMarkerRead]
