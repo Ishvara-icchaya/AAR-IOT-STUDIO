@@ -18,6 +18,7 @@ from app.metadata_db import fetch_site_mapping_studio, insert_data_object
 from app.minio_worker import read_object_slice
 from app.pipeline import emit
 from app.scrubber_engine import run_scrubber
+from app.v2_resolution import try_write_v2_from_scrubber
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
 
 configure_logging()
@@ -344,6 +345,18 @@ def _process_envelope(env: dict) -> None:
             data_object_id=oid,
             trace_id=trace_s,
         )
+
+    try:
+        try_write_v2_from_scrubber(
+            device_id=device_id,
+            customer_id=customer_id,
+            site_id=site_id,
+            raw_object_id=raw_object_id,
+            result=result,
+            scrubber_envelope=env,
+        )
+    except Exception:
+        log.debug("v2_resolution after scrub skipped", exc_info=True)
 
 
 def main() -> None:
