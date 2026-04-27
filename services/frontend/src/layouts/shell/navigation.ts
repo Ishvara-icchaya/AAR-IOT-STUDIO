@@ -21,9 +21,9 @@ export type MainNavFlatLink = {
 export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
   {
     id: "devices",
-    label: "Manage Devices",
+    label: "Manage Endpoints",
     to: "/devices/register",
-    alsoActiveOn: ["/devices/manage", "/devices/raw"],
+    alsoActiveOn: ["/devices/manage", "/devices/raw", "/devices/ingest"],
   },
   {
     id: "raw-sample",
@@ -132,6 +132,7 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/devices/register") return "Manage Devices";
   if (pathname === "/devices/manage") return "Manage device";
   if (pathname === "/devices/raw") return "Raw Data";
+  if (pathname === "/devices/ingest") return "Manage Endpoints";
   if (pathname === "/enterprise-ai") return "Enterprise AI";
   if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
   if (pathname === "/administration/users") return "Users";
