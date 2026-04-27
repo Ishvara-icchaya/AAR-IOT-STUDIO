@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 
 from kafka import KafkaConsumer
 
@@ -91,6 +92,7 @@ def _process_event(data: dict) -> None:
             edges=exec_edges,
             load_data_object=load_obj,
             load_static_ingestion=load_static,
+            trigger_data_object_id=uuid.UUID(data_object_id),
         )
         st = "success"
         if err == "filtered_out":

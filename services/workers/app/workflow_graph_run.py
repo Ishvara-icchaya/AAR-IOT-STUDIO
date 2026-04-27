@@ -108,10 +108,14 @@ def run_static(
 def run_input(
     config: dict[str, Any],
     load_data_object: Callable[[uuid.UUID], dict[str, Any]],
+    *,
+    trigger_data_object_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
-    raw_id = config.get("data_object_id")
+    if config.get("data_object_id"):
+        raise WorkflowGraphError("input node config.data_object_id is not allowed in v2")
+    raw_id = str(trigger_data_object_id) if trigger_data_object_id is not None else None
     if not raw_id:
-        raise WorkflowGraphError("input node requires config.data_object_id")
+        raise WorkflowGraphError("input node requires trigger from v2 identity binding")
     try:
         did = uuid.UUID(str(raw_id))
     except ValueError as e:
@@ -329,6 +333,7 @@ def execute_graph(
     edges: list[dict[str, Any]],
     load_data_object: Callable[[uuid.UUID], dict[str, Any]],
     load_static_ingestion: Callable[[uuid.UUID], dict[str, Any]] | None = None,
+    trigger_data_object_id: uuid.UUID | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], str | None]:
     """
     nodes: {id, node_type, config_json}
@@ -364,7 +369,7 @@ def execute_graph(
 
         try:
             if ntype == "input":
-                out = run_input(cfg, load_data_object)
+                out = run_input(cfg, load_data_object, trigger_data_object_id=trigger_data_object_id)
             elif ntype == "static":
                 if len(parents) != 0:
                     raise WorkflowGraphError("static node must not have incoming edges")

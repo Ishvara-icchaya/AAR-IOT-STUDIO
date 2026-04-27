@@ -9,26 +9,13 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.data_object_lifecycle import DATA_PUBLISHED
-from app.models.data_object import DataObject
+from app.models.latest_device_state import LatestDeviceState
+from app.models.resolved_device import ResolvedDevice
 from app.models.result_object_definition import ResultObjectDefinition
 from app.models.static_ingestion import StaticIngestion
 from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode
 from app.services.workflow_graph_run import NODE_TYPES, topological_order
-
-
-def validate_data_object_binding(
-    db: Session, customer_id: uuid.UUID, data_object_id: uuid.UUID | None
-) -> str | None:
-    if data_object_id is None:
-        return None
-    row = db.get(DataObject, data_object_id)
-    if not row or row.customer_id != customer_id:
-        return "data_object not found"
-    if row.lifecycle_status != DATA_PUBLISHED:
-        return "workflow input must reference a published data_object"
-    return None
 
 
 def validate_static_ingestion_binding(
@@ -202,7 +189,7 @@ def validate_workflow_graph(
 
 
 def full_validation_errors(db: Session, user_customer_id: uuid.UUID, wf: Workflow) -> list[str]:
-    """Graph validation plus published data_object binding on input nodes."""
+    """Graph validation plus v2 input binding checks (resolved_device / latest_device_state)."""
     nodes = [
         {
             "id": n.id,
@@ -226,16 +213,37 @@ def full_validation_errors(db: Session, user_customer_id: uuid.UUID, wf: Workflo
     for n in wf.nodes:
         if n.node_type == "input":
             cfg = n.config_json or {}
-            raw = cfg.get("data_object_id")
-            if raw:
+            raw_rd = cfg.get("resolved_device_id")
+            raw_ld = cfg.get("latest_device_state_id")
+            if not raw_rd and not raw_ld:
+                errs.append(
+                    "input node requires at least one of resolved_device_id, latest_device_state_id"
+                )
+                continue
+            if cfg.get("data_object_id"):
+                errs.append("input node data_object_id is not allowed in v2")
+            if raw_rd:
                 try:
-                    did = uuid.UUID(str(raw))
+                    rid = uuid.UUID(str(raw_rd))
                 except ValueError:
-                    errs.append("input node has invalid data_object_id")
-                    continue
-                m = validate_data_object_binding(db, user_customer_id, did)
-                if m:
-                    errs.append(m)
+                    errs.append("input node has invalid resolved_device_id")
+                else:
+                    rrow = db.get(ResolvedDevice, rid)
+                    if not rrow or rrow.customer_id != user_customer_id:
+                        errs.append("resolved_device not found")
+                    elif wf.site_id and rrow.site_id != wf.site_id:
+                        errs.append("resolved_device site does not match workflow site")
+            if raw_ld:
+                try:
+                    lid = uuid.UUID(str(raw_ld))
+                except ValueError:
+                    errs.append("input node has invalid latest_device_state_id")
+                else:
+                    lrow = db.get(LatestDeviceState, lid)
+                    if not lrow or lrow.customer_id != user_customer_id:
+                        errs.append("latest_device_state not found")
+                    elif wf.site_id and lrow.site_id != wf.site_id:
+                        errs.append("latest_device_state site does not match workflow site")
         elif n.node_type == "static":
             cfg = n.config_json or {}
             raw = cfg.get("static_ingestion_id")

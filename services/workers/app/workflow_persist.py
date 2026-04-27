@@ -33,12 +33,31 @@ def find_published_workflows_for_data_object(
       AND w.is_published = true
       AND w.lifecycle_status = 'published'
       AND n.node_type = 'input'
-      AND (n.config_json->>'data_object_id') = %s
+      AND (
+        (n.config_json->>'data_object_id') = %s
+        OR (
+          (n.config_json->>'resolved_device_id') IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM scrubbed_events se
+            WHERE se.payload_ref = %s::uuid
+              AND se.resolved_device_id::text = (n.config_json->>'resolved_device_id')
+          )
+        )
+        OR (
+          (n.config_json->>'latest_device_state_id') IS NOT NULL
+          AND EXISTS (
+            SELECT 1 FROM latest_device_state lds
+            INNER JOIN scrubbed_events se ON se.id = lds.scrubbed_event_id
+            WHERE se.payload_ref = %s::uuid
+              AND lds.id::text = (n.config_json->>'latest_device_state_id')
+          )
+        )
+      )
     """
     conn = psycopg2.connect(_db_url())
     try:
         with conn.cursor() as cur:
-            cur.execute(sql, (site_id, customer_id, data_object_id))
+            cur.execute(sql, (site_id, customer_id, data_object_id, data_object_id, data_object_id))
             return [r[0] for r in cur.fetchall()]
     finally:
         conn.close()

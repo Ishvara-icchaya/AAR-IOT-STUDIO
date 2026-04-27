@@ -917,6 +917,26 @@ export function WorkflowEditorPage() {
                     Binds the published data object for that device. Incoming preview and test runs use the latest observed
                     payload when samples exist.
                   </p>
+                  <label className="app-field-row">
+                    resolved_device_id (optional v2 trigger)
+                    <input
+                      className="app-control"
+                      disabled={published}
+                      value={String((selectedNode.data.configJson as { resolved_device_id?: string }).resolved_device_id ?? "")}
+                      onChange={(e) => patchSelectedConfig({ resolved_device_id: e.target.value })}
+                      placeholder="UUID — workflow runs when scrubbed payload_ref matches"
+                    />
+                  </label>
+                  <label className="app-field-row">
+                    latest_device_state_id (optional v2 trigger)
+                    <input
+                      className="app-control"
+                      disabled={published}
+                      value={String((selectedNode.data.configJson as { latest_device_state_id?: string }).latest_device_state_id ?? "")}
+                      onChange={(e) => patchSelectedConfig({ latest_device_state_id: e.target.value })}
+                      placeholder="UUID — matches latest row after scrub"
+                    />
+                  </label>
                   {availableFields.length > 0 ? (
                     <label className="app-field-row">
                       Available fields
