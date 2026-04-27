@@ -96,6 +96,42 @@ def load_result_object_payload(conn, *, customer_id: str, result_object_id: str)
         }
 
 
+def load_latest_device_state_payload(
+    conn,
+    *,
+    customer_id: str,
+    latest_device_state_id: str,
+) -> dict[str, Any] | None:
+    sql = """
+    SELECT l.id, l.endpoint_id, l.resolved_device_id, l.object_name, l.kpi_json, l.health_json, l.location_json,
+           l.display_json, l.identity_json, l.updated_at
+    FROM latest_device_state l
+    INNER JOIN sites s ON s.id = l.site_id
+    INNER JOIN customers c ON c.id = l.customer_id
+    WHERE l.id = %s::uuid AND l.customer_id = %s::uuid
+      AND s.operational_status = 'active'
+      AND c.operational_status = 'active'
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (latest_device_state_id, customer_id))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "source_type": "latest_device_state",
+            "latest_device_state_id": str(row[0]),
+            "endpoint_id": str(row[1]),
+            "resolved_device_id": str(row[2]),
+            "object_name": row[3],
+            "kpi_json": row[4] if isinstance(row[4], dict) else {},
+            "health_json": row[5] if isinstance(row[5], dict) else {},
+            "location_json": row[6] if isinstance(row[6], dict) else {},
+            "display_json": row[7] if isinstance(row[7], dict) else {},
+            "identity_json": row[8] if isinstance(row[8], dict) else {},
+            "updated_at": row[9].isoformat() if row[9] else None,
+        }
+
+
 def insert_delivery_log(
     conn,
     *,

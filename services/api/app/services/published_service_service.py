@@ -13,6 +13,7 @@ from app.access_control import ensure_site_in_tenant, allowed_site_ids_for_user,
 from app.core.config import settings
 from app.core.redis_sync import get_redis
 from app.models.data_object import DataObject
+from app.models.latest_device_state import LatestDeviceState
 from app.services.data_object_query import order_by_metadata_recency
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
@@ -314,6 +315,23 @@ def load_source_payload(db: Session, *, customer_id: uuid.UUID, svc: PublishedSe
             "payload": dict(row.payload or {}),
             "kpi_json": dict(row.kpi_json or {}),
             "health_status": row.health_status,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+    if svc.source_type == "latest_device_state":
+        row = db.get(LatestDeviceState, svc.source_object_id)
+        if not row or row.customer_id != customer_id:
+            return None
+        return {
+            "source_type": "latest_device_state",
+            "latest_device_state_id": str(row.id),
+            "endpoint_id": str(row.endpoint_id),
+            "resolved_device_id": str(row.resolved_device_id),
+            "object_name": row.object_name,
+            "identity_json": dict(row.identity_json or {}),
+            "display_json": dict(row.display_json or {}),
+            "kpi_json": dict(row.kpi_json or {}),
+            "health_json": dict(row.health_json or {}),
+            "location_json": dict(row.location_json or {}),
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }
     row = db.get(WorkflowResultObject, svc.source_object_id)

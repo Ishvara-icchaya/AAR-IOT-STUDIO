@@ -12,6 +12,7 @@ import psycopg2
 from psycopg2.extras import Json
 
 from app.db_url import db_url
+from app.kafka_publish import publish_json
 from app.primary_device_key import build_device_label, compute_primary_key_hash, extract_primary_key_json
 from app.scrubber_engine import ScrubberRunResult
 
@@ -231,6 +232,7 @@ def try_write_v2_from_scrubber(
                   location_json = EXCLUDED.location_json,
                   scrubbed_event_id = EXCLUDED.scrubbed_event_id,
                   updated_at = EXCLUDED.updated_at
+                RETURNING id::text
                 """,
                 (
                     str(uuid.uuid4()),
@@ -252,302 +254,26 @@ def try_write_v2_from_scrubber(
                     now,
                 ),
             )
+            lds_row = cur.fetchone()
+            latest_device_state_id = str(lds_row[0]) if lds_row else None
         conn.commit()
+        if scrubbed_event_id_s and latest_device_state_id:
+            topic = os.environ.get("KAFKA_LATEST_DEVICE_STATE_TOPIC", "latest_device_state.updated")
+            publish_json(
+                topic=topic,
+                key=str(resolved_device_id),
+                payload={
+                    "kind": "latest_device_state_updated",
+                    "customer_id": customer_id,
+                    "site_id": site_id,
+                    "endpoint_id": endpoint_id,
+                    "resolved_device_id": resolved_device_id,
+                    "latest_device_state_id": latest_device_state_id,
+                    "scrubbed_event_id": scrubbed_event_id_s,
+                },
+            )
     except Exception:
         conn.rollback()
         log.exception("v2_resolution write failed raw_object_id=%s endpoint_id=%s", raw_object_id, endpoint_id)
-    finally:
-        conn.close()
-
-"""After scrubber produces a data_object, optionally write v2 resolved_devices / scrubbed_events / latest_device_state.
-
-Resolution order:
-1. ``endpoint_id`` on the scrubber Kafka envelope (from raw ingest), validated against the ingest ``device_id``.
-2. Else an ``endpoints`` row with ``platform_device_id`` matching ``device_id`` and ``object_name`` matching scrub output.
-"""
-
-from __future__ import annotations
-
-import logging
-import os
-import uuid
-from datetime import datetime, timezone
-from typing import Any
-
-import psycopg2
-from psycopg2.extras import Json
-
-from app.data_object_lifecycle import DATA_COMPILED, DATA_PUBLISHED
-from app.db_url import db_url
-from app.primary_device_key import build_device_label, compute_primary_key_hash
-from app.scrubber_engine import ScrubberRunResult, _parse_raw_payload
-
-log = logging.getLogger(__name__)
-
-
-def _truthy(name: str, default: str = "true") -> bool:
-    return os.environ.get(name, default).lower() in ("1", "true", "yes")
-
-
-def _coerce_str_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    out: list[str] = []
-    for x in value:
-        if isinstance(x, str) and x.strip():
-            out.append(x.strip())
-    return out
-
-
-def try_write_v2_from_scrubber(
-    *,
-    device_id: str,
-    customer_id: str,
-    site_id: str,
-    raw_object_id: str,
-    raw_bytes: bytes,
-    content_type: str | None,
-    result: ScrubberRunResult,
-    data_object_id: str,
-    data_lifecycle_status: str,
-    scrubber_envelope: dict[str, Any] | None = None,
-) -> None:
-    if not _truthy("V2_RESOLUTION_WRITE", "true"):
-        return
-    try:
-        raw_payload = _parse_raw_payload(raw_bytes, content_type, None)
-    except Exception:
-        log.debug("v2_resolution raw parse skipped", exc_info=True)
-        return
-    if not isinstance(raw_payload, dict):
-        return
-
-    conn = psycopg2.connect(db_url())
-    try:
-        conn.autocommit = False
-        with conn.cursor() as cur:
-            row = None
-            env_ep = (scrubber_envelope or {}).get("endpoint_id")
-            if env_ep:
-                cur.execute(
-                    """
-                    SELECT e.id::text, e.customer_id::text, e.site_id::text, e.object_name,
-                           e.primary_device_key_fields, e.device_label_fields, e.device_type,
-                           e.lowercase_primary_keys
-                    FROM endpoints e
-                    LEFT JOIN device_endpoints de ON de.id = e.device_endpoint_id
-                    WHERE e.id = %s::uuid
-                      AND e.enabled = true
-                      AND e.object_name = %s
-                      AND (
-                        e.platform_device_id = %s::uuid
-                        OR (de.id IS NOT NULL AND de.device_id = %s::uuid)
-                      )
-                    LIMIT 1
-                    """,
-                    (str(env_ep), result.object_name, device_id, device_id),
-                )
-                row = cur.fetchone()
-            if not row:
-                cur.execute(
-                    """
-                    SELECT id::text, customer_id::text, site_id::text, object_name,
-                           primary_device_key_fields, device_label_fields, device_type,
-                           lowercase_primary_keys
-                    FROM endpoints
-                    WHERE platform_device_id = %s::uuid
-                      AND object_name = %s
-                      AND enabled = true
-                    LIMIT 1
-                    """,
-                    (device_id, result.object_name),
-                )
-                row = cur.fetchone()
-            if not row:
-                conn.rollback()
-                return
-            (
-                endpoint_id,
-                ep_customer_id,
-                ep_site_id,
-                object_name,
-                pk_fields_raw,
-                label_fields_raw,
-                device_type,
-                lowercase_pk,
-            ) = row
-            pk_fields = _coerce_str_list(pk_fields_raw)
-            label_fields = _coerce_str_list(label_fields_raw)
-            if not pk_fields:
-                log.debug(
-                    "v2_resolution skip endpoint_id=%s no primary_device_key_fields",
-                    endpoint_id,
-                )
-                conn.rollback()
-                return
-            if ep_customer_id != customer_id or ep_site_id != site_id:
-                log.warning(
-                    "v2_resolution endpoint tenant mismatch endpoint_id=%s device_id=%s",
-                    endpoint_id,
-                    device_id,
-                )
-                conn.rollback()
-                return
-
-            try:
-                pk_json, pk_hash = compute_primary_key_hash(
-                    primary_device_key_fields=pk_fields,
-                    payload=raw_payload,
-                    lowercase_primary_keys=bool(lowercase_pk),
-                )
-            except ValueError as e:
-                log.warning(
-                    "v2_resolution pk extract failed endpoint_id=%s raw_object_id=%s err=%s",
-                    endpoint_id,
-                    raw_object_id,
-                    e,
-                )
-                conn.rollback()
-                return
-
-            label = build_device_label(
-                payload=raw_payload,
-                device_label_fields=label_fields,
-                lowercase_primary_keys=bool(lowercase_pk),
-            )
-            resolved_id = str(uuid.uuid4())
-            now = datetime.now(timezone.utc)
-            cur.execute(
-                """
-                INSERT INTO resolved_devices (
-                    id, customer_id, site_id, endpoint_id, object_name,
-                    primary_key_hash, primary_key_json, device_label, device_type,
-                    last_seen_at, status, created_at, updated_at
-                ) VALUES (
-                    %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, NOW(), NOW()
-                )
-                ON CONFLICT (customer_id, site_id, endpoint_id, object_name, primary_key_hash)
-                DO UPDATE SET
-                    last_seen_at = EXCLUDED.last_seen_at,
-                    device_label = COALESCE(EXCLUDED.device_label, resolved_devices.device_label),
-                    device_type = COALESCE(EXCLUDED.device_type, resolved_devices.device_type),
-                    status = EXCLUDED.status,
-                    updated_at = NOW()
-                RETURNING id::text
-                """,
-                (
-                    resolved_id,
-                    customer_id,
-                    site_id,
-                    endpoint_id,
-                    object_name,
-                    pk_hash,
-                    Json(pk_json),
-                    label,
-                    device_type,
-                    now,
-                    "active",
-                ),
-            )
-            rid = cur.fetchone()[0]
-
-            scrub_id = str(uuid.uuid4())
-            identity_doc: dict[str, Any] = {"primary_key": pk_json}
-            payload_d = result.payload if isinstance(result.payload, dict) else {}
-            kpi_d = result.kpi if isinstance(result.kpi, dict) else {}
-            health_d = result.health_details if isinstance(result.health_details, dict) else {}
-            cur.execute(
-                """
-                INSERT INTO scrubbed_events (
-                    id, customer_id, site_id, endpoint_id, resolved_device_id, object_name,
-                    event_ts, identity_json, display_json, kpi_json, health_json, location_json,
-                    payload_ref, scrubber_version
-                ) VALUES (
-                    %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s,
-                    %s, %s, %s, %s, %s, %s,
-                    %s::uuid, %s
-                )
-                """,
-                (
-                    scrub_id,
-                    customer_id,
-                    site_id,
-                    endpoint_id,
-                    rid,
-                    object_name,
-                    now,
-                    Json(identity_doc),
-                    Json(payload_d),
-                    Json(kpi_d),
-                    Json(health_d),
-                    Json({}),
-                    data_object_id,
-                    result.scrubber_version,
-                ),
-            )
-
-            if data_lifecycle_status == DATA_PUBLISHED:
-                lifecycle_latest = "published"
-            elif data_lifecycle_status == DATA_COMPILED:
-                lifecycle_latest = "compiled"
-            else:
-                lifecycle_latest = (data_lifecycle_status or "unknown")[:32]
-
-            cur.execute(
-                """
-                INSERT INTO latest_device_state (
-                    id, customer_id, site_id, endpoint_id, resolved_device_id, object_name,
-                    last_event_ts, last_ingested_at, lifecycle_status, health_status,
-                    identity_json, display_json, kpi_json, health_json, location_json,
-                    scrubbed_event_id, updated_at
-                ) VALUES (
-                    %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s,
-                    %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
-                    %s::uuid, NOW()
-                )
-                ON CONFLICT (customer_id, site_id, endpoint_id, resolved_device_id, object_name)
-                DO UPDATE SET
-                    last_event_ts = EXCLUDED.last_event_ts,
-                    last_ingested_at = EXCLUDED.last_ingested_at,
-                    lifecycle_status = EXCLUDED.lifecycle_status,
-                    health_status = EXCLUDED.health_status,
-                    identity_json = EXCLUDED.identity_json,
-                    display_json = EXCLUDED.display_json,
-                    kpi_json = EXCLUDED.kpi_json,
-                    health_json = EXCLUDED.health_json,
-                    location_json = EXCLUDED.location_json,
-                    scrubbed_event_id = EXCLUDED.scrubbed_event_id,
-                    updated_at = NOW()
-                """,
-                (
-                    str(uuid.uuid4()),
-                    customer_id,
-                    site_id,
-                    endpoint_id,
-                    rid,
-                    object_name,
-                    now,
-                    now,
-                    lifecycle_latest,
-                    (result.health_status or "unknown").lower()[:32],
-                    Json(identity_doc),
-                    Json(payload_d),
-                    Json(kpi_d),
-                    Json(health_d),
-                    Json({}),
-                    scrub_id,
-                ),
-            )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        log.exception(
-            "v2_resolution write failed device_id=%s raw_object_id=%s",
-            device_id,
-            raw_object_id,
-        )
     finally:
         conn.close()

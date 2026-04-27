@@ -14,6 +14,7 @@ from app.publish_failure_alerts import (
     should_emit_publish_failure_alert,
 )
 from app.publish_db import (
+    load_latest_device_state_payload,
     _db_url,
     fetch_active_services,
     insert_delivery_log,
@@ -67,6 +68,24 @@ def process_kafka_value(data: dict[str, Any]) -> None:
             source_event_id=oid,
             trace_id=trace_s,
             loader=lambda conn: load_result_object_payload(conn, customer_id=customer_id, result_object_id=oid),
+        )
+        return
+
+    if kind == "latest_device_state_updated":
+        oid = str(data.get("latest_device_state_id") or "")
+        customer_id = str(data.get("customer_id") or "")
+        if not customer_id or not oid:
+            log.warning("latest_device_state_updated missing ids")
+            return
+        _run_for_source(
+            customer_id=customer_id,
+            source_type="latest_device_state",
+            source_object_id=oid,
+            source_event_id=str(data.get("scrubbed_event_id") or oid),
+            trace_id=trace_s,
+            loader=lambda conn: load_latest_device_state_payload(
+                conn, customer_id=customer_id, latest_device_state_id=oid
+            ),
         )
         return
 

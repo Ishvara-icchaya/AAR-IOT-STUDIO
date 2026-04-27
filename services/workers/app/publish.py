@@ -1,4 +1,4 @@
-"""worker-publish — data_object.created / result_object.created → external publish."""
+"""worker-publish — v2 and workflow events -> external publish."""
 
 import json
 import logging
@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 _TOPICS = (
     "data_object.created",
     "result_object.created",
+    "latest_device_state.updated",
 )
 
 

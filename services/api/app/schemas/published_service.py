@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SourceType = Literal["data_object", "result_object"]
+SourceType = Literal["data_object", "result_object", "latest_device_state"]
 PublishProtocol = Literal["mqtt", "rest"]
 ServiceStatus = Literal["draft", "active", "stopped", "failed", "inactive"]
 
