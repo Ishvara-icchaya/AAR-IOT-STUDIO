@@ -53,18 +53,18 @@ export function createDefaultWidget(type: string): DashboardWidgetModel {
     case "kpi":
       return {
         ...base,
-        binding: { sourceType: "data_object", sourceId: "", metric: "value" },
+        binding: { sourceType: "latest_device_state", sourceId: "", metric: "value" },
       };
     case "table":
       return {
         ...base,
-        binding: { sourceType: "data_object", sourceId: "", fields: [] as string[] },
+        binding: { sourceType: "latest_device_state", sourceId: "", fields: [] as string[] },
       };
     case "chart":
       return {
         ...base,
         binding: {
-          sourceType: "data_object",
+          sourceType: "latest_device_state",
           sourceId: "",
           chartType: "line",
           chartTimeWindow: "24h",
@@ -76,7 +76,7 @@ export function createDefaultWidget(type: string): DashboardWidgetModel {
       return {
         ...base,
         binding: {
-          sourceType: "data_object",
+          sourceType: "latest_device_state",
           sourceId: "",
           kpiFields: [] as string[],
         },

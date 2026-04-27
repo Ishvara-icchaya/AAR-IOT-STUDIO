@@ -110,6 +110,21 @@ class DashboardSourcesResultObjectsResponse(BaseModel):
     items: list[ResultObjectSourceRow]
 
 
+class LatestDeviceStateSourceRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    site_id: uuid.UUID
+    endpoint_id: uuid.UUID
+    resolved_device_id: uuid.UUID
+    object_name: str
+    updated_at: datetime
+
+
+class DashboardSourcesLatestDeviceStatesResponse(BaseModel):
+    items: list[LatestDeviceStateSourceRow]
+
+
 class DashboardPreviewBody(BaseModel):
     """Optional layout override for builder preview (unsaved canvas)."""
 

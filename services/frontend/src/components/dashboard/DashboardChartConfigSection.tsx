@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { getScrubberDataObject } from "@/api/scrubber";
+import { getLatestDeviceStateFieldMetadata } from "@/api/fieldMetadata";
 import { getResultObject } from "@/api/resultObjects";
 import { CHART_X_TIME_OPTIONS, isPresetChartXField } from "@/lib/chartAxisOptions";
-import { optionsFromKpiJson, optionsFromPayloadMetrics, type KpiAxisOption } from "@/lib/chartKpiFieldOptions";
+import { optionsFromPayloadMetrics, type KpiAxisOption } from "@/lib/chartKpiFieldOptions";
 import type { DashboardWidgetModel } from "@/types/dashboardLayout";
 
 const CHART_KINDS: { value: string; label: string }[] = [
@@ -33,7 +33,7 @@ export function DashboardChartConfigSection({ widget, onChange, disabled }: Prop
   const [kpiError, setKpiError] = useState<string | null>(null);
 
   const sourceId = String(b.sourceId ?? "").trim();
-  const sourceType = (b.sourceType as string) || "data_object";
+  const sourceType = (b.sourceType as string) || "latest_device_state";
 
   useEffect(() => {
     if (!sourceId) {
@@ -47,15 +47,10 @@ export function DashboardChartConfigSection({ widget, onChange, disabled }: Prop
     void (async () => {
       try {
         let opts: KpiAxisOption[] = [];
-        if (sourceType === "data_object") {
-          const row = await getScrubberDataObject(sourceId);
+        if (sourceType === "latest_device_state" || sourceType === "device_state") {
+          const meta = await getLatestDeviceStateFieldMetadata(sourceId);
           if (cancelled) return;
-          if (row == null) {
-            setKpiOptions([]);
-            setKpiError("Data object not found.");
-            return;
-          }
-          opts = optionsFromKpiJson(row.kpi_json);
+          opts = (meta?.items ?? []).map((m) => ({ value: m.path, label: m.path }));
         } else {
           const row = await getResultObject(sourceId);
           if (cancelled) return;
@@ -70,9 +65,9 @@ export function DashboardChartConfigSection({ widget, onChange, disabled }: Prop
         setKpiOptions(opts);
         if (opts.length === 0) {
           setKpiError(
-            sourceType === "data_object"
-              ? "No KPI metrics on this data object. Configure KPIs in Scrubber Studio or pick another source."
-              : "No metrics block on this result object.",
+            sourceType === "latest_device_state" || sourceType === "device_state"
+                ? "No field catalog for this latest_device_state yet (ingest + scrub first)."
+                : "No metrics block on this result object.",
           );
         }
       } catch {

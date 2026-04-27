@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.data_object import DataObject
+from app.models.latest_device_state import LatestDeviceState
 from app.services.data_object_query import as_of_timestamp
 from app.services.workflow_result_query import (
     as_of_timestamp as result_object_as_of_timestamp,
@@ -354,6 +355,15 @@ def map_marker_detail(
         if row.health_status:
             payload["health_status"] = row.health_status
         merged = dict(payload)
+    elif st_lower in ("latest_device_state", "device_state"):
+        row = db.get(LatestDeviceState, source_id)
+        if not row or row.customer_id != customer_id or row.site_id != site_id:
+            return None
+        payload = dict(row.display_json or {})
+        payload["_kpi"] = dict(row.kpi_json or {})
+        if row.health_status:
+            payload["health_status"] = row.health_status
+        merged = {**payload, **(payload.get("_kpi") or {})}
     else:
         return None
 
@@ -383,22 +393,25 @@ def map_marker_detail(
     for k in keys:
         k_latest[str(k)] = _get_path(merged, str(k))
 
-    ts_1h = query_map_kpi_recent(
-        customer_id=customer_id,
-        object_kind=st_lower,
-        object_id=source_id,
-        hours=1.0,
-        kpi_keys=keys or None,
-        row_limit=120,
-    )
-    ts_24h = query_map_kpi_recent(
-        customer_id=customer_id,
-        object_kind=st_lower,
-        object_id=source_id,
-        hours=24.0,
-        kpi_keys=keys or None,
-        row_limit=240,
-    )
+    if st_lower in ("data_object", "result_object"):
+        ts_1h = query_map_kpi_recent(
+            customer_id=customer_id,
+            object_kind=st_lower,
+            object_id=source_id,
+            hours=1.0,
+            kpi_keys=keys or None,
+            row_limit=120,
+        )
+        ts_24h = query_map_kpi_recent(
+            customer_id=customer_id,
+            object_kind=st_lower,
+            object_id=source_id,
+            hours=24.0,
+            kpi_keys=keys or None,
+            row_limit=240,
+        )
+    else:
+        ts_1h, ts_24h = [], []
 
     health = {
         "health_status": merged.get("health_status"),

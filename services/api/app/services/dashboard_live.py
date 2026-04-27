@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.data_object import DataObject
 from app.models.device import Device
+from app.models.latest_device_state import LatestDeviceState
+from app.models.resolved_device import ResolvedDevice
 from app.models.site import Site
 from app.models.workflow_result_object import WorkflowResultObject
 from app.core.dashboard_runtime import merge_layout_settings
@@ -154,7 +156,8 @@ def _load_source_record(
     source_id: uuid.UUID,
 ) -> tuple[dict[str, Any] | None, datetime | None, str | None]:
     """Returns (flat_payload, updated_at, display_name)."""
-    if source_type == "data_object":
+    st = str(source_type).lower()
+    if st == "data_object":
         row = db.get(DataObject, source_id)
         if not row or row.customer_id != customer_id:
             return None, None, None
@@ -165,6 +168,19 @@ def _load_source_record(
         if row.health_message:
             payload["health_message"] = row.health_message
         return payload, as_of_timestamp(row), row.name
+    if st in ("latest_device_state", "device_state"):
+        row = db.get(LatestDeviceState, source_id)
+        if not row or row.customer_id != customer_id:
+            return None, None, None
+        payload = dict(row.display_json or {})
+        payload["_kpi"] = dict(row.kpi_json or {})
+        if row.health_status:
+            payload["health_status"] = row.health_status
+        label = row.object_name
+        rd = db.get(ResolvedDevice, row.resolved_device_id)
+        if rd and rd.device_label:
+            label = f"{row.object_name} · {rd.device_label}"
+        return payload, row.updated_at, label
     row = db.get(WorkflowResultObject, source_id)
     if not row or row.customer_id != customer_id:
         return None, None, None
@@ -654,6 +670,54 @@ def build_map_marker_for_source(
             "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
         }
 
+    if st in ("latest_device_state", "device_state"):
+        row = db.get(LatestDeviceState, source_id)
+        if not row or row.customer_id != customer_id or row.site_id != site_id:
+            return None
+        payload = dict(row.display_json or {})
+        payload["_kpi"] = dict(row.kpi_json or {})
+        if row.health_status:
+            payload["health_status"] = row.health_status
+        lat, lon = _extract_lat_lon(payload, latf, lonf)
+        if lat is None or lon is None:
+            return None
+        rd = db.get(ResolvedDevice, row.resolved_device_id)
+        device_name = (rd.device_label if rd and rd.device_label else None) or row.object_name
+        site = db.get(Site, row.site_id)
+        site_name = site.name if site else None
+        hf_source = payload
+        if health_field and health_field != "health_status":
+            hf_source = {**payload, "health_status": _get_path(payload, health_field)}
+        hf = extract_health_fields(hf_source)
+        blink = derive_blink_mode(
+            health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
+            health_blink=hf.get("health_blink") if isinstance(hf.get("health_blink"), bool) else None,
+            health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
+            offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
+        )
+        merged = {**payload, **payload.get("_kpi", {})}
+        kpis = {str(k): _get_path(merged, str(k)) for k in kpi_fields}
+        title = row.object_name
+        if title_field:
+            tv = _get_path(payload, title_field)
+            if tv is not None:
+                title = str(tv)
+        hmsg = payload.get("health_message")
+        return {
+            "source_type": "latest_device_state",
+            "source_id": str(row.id),
+            "display_name": title,
+            "device_name": device_name,
+            "site_name": site_name,
+            "latitude": lat,
+            "longitude": lon,
+            "kpis": kpis,
+            "health_status": hf.get("health_status") or row.health_status,
+            "health_message": str(hmsg) if hmsg else None,
+            "blink_mode": blink,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+
     if st == "result_object":
         row = db.get(WorkflowResultObject, source_id)
         if not row or row.customer_id != customer_id or row.site_id != site_id:
@@ -1096,6 +1160,12 @@ def resolve_widget_data(
             lifecycle_warning = (
                 f"Source data_object lifecycle is {dorw.lifecycle_status!r} (not published/compiled)."
             )
+    elif str(st) in ("latest_device_state", "device_state"):
+        lsr = db.get(LatestDeviceState, sid)
+        if lsr and (lsr.lifecycle_status or "").lower() not in ("published", "compiled"):
+            lifecycle_warning = (
+                f"Source latest_device_state lifecycle is {lsr.lifecycle_status!r} (not published/compiled)."
+            )
 
     def apply_lifecycle(d: dict[str, Any]) -> dict[str, Any]:
         if not lifecycle_warning:
@@ -1115,6 +1185,11 @@ def resolve_widget_data(
             if kpi_do:
                 kpi_dev = db.get(Device, kpi_do.device_id)
                 device_name = kpi_dev.name if kpi_dev else None
+        elif str(st) in ("latest_device_state", "device_state"):
+            kpi_ls = db.get(LatestDeviceState, sid)
+            if kpi_ls:
+                kpi_rd = db.get(ResolvedDevice, kpi_ls.resolved_device_id)
+                device_name = (kpi_rd.device_label if kpi_rd and kpi_rd.device_label else None) or kpi_ls.object_name
         kpi_data: dict[str, Any] = {**base, "value": v, "metric": metric, "device_name": device_name}
         if v is None:
             kpi_data["degraded"] = True

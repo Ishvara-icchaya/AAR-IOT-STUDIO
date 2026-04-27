@@ -17,6 +17,7 @@ from app.db.session import get_db
 from app.models.dashboard import Dashboard
 from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.data_object import DataObject
+from app.models.latest_device_state import LatestDeviceState
 from app.services.data_object_query import order_by_metadata_recency
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
@@ -36,9 +37,11 @@ from app.schemas.dashboard import (
     DashboardShareRequest,
     DashboardShareUsersResponse,
     DashboardSourcesDataObjectsResponse,
+    DashboardSourcesLatestDeviceStatesResponse,
     DashboardSourcesResultObjectsResponse,
     DashboardUpdate,
     DataObjectSourceRow,
+    LatestDeviceStateSourceRow,
     ResultObjectSourceRow,
 )
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
@@ -166,6 +169,40 @@ def list_result_object_sources(
         for r in rows
     ]
     return DashboardSourcesResultObjectsResponse(items=items)
+
+
+@router.get("/sources/latest-device-states", response_model=DashboardSourcesLatestDeviceStatesResponse)
+def list_latest_device_state_sources(
+    site_id: uuid.UUID = Query(...),
+    limit: int = Query(200, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    stmt = (
+        select(LatestDeviceState)
+        .where(LatestDeviceState.customer_id == user.customer_id, LatestDeviceState.site_id == site_id)
+        .order_by(LatestDeviceState.updated_at.desc())
+        .limit(limit)
+    )
+    rows = list(db.scalars(stmt).all())
+    items = [
+        LatestDeviceStateSourceRow(
+            id=r.id,
+            site_id=r.site_id,
+            endpoint_id=r.endpoint_id,
+            resolved_device_id=r.resolved_device_id,
+            object_name=r.object_name,
+            updated_at=r.updated_at,
+        )
+        for r in rows
+    ]
+    return DashboardSourcesLatestDeviceStatesResponse(items=items)
 
 
 @router.get("/resolved-live", response_model=DashboardLiveResponse)

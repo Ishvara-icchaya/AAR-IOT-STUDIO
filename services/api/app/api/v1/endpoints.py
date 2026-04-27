@@ -19,6 +19,8 @@ from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
 from app.models.user import User
+from app.schemas.payload_field_metadata import PayloadFieldEntry, PayloadFieldMetadataResponse
+from app.services.payload_field_catalog import build_payload_field_entries
 from app.schemas.endpoint import (
     MapMarkerListResponse,
     MapMarkerRead,
@@ -362,3 +364,29 @@ def list_endpoint_map_markers(
             )
         )
     return MapMarkerListResponse(items=markers)
+
+
+@router.get(
+    "/field-metadata/latest-device-state/{latest_device_state_id}",
+    response_model=PayloadFieldMetadataResponse,
+)
+def latest_device_state_field_metadata(
+    latest_device_state_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.get(LatestDeviceState, latest_device_state_id)
+    if not row or row.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "latest_device_state not found")
+    allowed = allowed_site_ids_for_user(db, user)
+    if not user_may_access_site(user, row.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted for this user")
+    payload = {
+        "identity": row.identity_json if isinstance(row.identity_json, dict) else {},
+        "display": row.display_json if isinstance(row.display_json, dict) else {},
+        "kpi": row.kpi_json if isinstance(row.kpi_json, dict) else {},
+        "health": row.health_json if isinstance(row.health_json, dict) else {},
+        "location": row.location_json if isinstance(row.location_json, dict) else {},
+    }
+    raw = build_payload_field_entries(payload)
+    return PayloadFieldMetadataResponse(items=[PayloadFieldEntry.model_validate(x) for x in raw])

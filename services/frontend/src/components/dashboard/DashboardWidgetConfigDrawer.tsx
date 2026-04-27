@@ -149,28 +149,31 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                 Source type
                 <select
                   className="dash-drawer__input"
-                  value={(draft.binding.sourceType as string) || "data_object"}
+                  value={(draft.binding.sourceType as string) || "latest_device_state"}
                   disabled={frozen}
                   onChange={(e) =>
                     setDraft({
                       ...draft,
                       binding: {
                         ...draft.binding,
-                        sourceType: e.target.value as "data_object" | "result_object",
+                        sourceType: e.target.value as "result_object" | "latest_device_state",
                         sourceId: "",
                       },
                     })
                   }
                 >
-                  <option value="data_object">data_object</option>
                   <option value="result_object">result_object</option>
+                  <option value="latest_device_state">latest_device_state</option>
                 </select>
               </label>
 
               <div className="dash-chart-config-flow__row">
                 <DashboardSourceSelector
                   siteId={siteId}
-                  sourceType={(draft.binding.sourceType as "data_object" | "result_object") || "data_object"}
+                  sourceType={
+                    (draft.binding.sourceType as "result_object" | "latest_device_state") ||
+                    "latest_device_state"
+                  }
                   value={String(draft.binding.sourceId ?? "")}
                   disabled={frozen}
                   onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
@@ -204,21 +207,21 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                   Source type
                   <select
                     className="dash-drawer__input"
-                    value={(draft.binding.sourceType as string) || "data_object"}
+                    value={(draft.binding.sourceType as string) || "latest_device_state"}
                     disabled={frozen}
                     onChange={(e) =>
                       setDraft({
                         ...draft,
                         binding: {
                           ...draft.binding,
-                          sourceType: e.target.value as "data_object" | "result_object",
+                          sourceType: e.target.value as "result_object" | "latest_device_state",
                           sourceId: "",
                         },
                       })
                     }
                   >
-                    <option value="data_object">data_object</option>
                     <option value="result_object">result_object</option>
+                    <option value="latest_device_state">latest_device_state</option>
                   </select>
                 </label>
               )}
@@ -226,7 +229,10 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
               {needsSource && (
                 <DashboardSourceSelector
                   siteId={siteId}
-                  sourceType={(draft.binding.sourceType as "data_object" | "result_object") || "data_object"}
+                  sourceType={
+                    (draft.binding.sourceType as "result_object" | "latest_device_state") ||
+                    "latest_device_state"
+                  }
                   value={String(draft.binding.sourceId ?? "")}
                   disabled={frozen}
                   onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}

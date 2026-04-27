@@ -20,3 +20,10 @@ export async function getResultObjectFieldMetadata(resultObjectId: string) {
     `/result-objects/${encodeURIComponent(resultObjectId)}/field-metadata`,
   );
 }
+
+/** GET /endpoints/field-metadata/latest-device-state/{id} — v2 read model for bindings. */
+export async function getLatestDeviceStateFieldMetadata(latestDeviceStateId: string) {
+  return apiFetch<{ items: PayloadFieldEntry[] }>(
+    `/endpoints/field-metadata/latest-device-state/${encodeURIComponent(latestDeviceStateId)}`,
+  );
+}

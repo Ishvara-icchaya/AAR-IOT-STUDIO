@@ -3,7 +3,7 @@ import * as dashApi from "@/api/dashboard";
 
 type Props = {
   siteId: string | null;
-  sourceType: "data_object" | "result_object";
+  sourceType: "latest_device_state" | "result_object";
   value: string;
   onChange: (id: string) => void;
   disabled?: boolean;
@@ -22,13 +22,13 @@ export function DashboardSourceSelector({ siteId, sourceType, value, onChange, d
     setLoading(true);
     void (async () => {
       try {
-        if (sourceType === "data_object") {
-          const r = await dashApi.listDashboardDataObjectSources(siteId);
+        if (sourceType === "latest_device_state") {
+          const r = await dashApi.listDashboardLatestDeviceStateSources(siteId);
           if (cancelled) return;
           setItems(
             (r?.items ?? []).map((x) => ({
               id: x.id,
-              label: `${x.name} (${x.id.slice(0, 8)}…)`,
+              label: `${x.object_name} · ${x.id.slice(0, 8)}…`,
             })),
           );
         } else {

@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.models.data_object import DataObject
 from app.models.device import Device
+from app.models.latest_device_state import LatestDeviceState
 from app.models.workflow_result_object import WorkflowResultObject
 from app.schemas.dashboard_layout import iter_widgets
 
-ALLOWED_SOURCE = frozenset({"data_object", "result_object"})
+ALLOWED_SOURCE = frozenset({"data_object", "result_object", "latest_device_state", "device_state"})
 ALLOWED_WIDGET_TYPES = frozenset(
     {
         "table",
@@ -130,7 +131,9 @@ def validate_layout_for_save(
             continue
         st = _bget(b, "source_type", "sourceType")
         if st not in ALLOWED_SOURCE:
-            errs.append(f"widget {wid} requires binding source_type data_object|result_object")
+            errs.append(
+                f"widget {wid} requires binding source_type data_object|result_object|latest_device_state"
+            )
             continue
         sid = _bget(b, "source_id", "sourceId")
         if not sid:
@@ -198,10 +201,15 @@ def validate_sources_exist(db: Session, *, customer_id: uuid.UUID, layout: dict[
         except ValueError:
             errs.append(f"invalid source_id on widget {w.get('widgetId')}")
             continue
-        if st == "data_object":
+        stn = str(st).lower()
+        if stn == "data_object":
             row = db.get(DataObject, sid)
             if not row or row.customer_id != customer_id:
                 errs.append(f"data_object {sid} not found")
+        elif stn in ("latest_device_state", "device_state"):
+            row = db.get(LatestDeviceState, sid)
+            if not row or row.customer_id != customer_id:
+                errs.append(f"latest_device_state {sid} not found")
         else:
             row = db.get(WorkflowResultObject, sid)
             if not row or row.customer_id != customer_id:
@@ -223,18 +231,26 @@ def validate_site_coherence(
         b = w.get("binding") or {}
         st = _bget(b, "source_type", "sourceType")
         sid_raw = _bget(b, "source_id", "sourceId")
-        if not sid_raw or st != "data_object":
+        if not sid_raw:
             continue
+        stn = str(st).lower()
         try:
             sid = uuid.UUID(str(sid_raw))
         except ValueError:
             continue
-        row = db.get(DataObject, sid)
-        if not row:
-            continue
-        dev = db.get(Device, row.device_id)
-        if dev and dev.site_id != dashboard_site_id:
-            errs.append(
-                f"widget {w.get('widgetId')}: data_object site does not match dashboard site"
-            )
+        if stn == "data_object":
+            row = db.get(DataObject, sid)
+            if not row:
+                continue
+            dev = db.get(Device, row.device_id)
+            if dev and dev.site_id != dashboard_site_id:
+                errs.append(
+                    f"widget {w.get('widgetId')}: data_object site does not match dashboard site"
+                )
+        elif stn in ("latest_device_state", "device_state"):
+            row = db.get(LatestDeviceState, sid)
+            if row and row.site_id != dashboard_site_id:
+                errs.append(
+                    f"widget {w.get('widgetId')}: latest_device_state site does not match dashboard site"
+                )
     return errs

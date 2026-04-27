@@ -139,6 +139,21 @@ export async function listDashboardResultObjectSources(siteId: string) {
   );
 }
 
+export type LatestDeviceStateSourceItem = {
+  id: string;
+  site_id: string;
+  endpoint_id: string;
+  resolved_device_id: string;
+  object_name: string;
+  updated_at: string;
+};
+
+export async function listDashboardLatestDeviceStateSources(siteId: string) {
+  return apiFetch<{ items: LatestDeviceStateSourceItem[] }>(
+    `/dashboards/sources/latest-device-states?site_id=${encodeURIComponent(siteId)}`,
+  );
+}
+
 export type MapEligibleItem = {
   source_type: string;
   source_id: string;

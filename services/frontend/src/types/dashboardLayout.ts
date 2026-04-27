@@ -19,7 +19,11 @@ export type DashboardWidgetPresentationConfig = {
 };
 
 export type DashboardWidgetBinding = {
-  sourceType?: "data_object" | "result_object";
+  sourceType?:
+    | "latest_device_state"
+    | "resolved_device_stream"
+    | "resolved_device_collection"
+    | "result_object";
   sourceId?: string;
   fields?: string[];
   metric?: string;

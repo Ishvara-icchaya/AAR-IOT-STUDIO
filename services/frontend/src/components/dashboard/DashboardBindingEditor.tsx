@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  getDataObjectFieldMetadata,
+  getLatestDeviceStateFieldMetadata,
   getResultObjectFieldMetadata,
   type PayloadFieldEntry,
 } from "@/api/fieldMetadata";
@@ -91,7 +91,7 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
   const [eligibleMap, setEligibleMap] = useState<dashApi.MapEligibleItem[]>([]);
   const [mapSiteDevices, setMapSiteDevices] = useState<DeviceRead[]>([]);
   const sourceIdBind = String(b.sourceId ?? "").trim();
-  const sourceTypeBind = (b.sourceType as string) || "data_object";
+  const sourceTypeBind = (b.sourceType as string) || "latest_device_state";
   const [fieldMeta, setFieldMeta] = useState<PayloadFieldEntry[]>([]);
   const [fieldMetaLoading, setFieldMetaLoading] = useState(false);
 
@@ -111,9 +111,9 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
     void (async () => {
       try {
         const res =
-          sourceTypeBind === "data_object"
-            ? await getDataObjectFieldMetadata(sourceIdBind)
-            : await getResultObjectFieldMetadata(sourceIdBind);
+          sourceTypeBind === "latest_device_state" || sourceTypeBind === "device_state"
+              ? await getLatestDeviceStateFieldMetadata(sourceIdBind)
+              : await getResultObjectFieldMetadata(sourceIdBind);
         if (!cancelled) setFieldMeta(res?.items ?? []);
       } catch {
         if (!cancelled) setFieldMeta([]);
