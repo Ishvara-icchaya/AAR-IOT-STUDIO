@@ -2,6 +2,8 @@
 
 This document describes how **Manage Devices** is organized in the product and codebase, with emphasis on **per-protocol ingest pipelines** (how telemetry reaches `raw_data_objects` and what runs downstream).
 
+> V2 note: endpoint-first ingest is now authoritative. Durable ingest requires endpoint resolution; product/runtime reads should use `latest_device_state`, `scrubbed_events`, and `resolved_devices`.
+
 For frozen contracts and identity rules, see:
 
 - `docs/CANONICAL_INGRESS_PRODUCT.md` — approved modes and mandatory pipeline
@@ -187,3 +189,23 @@ After a successful archive, workers call into **`device_endpoint_lifecycle`** (e
 5. **Preview** — reads `raw_data_objects` / MinIO via API after the canonical pipeline has produced a row.
 
 This README is the **map** from UI + `device_endpoints` to workers; contract details remain in the canonical docs linked at the top.
+
+---
+
+## 10. V2 invariants and retention
+
+### Invariants
+
+- `endpoint_id` resolution is mandatory before archive + scrubber publish.
+- Unbound ingest (`anonymous`, `device-only`, payload-derived tenant identity) is rejected or quarantined.
+- V2 writer flow is `raw_data_objects` -> `scrubbed_events` -> `latest_device_state` with `resolved_devices` identity.
+- Product/runtime surfaces should bind to v2 models, not legacy `data_object` identifiers.
+
+### Retention / TTL baseline
+
+- `raw_data_objects`: retain bounded raw archive; prune rows + MinIO payloads together.
+- `ingest_quarantine`: short TTL (debug horizon), indexed by `expires_at`.
+- `scrubbed_events`: bounded historical retention by event time.
+- `latest_device_state`: no history TTL (single current row per identity key).
+- workflow executions/log caches/Redis keys: explicit TTL by subsystem policy.
+- reset commands must clear metadata rows and linked object storage consistently.
