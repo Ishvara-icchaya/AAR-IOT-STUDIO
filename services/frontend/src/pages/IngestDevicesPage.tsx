@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { apiFetch } from "@/api/client";
 import { createEndpoint, listEndpoints, updateEndpoint, type EndpointRead } from "@/api/endpoints";
@@ -110,8 +111,16 @@ export function IngestDevicesPage() {
       endpoint_name: ep.endpoint_name,
       protocol: ep.protocol,
       object_name: ep.object_name,
-      primary_device_key_fields: (ep.primary_device_key_fields ?? []).join(", "),
-      device_label_fields: (ep.device_label_fields ?? []).join(", "),
+      primary_device_key_fields: (
+        ((ep.identity_draft ?? {}) as { primary_device_key_fields?: string[] }).primary_device_key_fields ??
+        ep.primary_device_key_fields ??
+        []
+      ).join(", "),
+      device_label_fields: (
+        ((ep.identity_draft ?? {}) as { device_label_fields?: string[] }).device_label_fields ??
+        ep.device_label_fields ??
+        []
+      ).join(", "),
     });
   }
 
@@ -210,6 +219,7 @@ export function IngestDevicesPage() {
             <th>Site</th>
             <th>Lifecycle</th>
             <th>PK Fields</th>
+            <th>Identity</th>
             <th />
           </tr>
         </thead>
@@ -223,6 +233,9 @@ export function IngestDevicesPage() {
               <td>{ep.lifecycle_status ?? "—"}</td>
               <td>{(ep.primary_device_key_fields ?? []).join(", ") || "—"}</td>
               <td>
+                <Link to={`/devices/ingest/${encodeURIComponent(ep.id)}/identity`}>Map identity</Link>
+              </td>
+              <td>
                 <button type="button" onClick={() => startEdit(ep)}>
                   Edit
                 </button>
@@ -231,7 +244,7 @@ export function IngestDevicesPage() {
           ))}
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={7}>No endpoints found.</td>
+              <td colSpan={8}>No endpoints found.</td>
             </tr>
           ) : null}
         </tbody>

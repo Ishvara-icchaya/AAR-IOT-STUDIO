@@ -11,6 +11,7 @@ import { DeviceManagePage } from "./pages/DeviceManagePage";
 import { DeviceRawDataPage } from "./pages/DeviceRawDataPage";
 import { DeviceRegisterPage } from "./pages/DeviceRegisterPage";
 import { IngestDevicesPage } from "./pages/IngestDevicesPage";
+import { EndpointIdentityPage } from "./pages/EndpointIdentityPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ScrubberCreatePage } from "./pages/ScrubberCreatePage";
 import { ScrubberRawSelectPage } from "./pages/ScrubberRawSelectPage";
@@ -88,6 +89,7 @@ export default function App() {
               <Route path="/devices/manage" element={<DeviceManagePage />} />
               <Route path="/devices/raw" element={<DeviceRawDataPage />} />
               <Route path="/devices/ingest" element={<IngestDevicesPage />} />
+              <Route path="/devices/ingest/:endpointId/identity" element={<EndpointIdentityPage />} />
               <Route path="/administration/monitoring" element={<MonitoringPage />} />
               <Route element={<RequireAdmin />}>
                 <Route path="/administration/users" element={<AdminUsersPage />} />
