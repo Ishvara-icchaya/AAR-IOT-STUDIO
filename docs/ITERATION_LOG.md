@@ -5,6 +5,28 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 5: core dashboard2 widgets implemented
+
+Implemented core non-map widgets for Dashboard 2.0 registry:
+- Added widget components:
+  - `KpiTileWidget`
+  - `TimeSeriesChartWidget` (recharts line series)
+  - `DataTableWidget`
+  - `HealthSummaryWidget`
+  - `AlertFeedWidget`
+  - `TrendPanelWidget`
+  - `TextWidget2`
+- Updated `services/frontend/src/components/dashboard2/DashboardWidgetRegistry.tsx` to map registry entries to concrete components (replacing placeholder mappings).
+- Expanded `services/frontend/src/components/dashboard2/dashboard2.css` with widget-specific presentation styles.
+
+Intent: ensure Dashboard 2.0 runtime has a complete baseline widget surface for operational KPI/chart/table/summary use cases.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up (Phase 6): implement designer configuration shell (binding picker + widget config editing + preview validation surface).
+
+---
+
 ## 2026-04-29 — v7 Phase 4: LocationHeadingMapWidget scaffold (dashboard2)
 
 Implemented Dashboard 2.0 map widget scaffold in the new `dashboard2` path:

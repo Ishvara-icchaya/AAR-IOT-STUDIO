@@ -174,6 +174,19 @@ This phase establishes a stable data-provider pattern for v2 widgets while leavi
 
 This phase is delivered in the `dashboard2` namespace and does not replace current production dashboard map runtime yet.
 
+### Phase 5 complete — core widget set in dashboard2 registry
+
+Added core Dashboard 2.0 widget implementations under `services/frontend/src/components/dashboard2/widgets/`:
+- `KpiTileWidget`
+- `TimeSeriesChartWidget`
+- `DataTableWidget`
+- `HealthSummaryWidget`
+- `AlertFeedWidget`
+- `TrendPanelWidget`
+- `TextWidget2`
+
+Updated `DashboardWidgetRegistry` to map these components instead of placeholders and added matching widget CSS in `dashboard2.css`.
+
 ## License
 
 Proprietary — assign per your organization.
