@@ -5,6 +5,24 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 7: live runtime shell hardening scaffold
+
+Added Dashboard 2.0 live runtime shell scaffolding:
+- Added `services/frontend/src/components/dashboard2/DashboardLiveScreen.tsx` with:
+  - read-only runtime shell metadata,
+  - bounded auto-refresh cadence display,
+  - runtime grid rendering in `mode="live"`.
+- Added `services/frontend/src/components/dashboard2/useDashboard2AutoRefresh.ts` hook to provide safe interval refresh behavior (`5..3600` sec bounds).
+- Added live shell style tokens/classes in `services/frontend/src/components/dashboard2/dashboard2.css`.
+
+Intent: harden v2 live-screen behavior and refresh orchestration in a dedicated namespace without modifying existing live runtime routes.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up (Phase 8): CSS cleanup boundary documentation and retirement/isolation rules for legacy shared selectors.
+
+---
+
 ## 2026-04-29 — v7 Phase 6: designer configuration shell scaffolding
 
 Added Dashboard 2.0 designer configuration UI scaffolding in `dashboard2` namespace:

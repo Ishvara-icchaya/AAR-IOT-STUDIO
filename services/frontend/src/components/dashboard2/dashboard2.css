@@ -255,3 +255,29 @@
   margin: 0;
   font-size: 0.82rem;
 }
+
+.dashboard2-live-shell {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.dashboard2-live-shell__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.8rem;
+}
+
+.dashboard2-live-shell__header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dashboard2-live-shell__meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
