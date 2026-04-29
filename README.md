@@ -209,6 +209,12 @@ Added Dashboard 2.0 read-only runtime shell components:
 
 This phase establishes the v2 live-screen container contract (read-only + auto-refresh) without changing the existing production live page.
 
+### Phase 8 complete — CSS boundary cleanup guardrails
+
+- Added `docs/DASHBOARD2_CSS_BOUNDARIES.md` documenting live/preview/designer CSS separation rules.
+- Updated `services/frontend/scripts/check-design-drift.mjs` to detect and reject comma-coupled live+preview dashboard selectors in `src/index.css`.
+- Kept legacy selectors operational but added automated protection against introducing new cross-context coupling.
+
 ## License
 
 Proprietary — assign per your organization.

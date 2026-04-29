@@ -18,6 +18,8 @@ const LEGACY_CLASS = /\bdm-(pill|table-pager__btn)\b/;
 const LEGACY_PAGER_BTN = /\bop-table-pager__btn\b/;
 const SCRUBBER_BTN = /\bscrubber2-btn\b/;
 const HEX = /#[0-9a-fA-F]{3,8}\b/;
+const SHARED_DASHBOARD_SELECTOR =
+  /\.page-card\.dash-live-page[^{]*,\s*\.dash-preview-panel__scroll--fit[^{]*\{/gm;
 
 /** @type {{ file: string; line: number; message: string }[]} */
 const findings = [];
@@ -41,10 +43,29 @@ function rel(p) {
 
 function checkFile(absPath) {
   const ext = path.extname(absPath);
-  if (![".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"].includes(ext)) return;
+  if (![".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".css"].includes(ext)) return;
   const text = fs.readFileSync(absPath, "utf8");
   const lines = text.split(/\r?\n/);
   const inScrubberEditor = absPath.includes(`${path.sep}pages${path.sep}scrubber2${path.sep}`);
+
+  if (ext === ".css") {
+    const isDashboardStyles = absPath.includes(`${path.sep}src${path.sep}index.css`);
+    if (isDashboardStyles) {
+      let match;
+      // eslint-disable-next-line no-cond-assign
+      while ((match = SHARED_DASHBOARD_SELECTOR.exec(text))) {
+        const before = text.slice(0, match.index);
+        const line = before.split(/\r?\n/).length;
+        findings.push({
+          file: rel(absPath),
+          line,
+          message:
+            "Do not couple live+preview selectors in one rule. Split .page-card.dash-live-page and .dash-preview-panel__scroll--fit rules.",
+        });
+      }
+    }
+    return;
+  }
 
   lines.forEach((line, i) => {
     const lineNo = i + 1;

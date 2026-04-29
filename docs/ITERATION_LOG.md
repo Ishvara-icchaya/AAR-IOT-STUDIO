@@ -5,6 +5,23 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 8: CSS boundary cleanup guardrails
+
+Completed Dashboard 2.0 CSS isolation guardrail phase:
+- Added `docs/DASHBOARD2_CSS_BOUNDARIES.md` with live/preview/designer separation rules and forbidden selector-coupling examples.
+- Updated `services/frontend/scripts/check-design-drift.mjs` to scan CSS and fail when live+preview dashboard selectors are coupled in one comma-separated rule (`.page-card.dash-live-page ... , .dash-preview-panel__scroll--fit ...`).
+- Kept existing legacy runtime classes intact while adding automated policy enforcement for future edits.
+
+Intent: prevent recurrence of preview/live CSS coupling regressions and formalize migration-safe style boundaries for v2 rollout.
+
+Validation:
+- `npm --prefix services/frontend run lint` passed.
+- `npm --prefix services/frontend run lint:design` passed.
+
+Follow-up: integrate `dashboard2` shells behind route/feature flag and progressively migrate existing dashboard edit/live pages to v2 components.
+
+---
+
 ## 2026-04-29 — v7 Phase 7: live runtime shell hardening scaffold
 
 Added Dashboard 2.0 live runtime shell scaffolding:
