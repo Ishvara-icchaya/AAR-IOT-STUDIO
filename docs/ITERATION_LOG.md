@@ -5,6 +5,30 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Endpoint Group Step 5 acceptance tests
+
+Added acceptance-focused API tests for endpoint-group dashboard binding in `services/api/tests/test_dashboard_endpoint_group_acceptance.py`:
+- Source policy checks:
+  - `resolved_device_collection` allowed,
+  - `data_object` excluded.
+- Layout validation checks:
+  - endpoint-group binding accepted when `siteId + endpointId + objectName` present,
+  - rejected when required fields are missing.
+- Cursor determinism contract checks:
+  - encode/decode round-trip for cursor payload (`updated_at`, `scrubbed_event_id`, `resolved_device_id`).
+- Shared status vocabulary checks:
+  - lifecycle buckets (`online`, `late`, `offline`, `error`),
+  - health buckets (`healthy`, `warning`, `critical`, `unknown`).
+- Runtime guard check:
+  - dashboard live source loader does not resolve `data_object` fallback.
+- OpenAPI route checks:
+  - `/api/v1/dashboards/sources/resolved-device-collections`,
+  - `/api/v1/dashboards/runtime/resolved-device-collection`.
+
+Validation run: `pytest -q services/api/tests/test_dashboard_endpoint_group_acceptance.py` → **7 passed**.
+
+---
+
 ## 2026-04-29 — Endpoint Group dashboard source: Step 3 + 4 runtime + guards
 
 Completed Step 3 (widget runtime adapters) and Step 4 (validation/runtime guardrails) after Step 1+2 commit.
