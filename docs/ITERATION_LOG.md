@@ -5,6 +5,31 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Dashboard widget-config preview title truncation fix
+
+Adjusted Configure Widget preview-pane typography in `services/frontend/src/index.css` to prevent title/meta truncation:
+- `.dash-widget-config-preview-pane .dash-wf__title` / `.dash-widget__title` now allow wrapping (`white-space: normal`, `word-break: break-word`) and disable clipping/ellipsis.
+- `.dash-widget-config-preview-pane .dash-wf__meta-item` now wraps long source/meta strings (`overflow-wrap: anywhere`).
+
+Intent: keep preview readable for long widget titles like Device summary/alert titles without changing widget sizing, live dashboard page behavior, or global nav/layout styles.
+
+---
+
+## 2026-04-29 — Dashboard kpi-strip preview clipping fix
+
+Follow-up fix for Configure Widget preview when widget frame class includes `dash-wf--kpi-strip` (Device summary strip):
+- `.dash-widget-config-preview-pane .dash-wf--kpi-strip .dm-kpi` now allows visible overflow and slightly larger minimum height.
+- `.dm-kpi__label` in preview now wraps (`flex-wrap: wrap`) to avoid cutting long label text.
+- `.dm-kpi__sub` in preview now wraps (`white-space: normal; overflow-wrap: anywhere`).
+- `.dash-wf__body` for kpi-strip preview now scrolls when needed instead of clipping.
+- `dash-ops-kpi-inner.dm-kpi-row--equal-5` in preview now reflows to 2 columns (3 on wider preview), avoiding forced 5-column squeeze that truncated text.
+- Additional hardening: preview-specific overflow/height overrides for `.dash-widget-stack` and `.dash-wf--kpi-strip` (`overflow: visible`, `height: auto`, `min-height: 0`) so the frame itself does not crop KPI-strip content.
+- Root-frame fix in `components/dashboard/dashboardWidgetFrame.css`: `dash-wf--kpi-strip` header/title now reserve explicit vertical room and visible overflow (`.dash-wf__header-main` / `.dash-wf__title` / `.dash-wf--kpi-strip .dash-wf__header` / `.dash-wf--kpi-strip .dash-wf__title`) so the title is enclosed by the widget frame instead of clipping at the top edge.
+
+Scope is preview-pane only; no live dashboard page/global nav/widget-size changes.
+
+---
+
 ## 2026-04-29 — Step 5 acceptance tests expanded (auto-reflect, pagination, map latest-only, no data_object)
 
 Extended `services/api/tests/test_dashboard_endpoint_group_acceptance.py` with runtime-focused acceptance coverage:

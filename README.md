@@ -75,12 +75,6 @@ cd services/frontend && npm install && npm run dev
 
 Set `VITE_API_BASE_URL` in `services/frontend/.env` if the API is not on `http://localhost:8000/api/v1`.
 
-## Next implementation steps
-
-1. Alembic migrations + SQLAlchemy models with `customer_id` on tenant rows.
-2. Wire device registration, raw ingest → MinIO → `raw.ingest` Kafka.
-3. Port **Scrubber / Workflow / Dashboard** UIs from the previous project into `services/frontend`.
-
 ## Dashboard endpoint-group binding (v2)
 
 Dashboards now support endpoint-level logical groups as the default source mode:
@@ -107,7 +101,25 @@ Runtime collection ordering/cursor are deterministic:
 
 - `ORDER BY updated_at DESC, scrubbed_event_id DESC, resolved_device_id ASC`
 - cursor encodes `updated_at`, `scrubbed_event_id`, and `resolved_device_id`
-4. Implement **Restore to Default** (full reset) per §0.7 — orchestration + reseed.
+
+## Recently completed
+
+- **Endpoint Group dashboard source (default):**
+  - builder source mode supports **Endpoint Group (default)** and **Individual Device (advanced)**;
+  - default bindings for key widgets (`kpi`, `table`, `chart`, `device_tile`) now use `resolved_device_collection`;
+  - endpoint-group source list/runtime APIs are live under `/api/v1/dashboards/sources/resolved-device-collections` and `/api/v1/dashboards/runtime/resolved-device-collection`.
+- **Runtime guards and policy:**
+  - v2 dashboard validation/runtime enforces no `data_object` fallback;
+  - endpoint/site coherence checks added for endpoint-group bindings.
+- **Acceptance tests (endpoint-group):**
+  - coverage includes source policy, required binding fields, cursor contract, status bucket mapping, auto-reflecting device cohort changes, pagination aggregation, map latest-device-state source usage, and OpenAPI route presence.
+- **Dashboard Edit / Configure Widget UX:**
+  - 3-column configure layout (settings, preview, debug JSON);
+  - preview clipping fixes for sticky panel/body scrolling and KPI-strip title enclosure in widget frame CSS.
+
+## Next implementation steps
+
+1. Implement **Restore to Default** (full reset) per §0.7 — orchestration + reseed.
 
 ## License
 

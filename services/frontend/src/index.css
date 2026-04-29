@@ -2368,6 +2368,8 @@ a:hover {
  * Dashboard editor: keep outline buttons visibly bordered (scrubber “Validate”–style).
  * Declared here so borders survive Tailwind preflight / load order vs lazy `device-register-page.css`.
  */
+.dash-builder-page .aar-btn.aar-btn--outline,
+.dash-builder-page a.aar-btn.aar-btn--outline,
 .dash-builder-page .dm-btn.dm-btn--outline,
 .dash-builder-page a.dm-btn.dm-btn--outline {
   border: 1px solid var(--dm-border-strong, var(--aar-border-strong, rgba(255, 255, 255, 0.12)));
@@ -2375,6 +2377,8 @@ a:hover {
   color: var(--dm-text, var(--color-text));
 }
 
+.dash-builder-page .aar-btn.aar-btn--outline:hover:not(:disabled),
+.dash-builder-page a.aar-btn.aar-btn--outline:hover:not(:disabled),
 .dash-builder-page .dm-btn.dm-btn--outline:hover:not(:disabled),
 .dash-builder-page a.dm-btn.dm-btn--outline:hover:not(:disabled) {
   border-color: color-mix(
@@ -2463,6 +2467,8 @@ a:hover {
   text-decoration: underline;
 }
 
+.dash-header__actions a.aar-btn,
+.dash-header__actions button.aar-btn,
 .dash-header__actions a.dm-btn,
 .dash-header__actions button.dm-btn {
   text-decoration: none;
@@ -2690,13 +2696,14 @@ a:hover {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
   padding: var(--space-md);
-  min-height: 120px;
-  max-height: 70vh;
+  position: sticky;
+  top: var(--dash-preview-sticky-top, 12px);
+  max-height: calc(100dvh - var(--dash-preview-sticky-top, 12px) - 96px);
+  min-height: 320px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   min-width: 0;
-  position: sticky;
-  top: 0;
 }
 
 .dash-preview-panel__title {
@@ -2712,14 +2719,22 @@ a:hover {
 }
 
 .dash-preview-panel__scroll--fit {
-  overflow: hidden;
+  overflow: auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .dash-preview-panel__scroll--fit > .dash-live {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+}
+
+.dash-preview-panel__scroll > .dash-live {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
 }
 
 .dash-builder-row {
@@ -2898,8 +2913,10 @@ a:hover {
 }
 
 .dash-config-modal {
-  width: min(520px, 100%);
-  max-height: min(90vh, 880px);
+  width: min(1380px, 98vw);
+  /* ~+40% vs prior min(90vh, 880px) — more room for binding + preview */
+  max-height: min(92vh, 1232px);
+  min-height: min(63vh, 720px);
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
@@ -2911,8 +2928,152 @@ a:hover {
   overflow: hidden;
 }
 
+.dash-config-modal__head {
+  flex-shrink: 0;
+}
+
 .dash-config-modal__body {
+  flex: 1;
   min-height: 0;
+  overflow: auto;
+}
+
+.dash-config-modal__foot {
+  flex-shrink: 0;
+}
+
+.dash-widget-config-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.95fr) minmax(460px, 1.6fr) minmax(300px, 1fr);
+  gap: var(--space-md);
+  min-height: 100%;
+}
+
+.dash-widget-config-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dash-widget-config-col h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.dash-widget-config-col--preview,
+.dash-widget-config-col--debug {
+  min-height: 0;
+}
+
+.dash-widget-config-preview-pane,
+.dash-widget-config-debug-pane {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--color-bg) 82%, transparent);
+  min-height: 520px;
+  max-height: min(70vh, 860px);
+  overflow: auto;
+  padding: 0.55rem;
+}
+
+.dash-widget-config-preview-pane .dash-widget {
+  min-height: 100%;
+}
+
+.dash-widget-config-preview-pane .dash-wf__title,
+.dash-widget-config-preview-pane .dash-widget__title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
+
+.dash-widget-config-preview-pane .dash-wf__meta-item {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* KPI-strip preview: prevent summary labels/subtext from clipping. */
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dm-kpi {
+  overflow: visible;
+  min-height: 5.25rem;
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-wf__body {
+  overflow: visible;
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-ops-kpi-inner.dm-kpi-row--equal-5 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 760px) {
+  .dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-ops-kpi-inner.dm-kpi-row--equal-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dm-kpi__label {
+  flex-wrap: wrap;
+  line-height: 1.25;
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dm-kpi__sub {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.dash-widget-config-preview-pane .dash-widget-stack,
+.dash-widget-config-preview-pane .dash-wf--kpi-strip {
+  overflow: visible;
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip {
+  height: auto;
+  min-height: 0;
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-wf__header {
+  padding-top: 0.22rem;
+  overflow: visible;
+}
+
+.dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-wf__title {
+  line-height: 1.35;
+  padding-top: 0.06rem;
+}
+
+.dash-widget-config-debug-pane pre {
+  margin: 0;
+  font-size: 0.68rem;
+  white-space: pre;
+}
+
+.dash-widget-config-advanced {
+  margin-top: 0.35rem;
+}
+
+.dash-widget-config-advanced summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.dash-widget-config-advanced .dash-binding {
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 1180px) {
+  .dash-widget-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-widget-config-preview-pane,
+  .dash-widget-config-debug-pane {
+    min-height: 320px;
+    max-height: 52vh;
+  }
 }
 
 .dash-drawer-backdrop {

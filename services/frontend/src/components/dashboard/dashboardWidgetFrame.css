@@ -30,6 +30,7 @@
   justify-content: space-between;
   gap: 0.5rem;
   min-width: 0;
+  overflow: visible;
 }
 
 .dash-wf__title {
@@ -39,6 +40,18 @@
   line-height: 1.25;
   color: var(--color-text);
   min-width: 0;
+  overflow: visible;
+}
+
+/* KPI strip: reserve enough header room so title text is never clipped. */
+.dash-wf--kpi-strip .dash-wf__header {
+  padding-top: 0.18rem;
+  overflow: visible;
+}
+
+.dash-wf--kpi-strip .dash-wf__title {
+  line-height: 1.35;
+  padding-top: 0.04rem;
 }
 
 .dash-wf__header-actions {
