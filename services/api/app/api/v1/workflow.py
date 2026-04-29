@@ -47,7 +47,7 @@ from app.services.workflow_result_query import order_by_metadata_recency as orde
 from app.services.lifecycle_actions import archive_workflow, deactivate_workflow, reactivate_workflow
 from app.services.workflow_graph_run import WorkflowGraphError, execute_graph
 from app.services.workflow_ops import duplicate_workflow, load_workflow_eager, replace_workflow_graph
-from app.services.workflow_validation import full_validation_errors
+from app.services.workflow_validation import full_validation_errors, validate_workflow_graph
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -181,6 +181,18 @@ def create_workflow(
     )
     db.add(wf)
     db.flush()
+    nodes_d = [n.model_dump(mode="python") for n in body.nodes]
+    edges_d = [e.model_dump(mode="python") for e in body.edges]
+    gerrs = validate_workflow_graph(
+        db=db,
+        customer_id=user.customer_id,
+        site_id=body.site_id,
+        workflow_id=wf.id,
+        nodes=nodes_d,
+        edges=edges_d,
+    )
+    if gerrs:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="; ".join(gerrs))
     replace_workflow_graph(db, wf, body.nodes, body.edges)
     db.commit()
     wf = load_workflow_eager(db, wf.id)
@@ -230,6 +242,18 @@ def update_workflow(
         wf.description = body.description
 
     if body.nodes is not None and body.edges is not None:
+        nodes_d = [n.model_dump(mode="python") for n in body.nodes]
+        edges_d = [e.model_dump(mode="python") for e in body.edges]
+        gerrs = validate_workflow_graph(
+            db=db,
+            customer_id=user.customer_id,
+            site_id=wf.site_id,
+            workflow_id=wf.id,
+            nodes=nodes_d,
+            edges=edges_d,
+        )
+        if gerrs:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="; ".join(gerrs))
         replace_workflow_graph(db, wf, body.nodes, body.edges)
         wf.version = (wf.version or 1) + 1
 

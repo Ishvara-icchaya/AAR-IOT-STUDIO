@@ -7,13 +7,11 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.data_object import DataObject
-from app.models.device import Device
 from app.models.latest_device_state import LatestDeviceState
 from app.models.workflow_result_object import WorkflowResultObject
 from app.schemas.dashboard_layout import iter_widgets
 
-ALLOWED_SOURCE = frozenset({"data_object", "result_object", "latest_device_state", "device_state"})
+ALLOWED_SOURCE = frozenset({"result_object", "latest_device_state", "device_state"})
 ALLOWED_WIDGET_TYPES = frozenset(
     {
         "table",
@@ -132,7 +130,7 @@ def validate_layout_for_save(
         st = _bget(b, "source_type", "sourceType")
         if st not in ALLOWED_SOURCE:
             errs.append(
-                f"widget {wid} requires binding source_type data_object|result_object|latest_device_state"
+                f"widget {wid} requires binding source_type result_object|latest_device_state|device_state (data_object removed for v2)"
             )
             continue
         sid = _bget(b, "source_id", "sourceId")
@@ -203,9 +201,7 @@ def validate_sources_exist(db: Session, *, customer_id: uuid.UUID, layout: dict[
             continue
         stn = str(st).lower()
         if stn == "data_object":
-            row = db.get(DataObject, sid)
-            if not row or row.customer_id != customer_id:
-                errs.append(f"data_object {sid} not found")
+            errs.append("data_object bindings are not allowed; use latest_device_state")
         elif stn in ("latest_device_state", "device_state"):
             row = db.get(LatestDeviceState, sid)
             if not row or row.customer_id != customer_id:
@@ -239,14 +235,7 @@ def validate_site_coherence(
         except ValueError:
             continue
         if stn == "data_object":
-            row = db.get(DataObject, sid)
-            if not row:
-                continue
-            dev = db.get(Device, row.device_id)
-            if dev and dev.site_id != dashboard_site_id:
-                errs.append(
-                    f"widget {w.get('widgetId')}: data_object site does not match dashboard site"
-                )
+            errs.append(f"widget {w.get('widgetId')}: data_object bindings are not allowed for v2 dashboards")
         elif stn in ("latest_device_state", "device_state"):
             row = db.get(LatestDeviceState, sid)
             if row and row.site_id != dashboard_site_id:

@@ -164,6 +164,17 @@ def validate_workflow_graph(
         except Exception as e:
             errors.append(str(e))
 
+    for n in nodes:
+        if str(n.get("node_type")) != "input":
+            continue
+        cfg = n.get("config_json") or {}
+        if not isinstance(cfg, dict):
+            continue
+        if str(cfg.get("data_object_id") or "").strip():
+            errors.append(
+                "input node data_object_id is not allowed; bind latest_device_state_id or resolved_device_id"
+            )
+
     if site_id and terminate_names:
         for tn in set(terminate_names):
             stmt = (

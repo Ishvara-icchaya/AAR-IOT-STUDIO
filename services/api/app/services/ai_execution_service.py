@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.alert import Alert
 from app.models.dashboard import Dashboard
-from app.models.data_object import DataObject
 from app.models.device import Device
+from app.models.latest_device_state import LatestDeviceState
 from app.models.published_service import PublishedService
 from app.models.site import Site
 from app.models.workflow import Workflow
@@ -171,34 +171,33 @@ def _execute_plan_core(
         return rows, _aggregate_alerts(rows, agg)
 
     if dataset == "ai_data_objects_latest":
-        q = select(DataObject).where(DataObject.customer_id == customer_id)
+        # Legacy dataset id: reads latest_device_state (v2), not legacy data_objects.
+        q = select(LatestDeviceState).where(LatestDeviceState.customer_id == customer_id)
         if site_ids:
-            q = q.where(DataObject.site_id.in_(site_ids))
+            q = q.where(LatestDeviceState.site_id.in_(site_ids))
         ls = filters.get("lifecycle_status")
         if isinstance(ls, str) and ls:
-            q = q.where(DataObject.lifecycle_status == ls)
+            q = q.where(LatestDeviceState.lifecycle_status == ls)
         hs = filters.get("health_status")
         if isinstance(hs, str) and hs:
-            q = q.where(DataObject.health_status == hs)
-        q = q.order_by(DataObject.updated_at.desc()).limit(limit)  # type: ignore[attr-defined]
-        is_catalog = str(plan.get("intent") or "") == "data_object_catalog"
+            q = q.where(LatestDeviceState.health_status == hs)
+        q = q.order_by(LatestDeviceState.updated_at.desc()).limit(limit)  # type: ignore[attr-defined]
         for d in db.scalars(q).all():
             item: dict[str, Any] = {
                 "id": str(d.id),
-                "name": d.name,
+                "name": d.object_name,
                 "site_id": str(d.site_id),
-                "device_id": str(d.device_id),
+                "endpoint_id": str(d.endpoint_id),
+                "resolved_device_id": str(d.resolved_device_id),
                 "lifecycle_status": d.lifecycle_status,
                 "health_status": d.health_status,
                 "updated_at": d.updated_at.isoformat() if d.updated_at else None,
             }
             if include_payload:
-                item["payload_preview"] = str(d.payload)[:800]
+                item["identity_preview"] = str(d.identity_json)[:800]
                 item["kpi_preview"] = str(d.kpi_json)[:800]
             else:
                 item["kpi_keys"] = list((d.kpi_json or {}).keys())[:20]
-            if is_catalog and getattr(d, "ai_projection", None) is not None:
-                item["ai_projection"] = d.ai_projection
             rows.append(item)
         metrics["rows_returned"] = len(rows)
         return rows, _aggregate_data_objects(rows, agg)
@@ -247,18 +246,18 @@ def _execute_plan_core(
         return rows, metrics
 
     if dataset == "ai_kpi_snapshot":
-        q = select(DataObject).where(DataObject.customer_id == customer_id)
+        q = select(LatestDeviceState).where(LatestDeviceState.customer_id == customer_id)
         if site_ids:
-            q = q.where(DataObject.site_id.in_(site_ids))
-        q = q.where(text("data_objects.kpi_json IS NOT NULL AND data_objects.kpi_json <> '{}'::jsonb")).order_by(
-            DataObject.updated_at.desc()
-        ).limit(limit)
+            q = q.where(LatestDeviceState.site_id.in_(site_ids))
+        q = q.where(
+            text("latest_device_state.kpi_json IS NOT NULL AND latest_device_state.kpi_json <> '{}'::jsonb")
+        ).order_by(LatestDeviceState.updated_at.desc()).limit(limit)
         for d in db.scalars(q).all():
             keys = list((d.kpi_json or {}).keys())
             rows.append(
                 {
                     "id": str(d.id),
-                    "name": d.name,
+                    "name": d.object_name,
                     "site_id": str(d.site_id),
                     "kpi_keys": keys[:30],
                 }

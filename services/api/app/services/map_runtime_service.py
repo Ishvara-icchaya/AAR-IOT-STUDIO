@@ -41,33 +41,32 @@ def list_eligible_map_objects(
     lon_field: str = "gps.lon",
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    stmt_do = select(DataObject).where(
-        DataObject.customer_id == customer_id,
-        DataObject.site_id == site_id,
+    stmt_lds = select(LatestDeviceState).where(
+        LatestDeviceState.customer_id == customer_id,
+        LatestDeviceState.site_id == site_id,
     )
-    for row in db.scalars(stmt_do).all():
-        payload = dict(row.payload or {})
-        kpi_json = dict(row.kpi_json or {})
-        if not map_eligible_data_object(
-            lifecycle_status=row.lifecycle_status,
-            payload=payload,
-            kpi_json=kpi_json,
-            has_gps=row.has_gps,
-            has_kpi=row.has_kpi,
-            has_health=row.has_health,
-            lat_field=lat_field,
-            lon_field=lon_field,
-        ):
+    for row in db.scalars(stmt_lds).all():
+        loc = row.location_json if isinstance(row.location_json, dict) else {}
+        try:
+            lat_f = float(loc.get("lat"))
+            lon_f = float(loc.get("lon"))
+        except (TypeError, ValueError):
             continue
-        as_of = as_of_timestamp(row)
+        if abs(lat_f) > 90 or abs(lon_f) > 180:
+            continue
+        label = ""
+        disp = row.display_json if isinstance(row.display_json, dict) else {}
+        if isinstance(disp.get("device_label"), str):
+            label = disp["device_label"]
+        name = label or str(row.object_name or "device")
         out.append(
             {
-                "source_type": "data_object",
+                "source_type": "latest_device_state",
                 "source_id": str(row.id),
-                "name": row.name,
+                "name": name,
                 "lifecycle_status": row.lifecycle_status,
-                "updated_at": as_of.isoformat() if as_of else None,
-                "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                "latest_seen_at": row.last_event_ts.isoformat() if row.last_event_ts else None,
             }
         )
 
