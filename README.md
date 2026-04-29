@@ -160,6 +160,20 @@ This phase is compatibility-only groundwork and does not alter current live API 
 
 This phase establishes a stable data-provider pattern for v2 widgets while leaving existing dashboard runtime wiring in place.
 
+### Phase 4 complete — `LocationHeadingMapWidget` scaffold
+
+- Added `services/frontend/src/components/dashboard2/widgets/LocationHeadingMapWidget.tsx` using `maplibre-gl`.
+- Wired registry entry `location_heading_map` to the new widget component.
+- Implemented endpoint-group map rendering basics for runtime response items:
+  - marker placement from `location_json.lat/lon`,
+  - heading rotation support (`location_json.heading`),
+  - status-color markers (health/lifecycle fallback),
+  - per-marker popup basics,
+  - first-load auto-fit bounds.
+- Added map-specific CSS in `services/frontend/src/components/dashboard2/dashboard2.css`.
+
+This phase is delivered in the `dashboard2` namespace and does not replace current production dashboard map runtime yet.
+
 ## License
 
 Proprietary — assign per your organization.
