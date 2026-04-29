@@ -27,7 +27,7 @@ from paho.mqtt.client import CallbackAPIVersion, ConnectFlags, topic_matches_sub
 from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 
-from app.ingest_archive import ingest_json_payload, ingest_json_payload_for_endpoint
+from app.ingest_archive import ingest_json_payload, ingest_json_payload_for_mqtt_endpoint
 from app.logging_setup import configure_logging
 from app.mqtt_bridge_subscriptions import (
     BrokerIngestGroup,
@@ -96,9 +96,9 @@ def _tls_context() -> ssl.SSLContext:
     return ctx
 
 
-def _uuid_endpoint_device_pairs(group: BrokerIngestGroup, mqtt_topic: str) -> list[tuple[uuid.UUID, uuid.UUID]]:
-    """Map message topic to (endpoint_id, device_id) for real device_endpoints rows (skip env-only hooks)."""
-    by_device: dict[uuid.UUID, uuid.UUID] = {}
+def _uuid_endpoint_ids(group: BrokerIngestGroup, mqtt_topic: str) -> list[uuid.UUID]:
+    """Map message topic to v2 endpoint ids (skip env-only hooks)."""
+    out: set[uuid.UUID] = set()
     for mt in group.merged_topics:
         try:
             matched = topic_matches_sub(mt.topic, mqtt_topic)
@@ -109,12 +109,10 @@ def _uuid_endpoint_device_pairs(group: BrokerIngestGroup, mqtt_topic: str) -> li
         for s in mt.sources:
             try:
                 eid = uuid.UUID(s.endpoint_id)
-                did = uuid.UUID(s.device_id)
             except ValueError:
                 continue
-            if did not in by_device:
-                by_device[did] = eid
-    return [(by_device[d], d) for d in by_device]
+            out.add(eid)
+    return sorted(out, key=lambda x: str(x))
 
 
 def _on_message(_client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
@@ -140,22 +138,21 @@ def _on_message(_client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> N
             return
         body = raw
         group = ud.group if ud else None
-        pairs = _uuid_endpoint_device_pairs(group, topic) if group else []
-        if pairs:
-            for endpoint_id, _device_id in pairs:
-                ok = ingest_json_payload_for_endpoint(
+        endpoint_ids = _uuid_endpoint_ids(group, topic) if group else []
+        if endpoint_ids:
+            for endpoint_id in endpoint_ids:
+                ok = ingest_json_payload_for_mqtt_endpoint(
                     data,
                     body,
-                    device_endpoint_id=endpoint_id,
+                    endpoint_id=endpoint_id,
                     protocol_source="mqtt",
                 )
                 if ok:
                     log.info(
-                        "mqtt_bridge archived raw ingest topic=%s broker=%s endpoint_id=%s device_id=%s bytes=%s",
+                        "mqtt_bridge archived raw ingest topic=%s broker=%s endpoint_id=%s bytes=%s",
                         topic,
                         broker_tag,
                         endpoint_id,
-                        _device_id,
                         len(body),
                     )
                 else:
@@ -231,8 +228,7 @@ def _make_on_connect(group: BrokerIngestGroup):
             src_payload = [
                 {
                     "endpoint_id": s.endpoint_id,
-                    "device_id": s.device_id,
-                    "device_name": s.device_name,
+                    "endpoint_name": s.endpoint_name,
                 }
                 for s in mt.sources
             ]

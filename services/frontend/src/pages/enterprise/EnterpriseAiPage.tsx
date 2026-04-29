@@ -23,6 +23,8 @@ import { AiSavedQueries } from "@/components/enterprise-ai/AiSavedQueries";
 import { AiSuggestedQueries } from "@/components/enterprise-ai/AiSuggestedQueries";
 import { PageStatus } from "@/components/PageStatus";
 import { AppTabs } from "@/components/app";
+import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
+import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellMessage } from "@/layouts/shell";
 import type { AIDatasetMeta, AIChatResponse, AIHealth, AIRecentQuery, AISavedQuery, AISuggestionItem } from "@/types/ai";
@@ -118,7 +120,7 @@ function healthScore(h: AIHealth | null): { pct: number; label: string } {
 
 export function EnterpriseAiPage() {
   const { pushMessage } = useShellMessage();
-  const { siteId: opsSiteId, timeRange: opsTimeRange } = useOpsShell();
+  const { siteId: opsSiteId, timeRange: opsTimeRange, refreshToken } = useOpsShell();
   const aiTimePreset = useMemo(() => opsTimeRangeToAiPreset(opsTimeRange), [opsTimeRange]);
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [useLlm, setUseLlm] = useState(true);
@@ -166,7 +168,7 @@ export function EnterpriseAiPage() {
 
   useEffect(() => {
     void loadSide();
-  }, [loadSide]);
+  }, [loadSide, refreshToken]);
 
   useEffect(() => {
     if (!res) {
@@ -252,6 +254,11 @@ export function EnterpriseAiPage() {
   return (
     <PageShell variant="list" className="enterprise-ai-page device-manage-page">
       <div className="dm-root ea-root">
+        <OpsFilterPanel ariaLabel="Enterprise AI scope">
+          <div className="dm-controls-form__row">
+            <OpsScopeControls variant="filters" timeRangeLabel="Range" />
+          </div>
+        </OpsFilterPanel>
         <section className="dm-kpi-row dm-kpi-row--equal-4" aria-label="Assistant metrics">
           <div className="dm-kpi">
             <div className="dm-kpi__body">

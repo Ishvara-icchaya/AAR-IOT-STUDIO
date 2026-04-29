@@ -44,7 +44,7 @@
   font-size: var(--aar-font-size-xl, clamp(1.35rem, 2.2vw, 1.65rem));
   font-weight: var(--aar-font-weight-bold, 800);
   letter-spacing: -0.03em;
-  color: var(--dm-text, var(--aar-text));
+  color: #1d76ff;
   line-height: 1.15;
 }
 

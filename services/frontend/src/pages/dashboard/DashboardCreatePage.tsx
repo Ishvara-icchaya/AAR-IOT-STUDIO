@@ -78,7 +78,7 @@ export function DashboardCreatePage() {
         </Link>
         <span className="dash-page-subnav__hint">
           {" "}
-          / Create dashboard — build or edit Dashboard; return to the list anytime.
+          Create dashboard — build or edit Dashboard; return to the list anytime.
         </span>
       </nav>
       <p style={{ fontSize: "0.9rem", color: "var(--color-text-muted)", marginBottom: "1rem" }}>

@@ -7,8 +7,10 @@ import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsListPage } from "@/components/ops/OpsListPage";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
+import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
+import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageStatus } from "@/components/PageStatus";
 import { apiFetch } from "@/api/client";
 import type { WorkflowListItemDTO } from "@/types/workflow";
@@ -36,8 +38,8 @@ function workflowLifecycleTone(status: string): "online" | "degraded" | "offline
 export function WorkflowListPage() {
   const navigate = useNavigate();
   const confirm = useConfirmAction();
+  const { siteId: opsSiteId, refreshToken } = useOpsShell();
   const [sites, setSites] = useState<SiteOpt[]>([]);
-  const [siteId, setSiteId] = useState("");
 
   const [items, setItems] = useState<WorkflowListItemDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,7 +72,7 @@ export function WorkflowListPage() {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (siteId) params.set("site_id", siteId);
+      if (opsSiteId) params.set("site_id", opsSiteId);
       if (appliedQ.trim()) params.set("q", appliedQ.trim());
       const qs = params.toString();
       const path = qs ? `/workflows?${qs}` : "/workflows";
@@ -83,11 +85,11 @@ export function WorkflowListPage() {
     } finally {
       setLoading(false);
     }
-  }, [siteId, appliedQ]);
+  }, [opsSiteId, appliedQ]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshToken]);
 
   const filtered = useMemo(() => {
     const lc = lifecycleContains.trim().toLowerCase();
@@ -121,7 +123,7 @@ export function WorkflowListPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [appliedQ, siteId, lifecycleContains, publishedFilter, items.length]);
+  }, [appliedQ, opsSiteId, lifecycleContains, publishedFilter, items.length]);
 
   useEffect(() => {
     if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
@@ -255,6 +257,7 @@ export function WorkflowListPage() {
       filterPanel={
         <OpsFilterPanel ariaLabel="Filters">
           <div className="dm-controls-form__row">
+            <OpsScopeControls variant="filters" timeRangeLabel="Range" />
             <div className="dm-search-wrap">
               <Search size={16} aria-hidden />
               <input
@@ -269,24 +272,6 @@ export function WorkflowListPage() {
                 }}
               />
             </div>
-            <button
-              type="button"
-              className="dm-btn dm-btn--primary dm-btn--search"
-              onClick={() => setAppliedQ(searchInput)}
-            >
-              Search
-            </button>
-            <label className="dm-filter-field">
-              <span className="dm-filter-field__label">Site</span>
-              <select value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-                <option value="">All sites</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="dm-filter-field">
               <span className="dm-filter-field__label">Published</span>
               <select
@@ -307,6 +292,13 @@ export function WorkflowListPage() {
                 placeholder="Client filter on name + lifecycle…"
               />
             </label>
+            <button
+              type="button"
+              className="dm-btn dm-btn--primary dm-btn--search"
+              onClick={() => setAppliedQ(searchInput)}
+            >
+              Search
+            </button>
           </div>
         </OpsFilterPanel>
       }

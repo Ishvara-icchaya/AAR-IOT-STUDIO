@@ -115,7 +115,7 @@
   font-size: clamp(1.35rem, 2.2vw, 1.65rem);
   font-weight: 800;
   letter-spacing: -0.03em;
-  color: var(--dm-text);
+  color: #1d76ff;
   line-height: 1.15;
 }
 
@@ -151,18 +151,6 @@
   margin-top: 0.85rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--dm-border);
-}
-
-/* Site / range / refresh toolbar — above page title, thin rules top & bottom */
-.dm-page-scope-strip {
-  margin: 0 0 0.5rem;
-  padding: 0.55rem 0;
-  border-top: 1px solid var(--dm-border);
-  border-bottom: 1px solid var(--dm-border);
-}
-
-.dm-page-scope-strip + .dm-page-hero {
-  padding-top: 0.25rem;
 }
 
 /* Section title inside filter / ops panels (uppercase label) */

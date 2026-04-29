@@ -144,7 +144,7 @@ export function DashboardHeader({ dashboardId }: Props) {
         </Link>
         <span className="dash-header__subnav-hint">
           {" "}
-          / Create dashboard — build or edit Dashboard; return to the list anytime.
+          Create dashboard — build or edit Dashboard; return to the list anytime.
         </span>
       </nav>
       <div className="dash-header__titles">

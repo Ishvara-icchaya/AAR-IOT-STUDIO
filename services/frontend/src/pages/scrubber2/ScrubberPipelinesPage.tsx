@@ -10,7 +10,6 @@ import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsListPage } from "@/components/ops/OpsListPage";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
-import { OpsScopeBar } from "@/components/ops/OpsScopeBar";
 import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { useOpsShell } from "@/contexts/OpsShellContext";
@@ -97,11 +96,10 @@ function deriveName(device: DeviceRead, mapping: Record<string, unknown>): strin
 
 export function ScrubberPipelinesPage() {
   const navigate = useNavigate();
-  const { siteId: opsSiteId, setSiteId: setOpsSiteId, refreshToken } = useOpsShell();
+  const { siteId: opsSiteId, refreshToken } = useOpsShell();
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [rows, setRows] = useState<PipelineRow[]>([]);
-  const [sites, setSites] = useState<SiteRow[]>([]);
   const [sitesById, setSitesById] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -118,7 +116,6 @@ export function ScrubberPipelinesPage() {
         apiFetch<SiteRow[]>("/administration/sites"),
         listDevices(opsSiteId ? { site_id: opsSiteId } : undefined),
       ]);
-      setSites(siteRows ?? []);
       const siteMap: Record<string, string> = {};
       for (const s of siteRows ?? []) siteMap[s.id] = s.name;
       setSitesById(siteMap);
@@ -227,13 +224,6 @@ export function ScrubberPipelinesPage() {
           }
         />
       }
-      scopeBar={
-        <OpsScopeBar>
-          <div className="dm-page-scope-strip">
-            <OpsScopeControls variant="inline" timeRangeLabel="Range" />
-          </div>
-        </OpsScopeBar>
-      }
       kpiRow={
         <OpsKpiRow ariaLabel="Scrubber pipeline summary" className="dm-kpi-row--equal-5">
           <div className="dm-kpi"><div className="dm-kpi__body"><div className="dm-kpi__label">Total</div><div className="dm-kpi__value">{kpi.total}</div></div></div>
@@ -246,6 +236,7 @@ export function ScrubberPipelinesPage() {
       filterPanel={
         <OpsFilterPanel ariaLabel="Pipeline filters">
           <div className="dm-controls-form__row">
+            <OpsScopeControls variant="filters" timeRangeLabel="Range" />
             <div className="dm-search-wrap">
               <Search size={16} aria-hidden />
               <input
@@ -258,20 +249,6 @@ export function ScrubberPipelinesPage() {
                 }}
               />
             </div>
-            <button type="button" className="dm-btn dm-btn--primary dm-btn--search" onClick={() => setAppliedSearch(search)}>
-              Search
-            </button>
-            <label className="dm-filter-field">
-              <span className="dm-filter-field__label">Site</span>
-              <select value={opsSiteId ?? ""} onChange={(e) => setOpsSiteId(e.target.value || null)}>
-                <option value="">All sites</option>
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label className="dm-filter-field">
               <span className="dm-filter-field__label">Status</span>
               <select value={status} onChange={(e) => setStatus(e.target.value as "all" | PipelineStatus)}>
@@ -293,6 +270,9 @@ export function ScrubberPipelinesPage() {
                 ))}
               </select>
             </label>
+            <button type="button" className="dm-btn dm-btn--primary dm-btn--search" onClick={() => setAppliedSearch(search)}>
+              Search
+            </button>
           </div>
         </OpsFilterPanel>
       }

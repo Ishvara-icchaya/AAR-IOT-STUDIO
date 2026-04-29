@@ -2,7 +2,7 @@ import { useMemo, type CSSProperties } from "react";
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { tuneRowWeightsForViewport, type ParsedLayoutRow } from "@/lib/dashboard/dashboardLayoutEngine";
 import { useDashboardResize } from "./DashboardResizeManager";
-import { DashboardWidgetView } from "../DashboardLiveRenderer";
+import { DashboardWidgetView } from "../DashboardWidgetView";
 
 type Props = {
   rows: ParsedLayoutRow[];

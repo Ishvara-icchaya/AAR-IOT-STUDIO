@@ -1,7 +1,8 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -40,10 +41,31 @@ class TenantOperationalDataClearBody(BaseModel):
         ...,
         description="Must match exactly: DELETE ALL DATA EXCEPT SITES",
     )
+    async_execution: bool = Field(
+        False,
+        description="If true, enqueue a background clear and return 202 + job_id (requires Redis).",
+    )
 
 
 class TenantOperationalDataClearResponse(BaseModel):
     deleted_counts: dict[str, int]
+
+
+class TenantOperationalDataClearJobAccepted(BaseModel):
+    job_id: str
+    status: str
+    poll_path: str
+
+
+class TenantOperationalDataClearJobStatus(BaseModel):
+    job_id: str
+    customer_id: str
+    status: str
+    phase: str
+    deleted_counts: dict[str, int]
+    error: str | None
+    created_at: float
+    updated_at: float
 
 
 class CustomerTenantUpdate(BaseModel):
@@ -252,24 +274,70 @@ def patch_customer_name(
     return {"id": str(cust.id), "name": cust.name}
 
 
-@router.post("/clear-operational-data", response_model=TenantOperationalDataClearResponse)
+@router.post(
+    "/clear-operational-data",
+    responses={
+        200: {"model": TenantOperationalDataClearResponse},
+        202: {"model": TenantOperationalDataClearJobAccepted},
+    },
+)
 def post_clear_operational_data(
     body: TenantOperationalDataClearBody,
+    background_tasks: BackgroundTasks,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Remove devices, raw/data objects, workflows (including result objects), dashboards, alerts,
     published services, and static ingestion rows for this tenant. **Sites, users, and customer
     configuration are kept.** Requires the admin's current password.
+
+    Set ``async_execution`` to true to return **202** immediately with a ``job_id`` (stored in Redis);
+    poll ``GET /administration/clear-operational-data/jobs/{job_id}`` until ``status`` is
+    ``completed`` or ``failed``. Async mode requires Redis.
     """
     expected = "DELETE ALL DATA EXCEPT SITES"
-    if body.confirmation_phrase != expected:
+    phrase = body.confirmation_phrase.strip()
+    if phrase != expected:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "confirmation_phrase must match exactly (including spaces)",
+            f'confirmation_phrase must equal exactly: {expected!r} (leading/trailing spaces are ignored)',
         )
     if not verify_password(body.password, admin.hashed_password):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid password")
+
+    if body.async_execution:
+        from app.services.tenant_operational_clear_job import (
+            create_job,
+            redis_available,
+            run_clear_job,
+        )
+
+        if not redis_available():
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Async operational clear requires Redis. Retry with async_execution=false, "
+                "or start the Redis service.",
+            )
+        job_id = create_job(admin.customer_id)
+        background_tasks.add_task(run_clear_job, job_id, admin.customer_id)
+        poll_path = f"/administration/clear-operational-data/jobs/{job_id}"
+        pipeline_emit(
+            log,
+            component="api.administration",
+            action="clear_operational_data_async",
+            status="accepted",
+            customer_id=str(admin.customer_id),
+            job_id=job_id,
+        )
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content=TenantOperationalDataClearJobAccepted(
+                job_id=job_id,
+                status="accepted",
+                poll_path=poll_path,
+            ).model_dump(),
+        )
+
     try:
         stats = clear_operational_data_except_sites(db, admin.customer_id)
         db.commit()
@@ -286,6 +354,23 @@ def post_clear_operational_data(
     return TenantOperationalDataClearResponse(deleted_counts=stats)
 
 
+@router.get(
+    "/clear-operational-data/jobs/{job_id}",
+    response_model=TenantOperationalDataClearJobStatus,
+)
+def get_clear_operational_data_job(
+    job_id: str,
+    admin: User = Depends(require_admin),
+):
+    """Poll async operational clear status (same tenant as the admin)."""
+    from app.services.tenant_operational_clear_job import get_job
+
+    data = get_job(job_id, customer_id=admin.customer_id)
+    if data is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown job_id or job expired")
+    return TenantOperationalDataClearJobStatus.model_validate(data)
+
+
 @router.post("/restore")
 def restore_full_reset(
     body: FullResetBody,
@@ -293,7 +378,7 @@ def restore_full_reset(
 ):
     log.debug("administration.restore_full_reset")
     expected = "RESET AAR-IOT-STUDIO"
-    if body.confirmation_phrase != expected:
+    if body.confirmation_phrase.strip() != expected:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "confirmation_phrase must match exactly")
     raise HTTPException(
         status.HTTP_501_NOT_IMPLEMENTED,

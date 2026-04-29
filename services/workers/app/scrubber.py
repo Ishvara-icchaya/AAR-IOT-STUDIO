@@ -17,7 +17,7 @@ from app.field_catalog_service import build_ai_projection_document
 from app.metadata_db import fetch_site_mapping_studio, insert_data_object
 from app.minio_worker import read_object_slice
 from app.pipeline import emit
-from app.scrubber_engine import run_scrubber
+from app.scrubber_engine import ScrubberRunResult, run_scrubber
 from app.v2_resolution import try_write_v2_from_scrubber
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
 
@@ -96,6 +96,38 @@ def _process_envelope(env: dict) -> None:
             device_id,
             raw_object_id,
         )
+        # MQTT/v2 endpoint mode: allow passthrough V2 writes even when legacy scrubber mapping is absent.
+        endpoint_id = env.get("endpoint_id")
+        if isinstance(endpoint_id, str) and endpoint_id.strip():
+            cap = _max_read_bytes()
+            to_read = min(size_bytes, cap)
+            try:
+                raw_bytes = read_object_slice(bucket=_bucket(), key=str(storage_key), offset=0, length=to_read)
+                payload_obj = json.loads(raw_bytes.decode("utf-8"))
+                if not isinstance(payload_obj, dict):
+                    payload_obj = {"_raw_text": raw_bytes.decode("utf-8", errors="replace")}
+            except Exception:
+                payload_obj = {}
+            try:
+                try_write_v2_from_scrubber(
+                    device_id=device_id,
+                    customer_id=customer_id,
+                    site_id=site_id,
+                    raw_object_id=raw_object_id,
+                    result=ScrubberRunResult(
+                        object_name="Data object",
+                        payload=payload_obj,
+                        kpi={},
+                        health_status="green",
+                        health_code="pass_through",
+                        health_message="No scrubber mapping; passthrough payload for v2 resolution.",
+                        scrubber_version=None,
+                        health_details={},
+                    ),
+                    scrubber_envelope=env,
+                )
+            except Exception:
+                log.debug("v2 passthrough resolution skipped", exc_info=True)
         oid = insert_data_object(
             customer_id=customer_id,
             site_id=site_id,

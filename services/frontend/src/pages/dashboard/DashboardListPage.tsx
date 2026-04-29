@@ -24,8 +24,10 @@ import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsListPage } from "@/components/ops/OpsListPage";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
+import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { PageStatus } from "@/components/PageStatus";
+import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { AppIcon, ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
@@ -61,11 +63,11 @@ function dashboardStatusTone(status: string): "online" | "degraded" | "offline" 
 }
 
 export function DashboardListPage() {
+  const { siteId: opsSiteId, setSiteId: setOpsSiteId, refreshToken } = useOpsShell();
   const { tryHandleResourceInUseError } = useResourceInUse();
   const confirm = useConfirmAction();
   const { pushMessage } = useShellMessage();
   const [sites, setSites] = useState<SiteRow[]>([]);
-  const [siteId, setSiteId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [appliedQ, setAppliedQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -89,7 +91,7 @@ export function DashboardListPage() {
     setErr(null);
     try {
       const data = await dashApi.listDashboards({
-        site_id: siteId || undefined,
+        site_id: opsSiteId || undefined,
         q: appliedQ.trim() || undefined,
       });
       setItems(data?.items ?? []);
@@ -99,7 +101,7 @@ export function DashboardListPage() {
       setTableLoading(false);
       setLoading(false);
     }
-  }, [siteId, appliedQ]);
+  }, [opsSiteId, appliedQ]);
 
   useEffect(() => {
     void (async () => {
@@ -114,7 +116,7 @@ export function DashboardListPage() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshToken]);
 
   const filtered = useMemo(() => {
     const q = statusContains.trim().toLowerCase();
@@ -176,7 +178,7 @@ export function DashboardListPage() {
 
   useEffect(() => {
     setTablePage(1);
-  }, [appliedQ, siteId, statusFilter, statusContains, items.length]);
+  }, [appliedQ, opsSiteId, statusFilter, statusContains, items.length]);
 
   const pageRows = useMemo(() => {
     const start = (tablePage - 1) * DASH_TABLE_PAGE_SIZE;
@@ -246,14 +248,14 @@ export function DashboardListPage() {
     !!statusContains.trim() ||
     !!searchInput.trim() ||
     !!appliedQ.trim() ||
-    !!siteId.trim();
+    !!opsSiteId?.trim();
 
   function clearFilters() {
     setSearchInput("");
     setAppliedQ("");
     setStatusFilter("all");
     setStatusContains("");
-    setSiteId("");
+    setOpsSiteId(null);
   }
 
   const tdDesc: CSSProperties = {
@@ -274,7 +276,7 @@ export function DashboardListPage() {
               Dashboard List
             </Link>
           }
-          subtitle=" / Create dashboard — build or edit Dashboard; return to the list anytime."
+          subtitle="Create dashboard — build or edit Dashboard; return to the list anytime."
           actions={
             <Link to="/dashboard/create" className="dm-btn dm-btn--primary">
               <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
@@ -369,6 +371,7 @@ export function DashboardListPage() {
         <OpsFilterPanel ariaLabel="Search and filters">
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
+              <OpsScopeControls variant="filters" timeRangeLabel="Range" />
               <div className="dm-search-wrap">
                 <Search size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 <input
@@ -398,17 +401,6 @@ export function DashboardListPage() {
                   <option value="frozen">frozen</option>
                   <option value="inactive">inactive</option>
                   <option value="archived">archived</option>
-                </select>
-              </div>
-              <div className="dm-filter-field">
-                <label htmlFor="dash-f-site">Site</label>
-                <select id="dash-f-site" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-                  <option value="">All permitted</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
                 </select>
               </div>
               <button

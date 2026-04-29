@@ -1607,7 +1607,12 @@ a:hover {
   letter-spacing: -0.015em;
   margin: 0;
   min-width: 0;
-  color: var(--color-text);
+  color: #1d76ff;
+}
+
+/* Unified page-title class across shell/header/cards. */
+.dm-page-hero__title {
+  color: #1d76ff;
 }
 
 /* Legacy vertical nav (unused in top-nav shell; kept for reference) */
@@ -1855,7 +1860,7 @@ a:hover {
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.28;
-  color: var(--color-text);
+  color: #1d76ff;
 }
 
 .page-card > div:first-child .page-card__title {

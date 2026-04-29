@@ -56,8 +56,7 @@ class ConnectionKey:
 @dataclass
 class SubscriptionSource:
     endpoint_id: str
-    device_id: str
-    device_name: str
+    endpoint_name: str
 
 
 @dataclass
@@ -129,8 +128,7 @@ class IngestPlan:
                             "sources": [
                                 {
                                     "endpoint_id": s.endpoint_id,
-                                    "device_id": s.device_id,
-                                    "device_name": s.device_name,
+                                    "endpoint_name": s.endpoint_name,
                                 }
                                 for s in m.sources
                             ],
@@ -187,7 +185,7 @@ def _resolve_mqtt_client_id(base: str, key: ConnectionKey) -> str:
 
 
 def _fetch_endpoint_rows() -> list[tuple[str, str, str, dict[str, Any]]]:
-    """Returns list of (endpoint_id, device_id, device_name, config)."""
+    """Returns list of (endpoint_id, endpoint_name, topic, auth_config)."""
     out: list[tuple[str, str, str, dict[str, Any]]] = []
     try:
         conn = psycopg2.connect(_db_url())
@@ -198,17 +196,15 @@ def _fetch_endpoint_rows() -> list[tuple[str, str, str, dict[str, Any]]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT de.id::text, de.device_id::text, d.name, de.config
-                FROM device_endpoints de
-                INNER JOIN devices d ON d.id = de.device_id
-                WHERE de.protocol = 'mqtt'
-                  AND de.is_active = true
-                  AND d.is_active = true
+                SELECT e.id::text, e.endpoint_name, e.auth_config
+                FROM endpoints e
+                WHERE e.protocol = 'mqtt'
+                  AND e.enabled = true
                 """
             )
-            for eid, did, dname, cfg in cur.fetchall():
+            for eid, ename, cfg in cur.fetchall():
                 if isinstance(cfg, dict):
-                    out.append((eid, did, str(dname or ""), cfg))
+                    out.append((eid, str(ename or ""), str(cfg.get("topic") or "").strip(), cfg))
     finally:
         conn.close()
     return out
@@ -244,26 +240,23 @@ def build_ingest_plan() -> IngestPlan:
     # key -> topic -> MergedTopicSubscription
     buckets: dict[ConnectionKey, dict[str, MergedTopicSubscription]] = {}
 
-    for eid, did, dname, cfg in _fetch_endpoint_rows():
+    for eid, ename, topic, cfg in _fetch_endpoint_rows():
         key = connection_key_from_saved_config(cfg)
-        topic = cfg.get("topic")
-        ts = _str_clean(topic) if topic is not None else ""
+        ts = _str_clean(topic)
         if not key:
             log.warning(
-                "mqtt_bridge skipping mqtt endpoint endpoint_id=%s device_id=%s: missing broker_host",
+                "mqtt_bridge skipping mqtt endpoint endpoint_id=%s: missing broker_host",
                 eid,
-                did,
             )
             continue
         if not ts:
             log.warning(
-                "mqtt_bridge skipping mqtt endpoint endpoint_id=%s device_id=%s: empty topic",
+                "mqtt_bridge skipping mqtt endpoint endpoint_id=%s: empty topic",
                 eid,
-                did,
             )
             continue
         qos = _qos_int(cfg.get("qos", 0))
-        src = SubscriptionSource(endpoint_id=eid, device_id=did, device_name=dname)
+        src = SubscriptionSource(endpoint_id=eid, endpoint_name=ename)
         if key not in buckets:
             buckets[key] = {}
         subs = buckets[key]

@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { DEFAULT_MAP_STYLE_URL } from "@/lib/dashboardMapStyle";
 import { parseDashboardLayout } from "@/lib/dashboard/dashboardLayoutEngine";
@@ -6,9 +7,11 @@ import {
   type DashboardLiveRuntimeValue,
 } from "./DashboardLiveContext";
 import { DashboardRuntimeShell } from "./runtime/DashboardRuntimeShell";
-import { DashboardResponsiveGrid } from "./runtime/DashboardResponsiveGrid";
 
-export { DashboardWidgetView } from "./DashboardWidgetView";
+/** Split grid + widget stack from live shell so map/chart/table lazy chunks load with the grid, not the shell. */
+const DashboardResponsiveGridLazy = lazy(() =>
+  import("./runtime/DashboardResponsiveGrid").then((m) => ({ default: m.DashboardResponsiveGrid })),
+);
 
 function buildRuntimeFromDashboard(dashboard: unknown): DashboardLiveRuntimeValue {
   const o = dashboard && typeof dashboard === "object" ? (dashboard as Record<string, unknown>) : {};
@@ -74,13 +77,21 @@ export function DashboardLiveRenderer({
     <DashboardLiveProvider value={runtime}>
       <DashboardRuntimeShell fitPage={fitPage && layoutDensity !== "reference"}>
         <div className={rootClass}>
-          <DashboardResponsiveGrid
-            rows={rows}
-            widgetsById={byId}
-            fitPage={fitPage && layoutDensity !== "reference"}
-            renderedAt={renderedAt}
-            hideRenderedMeta={layoutDensity === "reference"}
-          />
+          <Suspense
+            fallback={
+              <div className="dash-widget__muted" style={{ padding: "1rem" }}>
+                Loading dashboard layout…
+              </div>
+            }
+          >
+            <DashboardResponsiveGridLazy
+              rows={rows}
+              widgetsById={byId}
+              fitPage={fitPage && layoutDensity !== "reference"}
+              renderedAt={renderedAt}
+              hideRenderedMeta={layoutDensity === "reference"}
+            />
+          </Suspense>
         </div>
       </DashboardRuntimeShell>
     </DashboardLiveProvider>

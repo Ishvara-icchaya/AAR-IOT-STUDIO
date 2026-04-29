@@ -35,7 +35,7 @@ export function PlatformShell() {
               {!hideShellPageChrome ? (
                 <>
                   <div className="shell__pagebar">
-                    <strong className="shell__page-title">{headerTitle}</strong>
+                    <strong className="shell__page-title dm-page-hero__title">{headerTitle}</strong>
                   </div>
                   <OpsContextBar />
                 </>

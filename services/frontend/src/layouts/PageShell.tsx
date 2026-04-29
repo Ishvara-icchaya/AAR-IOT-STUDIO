@@ -57,13 +57,13 @@ export function PageShell({
       ) : showTitleBlock ? (
         actions != null ? (
           <div style={titleRowStyle}>
-            {title.length > 0 ? <h1 className="page-card__title">{title}</h1> : null}
+            {title.length > 0 ? <h1 className="page-card__title dm-page-hero__title">{title}</h1> : null}
             <div className="page-shell__actions" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
               {actions}
             </div>
           </div>
         ) : (
-          <h1 className="page-card__title">{title}</h1>
+          <h1 className="page-card__title dm-page-hero__title">{title}</h1>
         )
       ) : null}
       {children}

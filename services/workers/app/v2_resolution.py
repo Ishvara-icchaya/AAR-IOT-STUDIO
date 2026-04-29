@@ -63,7 +63,7 @@ def try_write_v2_from_scrubber(
             cur.execute(
                 """
                 SELECT id::text, customer_id::text, site_id::text, object_name,
-                       primary_device_key_fields, device_label_fields
+                       primary_device_key_fields, device_label_fields, location_fields
                 FROM endpoints
                 WHERE id = %s::uuid
                   AND enabled = true
@@ -76,7 +76,7 @@ def try_write_v2_from_scrubber(
                 conn.rollback()
                 log.warning("v2_resolution skip: endpoint not found/disabled endpoint_id=%s", endpoint_id)
                 return
-            ep_id, ep_customer, ep_site, ep_object_name, pk_fields_raw, label_fields_raw = row
+            _ep_id, ep_customer, ep_site, ep_object_name, pk_fields_raw, label_fields_raw, location_fields_raw = row
             if ep_customer != customer_id or ep_site != site_id:
                 conn.rollback()
                 log.warning(
@@ -88,15 +88,7 @@ def try_write_v2_from_scrubber(
                     ep_site,
                 )
                 return
-            if str(ep_object_name) != str(result.object_name):
-                conn.rollback()
-                log.warning(
-                    "v2_resolution skip: object_name mismatch endpoint_id=%s endpoint=%s result=%s",
-                    endpoint_id,
-                    ep_object_name,
-                    result.object_name,
-                )
-                return
+            object_name = str(ep_object_name)
 
             pk_fields = _list_of_str(pk_fields_raw)
             if not pk_fields:
@@ -137,7 +129,7 @@ def try_write_v2_from_scrubber(
                     customer_id,
                     site_id,
                     endpoint_id,
-                    result.object_name,
+                    object_name,
                     pk_hash,
                     Json(pk_json),
                     label,
@@ -164,6 +156,23 @@ def try_write_v2_from_scrubber(
             if not isinstance(location_json, dict):
                 gps = payload.get("gps")
                 location_json = gps if isinstance(gps, dict) else None
+            if not isinstance(location_json, dict):
+                if isinstance(location_fields_raw, list) and len(location_fields_raw) >= 2:
+                    lat_v = payload.get(str(location_fields_raw[0]))
+                    lon_v = payload.get(str(location_fields_raw[1]))
+                    try:
+                        location_json = {"lat": float(lat_v), "lon": float(lon_v)}
+                    except (TypeError, ValueError):
+                        location_json = None
+                elif isinstance(location_fields_raw, dict):
+                    lat_k = location_fields_raw.get("lat") or location_fields_raw.get("latitude")
+                    lon_k = location_fields_raw.get("lon") or location_fields_raw.get("longitude")
+                    lat_v = payload.get(str(lat_k)) if lat_k else None
+                    lon_v = payload.get(str(lon_k)) if lon_k else None
+                    try:
+                        location_json = {"lat": float(lat_v), "lon": float(lon_v)}
+                    except (TypeError, ValueError):
+                        location_json = None
             event_ts = now
             raw_ts = payload.get("ts")
             if isinstance(raw_ts, str) and raw_ts.strip():
@@ -191,7 +200,7 @@ def try_write_v2_from_scrubber(
                     site_id,
                     endpoint_id,
                     resolved_device_id,
-                    result.object_name,
+                    object_name,
                     event_ts,
                     now,
                     Json(identity_json),
@@ -240,7 +249,7 @@ def try_write_v2_from_scrubber(
                     site_id,
                     endpoint_id,
                     resolved_device_id,
-                    result.object_name,
+                    object_name,
                     event_ts,
                     now,
                     "active",

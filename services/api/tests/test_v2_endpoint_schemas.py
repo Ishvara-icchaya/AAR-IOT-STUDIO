@@ -5,20 +5,18 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from pydantic import ValidationError
 
 from app.schemas.endpoint import EndpointCreate, EndpointUpdate
 
 
-def test_endpoint_create_requires_primary_keys() -> None:
-    with pytest.raises(ValidationError):
-        EndpointCreate(
-            site_id=uuid.uuid4(),
-            endpoint_name="e",
-            protocol="mqtt",
-            object_name="stream",
-            primary_device_key_fields=[],
-        )
+def test_endpoint_create_allows_omitted_primary_keys() -> None:
+    e = EndpointCreate(
+        site_id=uuid.uuid4(),
+        endpoint_name="e",
+        protocol="mqtt",
+        object_name="stream",
+    )
+    assert e.primary_device_key_fields is None
 
 
 def test_endpoint_create_ok() -> None:

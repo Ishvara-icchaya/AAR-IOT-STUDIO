@@ -16,7 +16,6 @@ import { validateDeviceEndpoint } from "@/api/deviceEndpoints";
 import { createDevice, listDevices, updateDevice, type DeviceRead } from "@/api/devices";
 import { useOpsShell, type OpsTimeRange } from "@/contexts/OpsShellContext";
 import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
-import { OpsScopeBar } from "@/components/ops/OpsScopeBar";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
@@ -611,11 +610,6 @@ export function DeviceRegisterPage() {
   return (
     <PageShell variant="list" className="device-manage-page">
       <div className="dm-root">
-        <OpsScopeBar>
-          <div className="dm-page-scope-strip">
-            <OpsScopeControls variant="inline" timeRangeLabel="Range" />
-          </div>
-        </OpsScopeBar>
         <OpsPageHeader
           title="Manage Devices"
           subtitle="View and manage all devices across your sites."
@@ -736,6 +730,7 @@ export function DeviceRegisterPage() {
         <OpsFilterPanel ariaLabel="Search and filters">
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
+              <OpsScopeControls variant="filters" timeRangeLabel="Range" />
               <div className="dm-search-wrap">
                 <Search size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 <input

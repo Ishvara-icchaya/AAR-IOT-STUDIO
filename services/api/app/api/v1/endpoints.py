@@ -97,10 +97,10 @@ def create_endpoint(
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot create endpoint for this site")
 
-    pk_fields = _normalize_key_list(body.primary_device_key_fields)
-    if not pk_fields:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "primary_device_key_fields must not be empty")
-
+    pk_fields = (
+        _normalize_key_list(body.primary_device_key_fields) if body.primary_device_key_fields is not None else []
+    )
+    lifecycle = "active" if pk_fields else "draft"
     ep = Endpoint(
         id=uuid.uuid4(),
         customer_id=user.customer_id,
@@ -108,10 +108,12 @@ def create_endpoint(
         endpoint_name=body.endpoint_name.strip(),
         protocol=body.protocol.strip().lower()[:32],
         object_name=body.object_name.strip(),
-        primary_device_key_fields=pk_fields,
+        lifecycle_status=lifecycle,
+        primary_device_key_fields=pk_fields if pk_fields else None,
         device_label_fields=_normalize_key_list(body.device_label_fields) if body.device_label_fields else None,
         location_fields=body.location_fields,
         auth_config=body.auth_config,
+        device_endpoint_id=body.device_endpoint_id,
         enabled=body.enabled,
     )
     db.add(ep)
@@ -149,11 +151,21 @@ def update_endpoint(
     _ensure_endpoint_visible(ep, user, allowed)
 
     data = body.model_dump(exclude_unset=True)
-    if "primary_device_key_fields" in data and data["primary_device_key_fields"] is not None:
-        pk_fields = _normalize_key_list(data["primary_device_key_fields"])
-        if not pk_fields:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "primary_device_key_fields must not be empty")
-        ep.primary_device_key_fields = pk_fields
+    if "primary_device_key_fields" in data:
+        raw_pk = data["primary_device_key_fields"]
+        if raw_pk is None:
+            ep.primary_device_key_fields = None
+            if ep.lifecycle_status == "active":
+                ep.lifecycle_status = "needs_identity_mapping"
+        else:
+            pk_fields = _normalize_key_list(raw_pk)
+            if not pk_fields:
+                ep.primary_device_key_fields = None
+                if ep.lifecycle_status == "active":
+                    ep.lifecycle_status = "needs_identity_mapping"
+            else:
+                ep.primary_device_key_fields = pk_fields
+                ep.lifecycle_status = "active"
     if "device_label_fields" in data:
         raw = data["device_label_fields"]
         ep.device_label_fields = _normalize_key_list(raw) if raw else None
@@ -167,6 +179,8 @@ def update_endpoint(
         ep.location_fields = data["location_fields"]
     if "auth_config" in data:
         ep.auth_config = data["auth_config"]
+    if "device_endpoint_id" in data:
+        ep.device_endpoint_id = data["device_endpoint_id"]
     if "enabled" in data and data["enabled"] is not None:
         ep.enabled = data["enabled"]
 

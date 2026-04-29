@@ -658,6 +658,23 @@
   margin-bottom: 0.75rem;
 }
 
+/* Back / breadcrumb link (class shared with scrubber2; scrubber2.css not loaded on workflow routes). */
+.workflow-editor__toolbar .scrubber2-subnav__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: #1d76ff;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-decoration: none;
+  max-width: min(100%, 42rem);
+}
+
+.workflow-editor__toolbar .scrubber2-subnav__back:hover {
+  text-decoration: underline;
+}
+
 .device-endpoint-drawer-toolbar.app-toolbar {
   margin-bottom: 0.35rem;
   padding-bottom: 0.5rem;

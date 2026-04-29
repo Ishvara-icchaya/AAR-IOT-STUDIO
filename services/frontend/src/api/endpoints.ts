@@ -7,10 +7,14 @@ export type EndpointRead = {
   endpoint_name: string;
   protocol: string;
   object_name: string;
-  primary_device_key_fields: string[];
+  lifecycle_status: string;
+  primary_device_key_fields: string[] | null;
   device_label_fields?: string[] | null;
   location_fields?: Record<string, unknown> | unknown[] | null;
   auth_config?: Record<string, unknown> | null;
+  device_endpoint_id?: string | null;
+  sample_payload?: Record<string, unknown> | unknown[] | null;
+  sample_ingested_at?: string | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
@@ -21,10 +25,11 @@ export type EndpointCreateBody = {
   endpoint_name: string;
   protocol: string;
   object_name: string;
-  primary_device_key_fields: string[];
+  primary_device_key_fields?: string[] | null;
   device_label_fields?: string[] | null;
   location_fields?: Record<string, unknown> | unknown[] | null;
   auth_config?: Record<string, unknown> | null;
+  device_endpoint_id?: string | null;
   enabled?: boolean;
 };
 

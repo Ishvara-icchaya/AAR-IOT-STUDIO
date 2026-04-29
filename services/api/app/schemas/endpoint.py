@@ -14,14 +14,14 @@ class EndpointCreate(BaseModel):
     endpoint_name: str = Field(..., min_length=1, max_length=255)
     protocol: str = Field(..., min_length=1, max_length=32, description="Transport: mqtt, http, coap, ws, …")
     object_name: str = Field(..., min_length=1, max_length=255, description="Logical scrubber / data stream name")
-    primary_device_key_fields: list[str] = Field(
-        ...,
-        min_length=1,
-        description="Ordered field paths for PK extraction (e.g. device_id, fleet_id+truck_id)",
+    primary_device_key_fields: list[str] | None = Field(
+        None,
+        description="Ordered field paths for PK extraction; omit until Scrubber 2.0 publish (lifecycle draft).",
     )
     device_label_fields: list[str] | None = None
     location_fields: dict[str, Any] | list[Any] | None = None
     auth_config: dict[str, Any] | None = None
+    device_endpoint_id: uuid.UUID | None = None
     enabled: bool = True
 
 
@@ -29,10 +29,14 @@ class EndpointUpdate(BaseModel):
     endpoint_name: str | None = Field(None, min_length=1, max_length=255)
     protocol: str | None = Field(None, min_length=1, max_length=32)
     object_name: str | None = Field(None, min_length=1, max_length=255)
-    primary_device_key_fields: list[str] | None = Field(None, min_length=1)
+    primary_device_key_fields: list[str] | None = Field(
+        None,
+        description="Set non-empty to activate identity; null or [] clears keys and moves lifecycle toward mapping.",
+    )
     device_label_fields: list[str] | None = None
     location_fields: dict[str, Any] | list[Any] | None = None
     auth_config: dict[str, Any] | None = None
+    device_endpoint_id: uuid.UUID | None = None
     enabled: bool | None = None
 
 
@@ -45,10 +49,14 @@ class EndpointRead(BaseModel):
     endpoint_name: str
     protocol: str
     object_name: str
-    primary_device_key_fields: list[Any]
+    lifecycle_status: str
+    primary_device_key_fields: list[Any] | None
     device_label_fields: list[Any] | None
     location_fields: dict[str, Any] | list[Any] | None
     auth_config: dict[str, Any] | None
+    device_endpoint_id: uuid.UUID | None
+    sample_payload: dict[str, Any] | list[Any] | None = None
+    sample_ingested_at: datetime | None = None
     enabled: bool
     created_at: datetime
     updated_at: datetime

@@ -77,18 +77,16 @@ export function IngestDevicesPage() {
     setOk(null);
     try {
       if (!form.site_id && !editing) throw new Error("site_id is required");
+      const pk = splitFields(form.primary_device_key_fields);
       const body = {
         site_id: editing ? editing.site_id : form.site_id,
         endpoint_name: form.endpoint_name.trim(),
         protocol: form.protocol.trim().toLowerCase(),
         object_name: form.object_name.trim(),
-        primary_device_key_fields: splitFields(form.primary_device_key_fields),
+        primary_device_key_fields: pk,
         device_label_fields: splitFields(form.device_label_fields),
         enabled: true,
       };
-      if (body.primary_device_key_fields.length === 0) {
-        throw new Error("primary_device_key_fields required (comma separated)");
-      }
       if (editing) {
         await updateEndpoint(editing.id, body);
         setOk("Endpoint updated");
@@ -174,10 +172,9 @@ export function IngestDevicesPage() {
           required
         />
         <input
-          placeholder="Primary key fields (comma separated)"
+          placeholder="Primary key fields (optional; comma separated — or map in Scrubber 2.0)"
           value={form.primary_device_key_fields}
           onChange={(e) => setForm((f) => ({ ...f, primary_device_key_fields: e.target.value }))}
-          required
         />
         <input
           placeholder="Device label fields (comma separated)"
@@ -211,6 +208,7 @@ export function IngestDevicesPage() {
             <th>Protocol</th>
             <th>Object</th>
             <th>Site</th>
+            <th>Lifecycle</th>
             <th>PK Fields</th>
             <th />
           </tr>
@@ -222,7 +220,8 @@ export function IngestDevicesPage() {
               <td>{ep.protocol}</td>
               <td>{ep.object_name}</td>
               <td>{ep.site_id.slice(0, 8)}…</td>
-              <td>{(ep.primary_device_key_fields ?? []).join(", ")}</td>
+              <td>{ep.lifecycle_status ?? "—"}</td>
+              <td>{(ep.primary_device_key_fields ?? []).join(", ") || "—"}</td>
               <td>
                 <button type="button" onClick={() => startEdit(ep)}>
                   Edit
@@ -232,7 +231,7 @@ export function IngestDevicesPage() {
           ))}
           {filtered.length === 0 ? (
             <tr>
-              <td colSpan={6}>No endpoints found.</td>
+              <td colSpan={7}>No endpoints found.</td>
             </tr>
           ) : null}
         </tbody>

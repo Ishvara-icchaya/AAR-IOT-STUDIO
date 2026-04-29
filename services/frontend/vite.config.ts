@@ -10,6 +10,38 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (!id.includes("node_modules")) return;
+          if (
+            id.includes("mapbox") ||
+            id.includes("maplibre") ||
+            id.includes("deck.gl") ||
+            id.includes("@deck.gl") ||
+            id.includes("supercluster")
+          ) {
+            return "vendor-map";
+          }
+          if (id.includes("echarts")) {
+            return "vendor-echarts";
+          }
+          if (id.includes("ag-grid")) {
+            return "vendor-ag-grid";
+          }
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/")
+          ) {
+            return "vendor-react";
+          }
+          /** No catch-all `vendor` bucket — avoids circular chunk graphs. */
+        },
+      },
+    },
+  },
   server: {
     host: "0.0.0.0",
     port: 5173,

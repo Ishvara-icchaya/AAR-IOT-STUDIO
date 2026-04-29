@@ -5,7 +5,7 @@ import { DashboardSourceSelector } from "./DashboardSourceSelector";
 import { DashboardBindingEditor } from "./DashboardBindingEditor";
 import { DashboardChartConfigSection } from "./DashboardChartConfigSection";
 import * as dashApi from "@/api/dashboard";
-import { DashboardWidgetView } from "./DashboardLiveRenderer";
+import { DashboardWidgetView } from "./DashboardWidgetView";
 
 function findWidget(
   layout: ReturnType<typeof useDashboardBuilderStore.getState>["layout"],

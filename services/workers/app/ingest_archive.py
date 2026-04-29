@@ -652,6 +652,105 @@ def ingest_json_payload_for_endpoint(
     )
 
 
+def ingest_json_payload_for_mqtt_endpoint(
+    payload: dict[str, Any],
+    body: bytes,
+    *,
+    endpoint_id: uuid.UUID,
+    protocol_source: str,
+) -> bool:
+    """Archive MQTT ingest bound directly to a v2 endpoint.
+
+    Platform scope (customer/site/object) comes from the endpoint row, never from payload site/customer.
+    The payload primary key (e.g. ``device_id``) is applied downstream in v2 resolution.
+    """
+    conn = psycopg2.connect(db_url())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT e.customer_id::text, e.site_id::text, e.enabled, e.device_endpoint_id::text,
+                       de.device_id::text, de.is_active, d.is_active
+                FROM endpoints e
+                LEFT JOIN device_endpoints de ON de.id = e.device_endpoint_id
+                LEFT JOIN devices d ON d.id = de.device_id
+                WHERE e.id = %s::uuid
+                  AND e.protocol = 'mqtt'
+                LIMIT 1
+                """,
+                (str(endpoint_id),),
+            )
+            row = cur.fetchone()
+            if not row:
+                quarantine_ingest(
+                    reason_code="endpoint_binding_missing",
+                    transport=protocol_source,
+                    attempted_binding_json={"endpoint_id": str(endpoint_id)},
+                    attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=None),
+                    error_message="v2 endpoint_id not found for mqtt ingest",
+                    trace_id=str(payload.get("run_id") or "")[:128] or None,
+                    endpoint_id=endpoint_id,
+                )
+                return False
+
+            customer_id_s, site_id_s, ep_enabled, de_id_s, device_id_s, de_active, d_active = row
+            customer_id = uuid.UUID(customer_id_s)
+            site_id = uuid.UUID(site_id_s)
+            if not ep_enabled:
+                quarantine_ingest(
+                    reason_code="endpoint_binding_inactive",
+                    transport=protocol_source,
+                    attempted_binding_json={"endpoint_id": str(endpoint_id)},
+                    attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=None),
+                    customer_id=customer_id,
+                    site_id=site_id,
+                    endpoint_id=endpoint_id,
+                    error_message="v2 endpoint row inactive",
+                    trace_id=str(payload.get("run_id") or "")[:128] or None,
+                )
+                return False
+            if not de_id_s or not device_id_s:
+                quarantine_ingest(
+                    reason_code="endpoint_binding_missing",
+                    transport=protocol_source,
+                    attempted_binding_json={"endpoint_id": str(endpoint_id), "device_endpoint_id": de_id_s},
+                    attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=None),
+                    customer_id=customer_id,
+                    site_id=site_id,
+                    endpoint_id=endpoint_id,
+                    error_message="v2 endpoint not linked to device_endpoint_id",
+                    trace_id=str(payload.get("run_id") or "")[:128] or None,
+                )
+                return False
+            if not de_active or not d_active:
+                quarantine_ingest(
+                    reason_code="endpoint_binding_inactive",
+                    transport=protocol_source,
+                    attempted_binding_json={"endpoint_id": str(endpoint_id), "device_endpoint_id": de_id_s},
+                    attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=None),
+                    customer_id=customer_id,
+                    site_id=site_id,
+                    endpoint_id=endpoint_id,
+                    error_message="linked device endpoint/device inactive",
+                    trace_id=str(payload.get("run_id") or "")[:128] or None,
+                )
+                return False
+            device_id = uuid.UUID(device_id_s)
+    finally:
+        conn.close()
+
+    meta = build_ingest_metadata_from_payload(payload, device_endpoint_id=None)
+    return _persist_core(
+        payload=payload,
+        body=body,
+        device_id=device_id,
+        customer_id=customer_id,
+        registered_endpoint_id=endpoint_id,
+        protocol_source=protocol_source,
+        ingest_metadata=meta,
+    )
+
+
 def ingest_json_payload_for_device(
     payload: dict[str, Any],
     body: bytes,
