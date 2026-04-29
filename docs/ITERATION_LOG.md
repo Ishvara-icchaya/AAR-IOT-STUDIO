@@ -5,6 +5,24 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 3: runtime data provider scaffold (binding-key grouped)
+
+Added Dashboard 2.0 runtime data-provider scaffolding in frontend:
+- Added `fetchResolvedDeviceCollection(...)` to `services/frontend/src/api/dashboard.ts` with endpoint-group query support (`site_id`, `endpoint_id`, `object_name`, optional filters/cursor/limit).
+- Added `services/frontend/src/components/dashboard2/DashboardRuntimeDataProvider.tsx`:
+  - `getBindingKey(binding)` for deterministic request-keying,
+  - grouped fetches per unique binding key,
+  - loading/error/data state map exposed via context.
+- Updated `services/frontend/src/components/dashboard2/DashboardRuntimeGrid.tsx` to resolve widget runtime data through provider/hook instead of per-widget ad hoc calls.
+
+Intent: enforce a single runtime data access pattern for Dashboard 2.0 widgets while preserving current production dashboard API/data wiring.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up (Phase 4): implement `LocationHeadingMapWidget` contract scaffold and map runtime integration path for endpoint-group bindings.
+
+---
+
 ## 2026-04-29 — v7 Phase 2: legacy-to-grid compatibility helpers
 
 Added migration/compatibility utilities for schema-versioned Dashboard 2.0 rollout:

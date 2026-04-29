@@ -157,6 +157,29 @@ export type ResolvedDeviceCollectionSourceItem = {
   resolved_device_count: number;
 };
 
+export type ResolvedDeviceCollectionRuntimeItem = {
+  latest_device_state_id: string;
+  resolved_device_id: string;
+  device_label?: string | null;
+  device_type?: string | null;
+  lifecycle_status: string;
+  health_status?: string | null;
+  last_event_ts?: string | null;
+  location_json?: Record<string, unknown> | null;
+  identity_json?: Record<string, unknown>;
+  display_json?: Record<string, unknown>;
+  kpi_json?: Record<string, unknown>;
+  health_json?: Record<string, unknown> | null;
+};
+
+export type ResolvedDeviceCollectionRuntimeResponse = {
+  items: ResolvedDeviceCollectionRuntimeItem[];
+  summary: Record<string, unknown>;
+  rollups?: Record<string, unknown>;
+  trends?: Record<string, unknown>;
+  next_cursor?: string | null;
+};
+
 export async function listDashboardLatestDeviceStateSources(siteId: string) {
   return apiFetch<{ items: LatestDeviceStateSourceItem[] }>(
     `/dashboards/sources/latest-device-states?site_id=${encodeURIComponent(siteId)}`,
@@ -166,6 +189,31 @@ export async function listDashboardLatestDeviceStateSources(siteId: string) {
 export async function listDashboardResolvedDeviceCollectionSources(siteId: string) {
   return apiFetch<{ items: ResolvedDeviceCollectionSourceItem[] }>(
     `/dashboards/sources/resolved-device-collections?site_id=${encodeURIComponent(siteId)}`,
+  );
+}
+
+export async function fetchResolvedDeviceCollection(params: {
+  siteId: string;
+  endpointId: string;
+  objectName: string;
+  limit?: number;
+  cursor?: string;
+  lifecycleStatus?: string;
+  healthStatus?: string;
+  deviceType?: string;
+}) {
+  const query = new URLSearchParams();
+  query.set("site_id", params.siteId);
+  query.set("endpoint_id", params.endpointId);
+  query.set("object_name", params.objectName);
+  query.set("limit", String(params.limit ?? 500));
+  if (params.cursor) query.set("cursor", params.cursor);
+  if (params.lifecycleStatus) query.set("lifecycle_status", params.lifecycleStatus);
+  if (params.healthStatus) query.set("health_status", params.healthStatus);
+  if (params.deviceType) query.set("device_type", params.deviceType);
+  return apiFetch<ResolvedDeviceCollectionRuntimeResponse>(
+    `/dashboards/runtime/resolved-device-collection?${query.toString()}`,
+    { cache: "no-store" },
   );
 }
 

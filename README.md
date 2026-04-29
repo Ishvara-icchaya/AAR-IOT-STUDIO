@@ -148,6 +148,18 @@ This phase is additive scaffolding only and does not change existing Dashboard E
 
 This phase is compatibility-only groundwork and does not alter current live API wiring behavior.
 
+### Phase 3 complete — runtime data provider scaffold
+
+- Added runtime collection fetch API helper in `services/frontend/src/api/dashboard.ts`:
+  - `fetchResolvedDeviceCollection(...)`.
+- Added `DashboardRuntimeDataProvider` in `services/frontend/src/components/dashboard2/DashboardRuntimeDataProvider.tsx` with:
+  - binding-key based request grouping (`getBindingKey`),
+  - per-binding loading/error/data state,
+  - shared context for runtime widgets.
+- Updated `DashboardRuntimeGrid` to resolve widget data through the provider (single fetch per unique binding key).
+
+This phase establishes a stable data-provider pattern for v2 widgets while leaving existing dashboard runtime wiring in place.
+
 ## License
 
 Proprietary — assign per your organization.
