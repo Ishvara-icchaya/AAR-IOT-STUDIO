@@ -5,6 +5,19 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Step 5 acceptance tests expanded (auto-reflect, pagination, map latest-only, no data_object)
+
+Extended `services/api/tests/test_dashboard_endpoint_group_acceptance.py` with runtime-focused acceptance coverage:
+
+- **New/removed devices auto-reflect:** repeated `resolve_widget_data()` calls for endpoint-group table return changed resolved-device rows when cohort loader output changes.
+- **Pagination behavior:** `_load_resolved_collection_rows()` test spans multiple mocked pages and verifies merged rows + aggregate summary totals/avg-health across pages.
+- **Map latest-only source path:** endpoint-group map output emits `included_sources` using only `sourceType=latest_device_state` entries.
+- **No data_object path:** existing runtime guard test retained (`_load_source_record` returns no data for `data_object`).
+
+Validation run: `pytest -q services/api/tests/test_dashboard_endpoint_group_acceptance.py` → **10 passed**.
+
+---
+
 ## 2026-04-29 — Endpoint Group Step 5 acceptance tests
 
 Added acceptance-focused API tests for endpoint-group dashboard binding in `services/api/tests/test_dashboard_endpoint_group_acceptance.py`:

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services import dashboard_live as dashboard_live_module
 from app.services.dashboard_live import _load_source_record
 from app.services.dashboard_resolved_device_collection import (
     ResolvedDeviceCollectionCursor,
@@ -128,3 +129,214 @@ def test_openapi_includes_endpoint_group_dashboard_routes() -> None:
     paths = schema["paths"]
     assert "/api/v1/dashboards/sources/resolved-device-collections" in paths
     assert "/api/v1/dashboards/runtime/resolved-device-collection" in paths
+
+
+def test_resolved_collection_table_auto_reflects_new_and_removed_devices(monkeypatch) -> None:
+    base_widget = {
+        "widgetId": "w-table",
+        "type": "table",
+        "title": "Fleet table",
+        "binding": {
+            "sourceType": "resolved_device_collection",
+            "siteId": str(uuid.uuid4()),
+            "endpointId": str(uuid.uuid4()),
+            "objectName": "telemetry",
+            "fields": [],
+        },
+        "config": {},
+    }
+    customer_id = uuid.uuid4()
+
+    def first_rows(*args, **kwargs):
+        return (
+            [
+                {
+                    "latest_device_state_id": str(uuid.uuid4()),
+                    "resolved_device_id": "dev-a",
+                    "device_label": "Device A",
+                    "device_type": "meter",
+                    "lifecycle_status": "online",
+                    "health_status": "healthy",
+                    "last_event_ts": "2026-04-29T06:00:00+00:00",
+                    "updated_at": "2026-04-29T06:00:00+00:00",
+                },
+                {
+                    "latest_device_state_id": str(uuid.uuid4()),
+                    "resolved_device_id": "dev-b",
+                    "device_label": "Device B",
+                    "device_type": "meter",
+                    "lifecycle_status": "late",
+                    "health_status": "warning",
+                    "last_event_ts": "2026-04-29T06:01:00+00:00",
+                    "updated_at": "2026-04-29T06:01:00+00:00",
+                },
+            ],
+            {"total": 2, "online": 1, "late": 1, "offline": 0, "error": 0, "healthy": 1, "warning": 1, "critical": 0},
+            None,
+        )
+
+    def second_rows(*args, **kwargs):
+        return (
+            [
+                {
+                    "latest_device_state_id": str(uuid.uuid4()),
+                    "resolved_device_id": "dev-b",
+                    "device_label": "Device B",
+                    "device_type": "meter",
+                    "lifecycle_status": "online",
+                    "health_status": "healthy",
+                    "last_event_ts": "2026-04-29T06:02:00+00:00",
+                    "updated_at": "2026-04-29T06:02:00+00:00",
+                },
+                {
+                    "latest_device_state_id": str(uuid.uuid4()),
+                    "resolved_device_id": "dev-c",
+                    "device_label": "Device C",
+                    "device_type": "meter",
+                    "lifecycle_status": "online",
+                    "health_status": "healthy",
+                    "last_event_ts": "2026-04-29T06:03:00+00:00",
+                    "updated_at": "2026-04-29T06:03:00+00:00",
+                },
+            ],
+            {"total": 2, "online": 2, "late": 0, "offline": 0, "error": 0, "healthy": 2, "warning": 0, "critical": 0},
+            None,
+        )
+
+    monkeypatch.setattr(dashboard_live_module, "_load_resolved_collection_rows", first_rows)
+    first = dashboard_live_module.resolve_widget_data(
+        db=None,  # type: ignore[arg-type]
+        customer_id=customer_id,
+        widget=base_widget,
+        dashboard_site_id=uuid.uuid4(),
+    )
+    first_ids = [r["resolved_device_id"] for r in first["data"]["rows"]]
+    assert first_ids == ["dev-a", "dev-b"]
+
+    monkeypatch.setattr(dashboard_live_module, "_load_resolved_collection_rows", second_rows)
+    second = dashboard_live_module.resolve_widget_data(
+        db=None,  # type: ignore[arg-type]
+        customer_id=customer_id,
+        widget=base_widget,
+        dashboard_site_id=uuid.uuid4(),
+    )
+    second_ids = [r["resolved_device_id"] for r in second["data"]["rows"]]
+    assert second_ids == ["dev-b", "dev-c"]
+
+
+def test_resolved_collection_loader_paginates_and_aggregates(monkeypatch) -> None:
+    class _State:
+        def __init__(self, rid: str, lifecycle: str, health: str, score: float, updated: datetime):
+            self.id = uuid.uuid4()
+            self.resolved_device_id = uuid.UUID(rid)
+            self.object_name = "telemetry"
+            self.lifecycle_status = lifecycle
+            self.health_status = health
+            self.last_event_ts = updated
+            self.location_json = {}
+            self.identity_json = {}
+            self.display_json = {}
+            self.kpi_json = {}
+            self.health_json = {"health_score": score}
+            self.updated_at = updated
+
+    class _RD:
+        def __init__(self, label: str, device_type: str):
+            self.device_label = label
+            self.device_type = device_type
+
+    page1 = [
+        (
+            _State(
+                "00000000-0000-0000-0000-000000000001",
+                "online",
+                "healthy",
+                90.0,
+                datetime(2026, 4, 29, 6, 0, tzinfo=timezone.utc),
+            ),
+            _RD("Device 1", "meter"),
+        )
+    ]
+    page2 = [
+        (
+            _State(
+                "00000000-0000-0000-0000-000000000002",
+                "offline",
+                "critical",
+                10.0,
+                datetime(2026, 4, 29, 5, 59, tzinfo=timezone.utc),
+            ),
+            _RD("Device 2", "meter"),
+        )
+    ]
+    calls = {"n": 0}
+
+    def fake_query_collection_page(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return page1, "cursor-next", {}
+        return page2, None, {}
+
+    monkeypatch.setattr(dashboard_live_module, "query_collection_page", fake_query_collection_page)
+    monkeypatch.setattr(dashboard_live_module, "decode_cursor", lambda _: object())
+
+    rows, summary, err = dashboard_live_module._load_resolved_collection_rows(
+        db=None,  # type: ignore[arg-type]
+        customer_id=uuid.uuid4(),
+        binding={
+            "siteId": str(uuid.uuid4()),
+            "endpointId": str(uuid.uuid4()),
+            "objectName": "telemetry",
+        },
+        dashboard_site_id=None,
+    )
+    assert err is None
+    assert len(rows) == 2
+    assert summary["total"] == 2
+    assert summary["online"] == 1
+    assert summary["offline"] == 1
+    assert summary["healthy"] == 1
+    assert summary["critical"] == 1
+    assert summary["avg_health_score"] == 50.0
+
+
+def test_resolved_collection_map_uses_latest_device_state_sources_only(monkeypatch) -> None:
+    widget = {
+        "widgetId": "w-map",
+        "type": "map",
+        "title": "Fleet map",
+        "binding": {
+            "sourceType": "resolved_device_collection",
+            "siteId": str(uuid.uuid4()),
+            "endpointId": str(uuid.uuid4()),
+            "objectName": "telemetry",
+            "latitudeField": "gps.lat",
+            "longitudeField": "gps.lon",
+        },
+        "config": {"autoIncludeGpsObjects": False},
+    }
+
+    def _fake_load_resolved_collection_rows(*args, **kwargs):
+        return (
+            [
+                {"latest_device_state_id": str(uuid.uuid4())},
+                {"latest_device_state_id": str(uuid.uuid4())},
+            ],
+            {"total": 2, "online": 2, "late": 0, "offline": 0, "error": 0, "healthy": 2, "warning": 0, "critical": 0},
+            None,
+        )
+
+    monkeypatch.setattr(
+        dashboard_live_module,
+        "_load_resolved_collection_rows",
+        _fake_load_resolved_collection_rows,
+    )
+    out = dashboard_live_module.resolve_widget_data(
+        db=None,  # type: ignore[arg-type]
+        customer_id=uuid.uuid4(),
+        widget=widget,
+        dashboard_site_id=uuid.uuid4(),
+    )
+    included = out["data"]["included_sources"]
+    assert len(included) == 2
+    assert all(x["sourceType"] == "latest_device_state" for x in included)
