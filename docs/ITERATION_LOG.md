@@ -5,6 +5,20 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-28 — Split `ba8d19c` into five commits (crash-safer history)
+
+Replaced single squash with sequential commits on `v2-endpoints-rebuild`:
+
+1. `cc8fce9` — **Capture endpoint samples before identity mapping** (migration `0031` columns, model, worker ingest + CoAP bound path, REST raw sample + Kafka gate, `endpoint_sample_service`).
+2. `cf9805c` — **Add endpoint identity publish lifecycle** (schemas, `endpoints` publish + draft PATCH, `endpoint_identity_publish`, `primary_device_key` API copy, `v2_resolution` publish guard, OpenAPI route tests).
+3. `fa0321e` — **Add endpoint identity mapping UI** (React route, ingest table link, API client).
+4. `cd8dddb` — **Enforce v2 dashboard workflow and AI sources** (dashboard validation, map eligible list, AI datasets, workflow graph validation + create/update checks).
+5. **Add v2 endpoint identity lifecycle tests** — `test_v2_endpoint_identity_lifecycle.py` + this log (same commit as message `Add v2 endpoint identity lifecycle tests` on `v2-endpoints-rebuild`).
+
+**Push:** This clone has no `git remote`; configure `origin` then `git push origin v2-endpoints-rebuild` after each slice locally if desired.
+
+---
+
 ## 2026-04-28 — Step 1: foundation commit (`710a0d2`)
 
 **Commit:** `Rebuild v2 endpoint foundation and MQTT binding` — `710a0d2` on `v2-endpoints-rebuild`.
