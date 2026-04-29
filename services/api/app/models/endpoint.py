@@ -41,4 +41,8 @@ class Endpoint(Base, TimestampMixin):
     device_endpoint_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("device_endpoints.id", ondelete="SET NULL"), nullable=True
     )
+    identity_published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    identity_draft: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

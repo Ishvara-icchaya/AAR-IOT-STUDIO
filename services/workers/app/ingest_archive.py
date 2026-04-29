@@ -138,6 +138,61 @@ def parse_ts(value: Any) -> datetime | None:
         return None
 
 
+def _normalize_sample_document(payload: dict[str, Any]) -> dict[str, Any]:
+    return dict(payload)
+
+
+def _maybe_capture_first_endpoint_sample(endpoint_id: str, payload: dict[str, Any]) -> None:
+    doc = _normalize_sample_document(payload)
+    conn = psycopg2.connect(db_url())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE endpoints SET
+                  sample_payload = %s::jsonb,
+                  sample_ingested_at = NOW(),
+                  lifecycle_status = CASE
+                    WHEN lifecycle_status IN ('draft', 'needs_sample') THEN 'needs_identity_mapping'
+                    ELSE lifecycle_status END
+                WHERE id = %s::uuid
+                  AND identity_published_at IS NULL
+                  AND sample_payload IS NULL
+                  AND (
+                    primary_device_key_fields IS NULL
+                    OR jsonb_typeof(primary_device_key_fields) <> 'array'
+                    OR jsonb_array_length(primary_device_key_fields) < 1
+                  )
+                """,
+                (Json(doc), endpoint_id),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        log.debug("endpoint sample capture skipped", exc_info=True)
+    finally:
+        conn.close()
+
+
+def _endpoint_identity_published_for_kafka(endpoint_id: str) -> bool:
+    conn = psycopg2.connect(db_url())
+    try:
+        with conn.cursor() as cur:
+            try:
+                cur.execute(
+                    "SELECT identity_published_at FROM endpoints WHERE id = %s::uuid LIMIT 1",
+                    (endpoint_id,),
+                )
+            except Exception:
+                return True
+            row = cur.fetchone()
+            if not row:
+                return True
+            return row[0] is not None
+    finally:
+        conn.close()
+
+
 def quarantine_ingest(
     *,
     reason_code: str,
@@ -429,7 +484,19 @@ def _persist_core(
     finally:
         conn.close()
 
+    try:
+        _maybe_capture_first_endpoint_sample(str(registered_endpoint_id), payload)
+    except Exception:
+        log.debug("endpoint sample capture outer skip", exc_info=True)
+
     kafka_ok = truthy("KAFKA_PUBLISH_RAW_INGEST", "true")
+    if kafka_ok and not _endpoint_identity_published_for_kafka(str(registered_endpoint_id)):
+        log.info(
+            "ingest_archive skip kafka until identity published raw_id=%s endpoint_id=%s",
+            raw_id,
+            registered_endpoint_id,
+        )
+        kafka_ok = False
     if not kafka_ok:
         log.debug("ingest_archive kafka publish disabled raw_id=%s", raw_id)
         return True
@@ -652,33 +719,38 @@ def ingest_json_payload_for_endpoint(
     )
 
 
-def ingest_json_payload_for_mqtt_endpoint(
+def ingest_json_payload_for_v2_endpoint(
     payload: dict[str, Any],
     body: bytes,
     *,
     endpoint_id: uuid.UUID,
     protocol_source: str,
+    require_protocol: str | None = "mqtt",
 ) -> bool:
-    """Archive MQTT ingest bound directly to a v2 endpoint.
+    """Archive ingest bound directly to a v2 ``endpoints`` row (MQTT, CoAP, etc.).
 
     Platform scope (customer/site/object) comes from the endpoint row, never from payload site/customer.
-    The payload primary key (e.g. ``device_id``) is applied downstream in v2 resolution.
     """
     conn = psycopg2.connect(db_url())
     try:
         with conn.cursor() as cur:
+            proto_clause = ""
+            params: list[Any] = [str(endpoint_id)]
+            if require_protocol:
+                proto_clause = " AND LOWER(e.protocol) = LOWER(%s)"
+                params.append(require_protocol)
             cur.execute(
-                """
+                f"""
                 SELECT e.customer_id::text, e.site_id::text, e.enabled, e.device_endpoint_id::text,
                        de.device_id::text, de.is_active, d.is_active
                 FROM endpoints e
                 LEFT JOIN device_endpoints de ON de.id = e.device_endpoint_id
                 LEFT JOIN devices d ON d.id = de.device_id
                 WHERE e.id = %s::uuid
-                  AND e.protocol = 'mqtt'
+                {proto_clause}
                 LIMIT 1
                 """,
-                (str(endpoint_id),),
+                tuple(params),
             )
             row = cur.fetchone()
             if not row:
@@ -687,7 +759,7 @@ def ingest_json_payload_for_mqtt_endpoint(
                     transport=protocol_source,
                     attempted_binding_json={"endpoint_id": str(endpoint_id)},
                     attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=None),
-                    error_message="v2 endpoint_id not found for mqtt ingest",
+                    error_message="v2 endpoint_id not found for protocol-bound ingest",
                     trace_id=str(payload.get("run_id") or "")[:128] or None,
                     endpoint_id=endpoint_id,
                 )
@@ -748,6 +820,23 @@ def ingest_json_payload_for_mqtt_endpoint(
         registered_endpoint_id=endpoint_id,
         protocol_source=protocol_source,
         ingest_metadata=meta,
+    )
+
+
+def ingest_json_payload_for_mqtt_endpoint(
+    payload: dict[str, Any],
+    body: bytes,
+    *,
+    endpoint_id: uuid.UUID,
+    protocol_source: str,
+) -> bool:
+    """Backward-compatible name for MQTT-bound v2 archive."""
+    return ingest_json_payload_for_v2_endpoint(
+        payload,
+        body,
+        endpoint_id=endpoint_id,
+        protocol_source=protocol_source,
+        require_protocol="mqtt",
     )
 
 

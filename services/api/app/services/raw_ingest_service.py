@@ -44,6 +44,11 @@ from app.schemas.raw_preview import RawPreviewResponse
 from app.services import kafka_raw_publish, minio_raw
 from app.services.alert_emit import emit_alert
 from app.services.device_endpoint_lifecycle import touch_after_archived_success
+from app.services.endpoint_sample_service import (
+    capture_first_sample_if_needed,
+    endpoint_allows_raw_kafka_publish,
+    payload_dict_from_raw_body,
+)
 from app.services.raw_preview import build_preview_payload, read_raw_slice
 
 log = logging.getLogger(__name__)
@@ -209,11 +214,16 @@ async def ingest_raw_upload(
             log.exception("MinIO cleanup after DB failure")
         raise
 
+    payload_doc = payload_dict_from_raw_body(body, ct)
+    capture_first_sample_if_needed(db, endpoint.id, payload_doc)
+    db.refresh(endpoint)
+
     do_kafka = (
         settings.kafka_publish_raw_ingest
         if publish_kafka_override is None
         else publish_kafka_override
     )
+    do_kafka = do_kafka and endpoint_allows_raw_kafka_publish(db, endpoint.id)
     if do_kafka:
         env = build_envelope(
             raw_object_id=raw_id,
