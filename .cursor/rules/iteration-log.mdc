@@ -1,0 +1,14 @@
+---
+description: Append project iteration log after substantive work so progress survives crashes.
+alwaysApply: true
+---
+
+# Iteration log discipline
+
+After **substantive** work in this repo (code, migrations, config, or meaningful doc edits—not one-line typo fixes or pure Q&A):
+
+1. Append a **new dated section at the top** of `docs/ITERATION_LOG.md` (newest first).
+2. Each entry should include: **date (ISO)**, **what changed** (files or areas), **why / intent**, and **follow-ups** if any are left open.
+3. If the user asked for behavior aligned with a larger plan (e.g. v2 ingest identity), note **which plan step** moved (or that only investigation happened).
+
+Do not replace earlier log sections; only prepend new ones.
