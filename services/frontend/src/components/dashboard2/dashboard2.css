@@ -179,3 +179,79 @@
   line-height: 1.4;
   font-size: 0.82rem;
 }
+
+.dashboard2-designer-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr) minmax(320px, 0.85fr);
+  gap: 0.75rem;
+}
+
+.dashboard2-designer-shell__canvas,
+.dashboard2-designer-shell__preview,
+.dashboard2-config-panel {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 0.65rem;
+  min-height: 0;
+}
+
+.dashboard2-widget-select-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.dashboard2-widget-chip {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 999px;
+  padding: 0.22rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.dashboard2-widget-chip.is-active {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.dashboard2-config-panel {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+}
+
+.dashboard2-config-panel h3 {
+  margin: 0;
+}
+
+.dashboard2-config-panel label,
+.dashboard2-config-block label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+}
+
+.dashboard2-config-panel input,
+.dashboard2-config-panel select,
+.dashboard2-config-block input,
+.dashboard2-config-block select {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.8rem;
+}
+
+.dashboard2-config-block {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.dashboard2-config-block h4 {
+  margin: 0;
+  font-size: 0.82rem;
+}

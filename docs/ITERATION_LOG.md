@@ -5,6 +5,22 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 6: designer configuration shell scaffolding
+
+Added Dashboard 2.0 designer configuration UI scaffolding in `dashboard2` namespace:
+- Added `DashboardDesignerShell` to compose canvas + preview + config panel.
+- Added `DashboardWidgetConfigPanel` for widget metadata/settings editing.
+- Added `DashboardWidgetBindingPicker` for source binding fields and sourceType switching.
+- Added corresponding layout/form styles in `services/frontend/src/components/dashboard2/dashboard2.css`.
+
+Intent: provide a dedicated v2 designer configuration flow without modifying the current Dashboard Edit page wiring.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up (Phase 7): live-screen hardening layer (read-only shell contracts, refresh behavior hooks, and runtime safety guards).
+
+---
+
 ## 2026-04-29 — v7 Phase 5: core dashboard2 widgets implemented
 
 Implemented core non-map widgets for Dashboard 2.0 registry:

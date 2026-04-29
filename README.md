@@ -187,6 +187,19 @@ Added core Dashboard 2.0 widget implementations under `services/frontend/src/com
 
 Updated `DashboardWidgetRegistry` to map these components instead of placeholders and added matching widget CSS in `dashboard2.css`.
 
+### Phase 6 complete — designer configuration shell components
+
+Added Dashboard 2.0 designer configuration scaffolding:
+- `DashboardDesignerShell` combining:
+  - designer grid canvas,
+  - right preview panel (runtime preview mode),
+  - widget config panel.
+- `DashboardWidgetConfigPanel` for title/description/refresh settings.
+- `DashboardWidgetBindingPicker` for sourceType + binding fields (`siteId`, `endpointId`, `objectName`, etc.).
+- Added designer-shell and config-panel styling in `dashboard2.css`.
+
+This phase provides the non-destructive v2 configuration UX surface without replacing the existing Dashboard Edit route.
+
 ## License
 
 Proprietary — assign per your organization.
