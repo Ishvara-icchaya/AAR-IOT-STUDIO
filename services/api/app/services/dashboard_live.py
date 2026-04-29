@@ -28,6 +28,7 @@ from app.services.map_runtime_service import (
     markers_manual_sources,
     markers_with_redis_first,
 )
+from app.services.dashboard_resolved_device_collection import decode_cursor, query_collection_page
 
 
 def _bget(b: dict[str, Any], snake: str, camel: str) -> Any:
@@ -158,16 +159,8 @@ def _load_source_record(
     """Returns (flat_payload, updated_at, display_name)."""
     st = str(source_type).lower()
     if st == "data_object":
-        row = db.get(DataObject, source_id)
-        if not row or row.customer_id != customer_id:
-            return None, None, None
-        payload = dict(row.payload or {})
-        payload["_kpi"] = dict(row.kpi_json or {})
-        if row.health_status:
-            payload["health_status"] = row.health_status
-        if row.health_message:
-            payload["health_message"] = row.health_message
-        return payload, as_of_timestamp(row), row.name
+        # Guardrail: v2 dashboards should not resolve data_object bindings.
+        return None, None, None
     if st in ("latest_device_state", "device_state"):
         row = db.get(LatestDeviceState, source_id)
         if not row or row.customer_id != customer_id:
@@ -188,6 +181,117 @@ def _load_source_record(
     if row.health_status:
         p["health_status"] = row.health_status
     return p, result_object_as_of_timestamp(row), row.result_object_name
+
+
+def _binding_site_uuid(binding: dict[str, Any], dashboard_site_id: uuid.UUID | None) -> uuid.UUID | None:
+    site_raw = _bget(binding, "site_id", "siteId")
+    if site_raw:
+        try:
+            return uuid.UUID(str(site_raw))
+        except ValueError:
+            return None
+    return dashboard_site_id
+
+
+def _load_resolved_collection_rows(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    binding: dict[str, Any],
+    dashboard_site_id: uuid.UUID | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], str | None]:
+    endpoint_raw = _bget(binding, "endpoint_id", "endpointId")
+    object_name = str(_bget(binding, "object_name", "objectName") or "").strip()
+    site_id = _binding_site_uuid(binding, dashboard_site_id)
+    if not endpoint_raw or not object_name or not site_id:
+        return [], {}, "resolved_device_collection requires site_id + endpoint_id + object_name"
+    try:
+        endpoint_id = uuid.UUID(str(endpoint_raw))
+    except ValueError:
+        return [], {}, "invalid endpoint_id for resolved_device_collection"
+    lifecycle_status = str(_bget(binding, "lifecycle_status", "lifecycleStatus") or "").strip() or None
+    health_status = str(_bget(binding, "health_status", "healthStatus") or "").strip() or None
+    device_type = str(_bget(binding, "device_type", "deviceType") or "").strip() or None
+
+    rows: list[dict[str, Any]] = []
+    counts = {
+        "total": 0,
+        "online": 0,
+        "late": 0,
+        "offline": 0,
+        "error": 0,
+        "healthy": 0,
+        "warning": 0,
+        "critical": 0,
+        "unknown": 0,
+    }
+    score_sum = 0.0
+    score_n = 0
+    cursor: str | None = None
+    pages = 0
+    max_rows = 5000
+    while True:
+        page, next_cursor, _summary = query_collection_page(
+            db,
+            customer_id=customer_id,
+            site_id=site_id,
+            endpoint_id=endpoint_id,
+            object_name=object_name,
+            lifecycle_status=lifecycle_status,
+            health_status=health_status,
+            device_type=device_type,
+            limit=500,
+            cursor=decode_cursor(cursor) if cursor else None,
+        )
+        pages += 1
+        for st, rd in page:
+            rows.append(
+                {
+                    "latest_device_state_id": str(st.id),
+                    "resolved_device_id": str(st.resolved_device_id),
+                    "device_label": rd.device_label if rd and rd.device_label else st.object_name,
+                    "device_type": rd.device_type if rd else None,
+                    "lifecycle_status": st.lifecycle_status,
+                    "health_status": st.health_status,
+                    "last_event_ts": st.last_event_ts.isoformat() if st.last_event_ts else None,
+                    "location_json": st.location_json if isinstance(st.location_json, dict) else {},
+                    "identity_json": st.identity_json if isinstance(st.identity_json, dict) else {},
+                    "display_json": st.display_json if isinstance(st.display_json, dict) else {},
+                    "kpi_json": st.kpi_json if isinstance(st.kpi_json, dict) else {},
+                    "health_json": st.health_json if isinstance(st.health_json, dict) else {},
+                    "updated_at": st.updated_at.isoformat() if st.updated_at else None,
+                }
+            )
+            counts["total"] += 1
+            lkey = (st.lifecycle_status or "").strip().lower()
+            if lkey in ("offline", "inactive", "disconnected"):
+                counts["offline"] += 1
+            elif lkey in ("late", "stale", "degraded"):
+                counts["late"] += 1
+            elif lkey in ("error", "failed", "fault"):
+                counts["error"] += 1
+            else:
+                counts["online"] += 1
+            hkey = (st.health_status or "").strip().lower()
+            if hkey in ("critical", "red", "severe"):
+                counts["critical"] += 1
+            elif hkey in ("warning", "warn", "yellow"):
+                counts["warning"] += 1
+            elif hkey in ("healthy", "green", "ok", "normal"):
+                counts["healthy"] += 1
+            else:
+                counts["unknown"] += 1
+            if isinstance(st.health_json, dict):
+                raw_score = st.health_json.get("health_score")
+                if isinstance(raw_score, (int, float)):
+                    score_sum += float(raw_score)
+                    score_n += 1
+        if not next_cursor or len(rows) >= max_rows or pages >= 10:
+            break
+        cursor = next_cursor
+    summary: dict[str, Any] = {**counts}
+    summary["avg_health_score"] = round(score_sum / score_n, 4) if score_n else None
+    return rows, summary, None
 
 
 def _table_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -931,6 +1035,45 @@ def resolve_widget_data(
         health_field = str(health_field) if health_field else None
         included_raw = config.get("included_sources") or config.get("includedSources")
 
+        if str(st) == "resolved_device_collection":
+            rows, summary, err = _load_resolved_collection_rows(
+                db,
+                customer_id=customer_id,
+                binding=binding,
+                dashboard_site_id=dashboard_site_id,
+            )
+            if err:
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {"error": err},
+                }
+            manual_sources = [
+                {"sourceType": "latest_device_state", "sourceId": r["latest_device_state_id"]}
+                for r in rows
+                if r.get("latest_device_state_id")
+            ]
+            data_ms: dict[str, Any] = {
+                "mode": "multi",
+                "latitude_field": latf,
+                "longitude_field": lonf,
+                "manual_sources": True,
+                "site_id": str(_binding_site_uuid(binding, dashboard_site_id)) if _binding_site_uuid(binding, dashboard_site_id) else None,
+                "map_controls": _map_controls_dict(config),
+                "kpi_fields": kpi_fields,
+                "title_field": title_field,
+                "health_field": health_field,
+                "included_sources": manual_sources,
+                "map_profile": "fleet" if fleet_profile else "site",
+                "collection_summary": summary,
+                "source_type": "resolved_device_collection",
+            }
+            if len(manual_sources) == 0:
+                data_ms["degraded"] = True
+                data_ms["warning"] = "No resolved devices matched this endpoint group."
+            return {"widget_id": wid, "type": wtype, "title": title, "data": data_ms}
+
         if (
             not auto
             and dashboard_site_id
@@ -1104,6 +1247,174 @@ def resolve_widget_data(
         }
 
     if not st or not sid_raw:
+        if str(st) == "resolved_device_collection":
+            rows, summary, err = _load_resolved_collection_rows(
+                db,
+                customer_id=customer_id,
+                binding=binding,
+                dashboard_site_id=dashboard_site_id,
+            )
+            if err:
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {"error": err},
+                }
+
+            latest_updated = rows[0].get("updated_at") if rows else None
+            if wtype == "kpi":
+                metric = str(_bget(binding, "metric", "metric") or "total").strip() or "total"
+                metric_key = metric.lower()
+                metric_value: Any
+                if metric_key in summary:
+                    metric_value = summary[metric_key]
+                elif metric_key == "avg_health_score":
+                    metric_value = summary.get("avg_health_score")
+                else:
+                    nums: list[float] = []
+                    for row in rows:
+                        merged = {**(row.get("display_json") or {}), **(row.get("kpi_json") or {})}
+                        raw = _get_path(merged, metric) if isinstance(merged, dict) else None
+                        if isinstance(raw, (int, float)):
+                            nums.append(float(raw))
+                    metric_value = round(sum(nums) / len(nums), 4) if nums else None
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {
+                        "source_type": "resolved_device_collection",
+                        "display_name": str(_bget(binding, "object_name", "objectName") or "Endpoint Group"),
+                        "updated_at": latest_updated,
+                        "health_status": "warning" if summary.get("critical", 0) else "healthy",
+                        "blink_mode": "slow" if summary.get("critical", 0) else "none",
+                        "value": metric_value,
+                        "metric": metric,
+                        "device_name": f"{summary.get('total', 0)} devices",
+                    },
+                }
+            if wtype == "table":
+                table_rows: list[dict[str, Any]] = []
+                for row in rows:
+                    table_rows.append(
+                        {
+                            "resolved_device_id": row.get("resolved_device_id"),
+                            "device_label": row.get("device_label"),
+                            "device_type": row.get("device_type"),
+                            "lifecycle_status": row.get("lifecycle_status"),
+                            "health_status": row.get("health_status"),
+                            "last_event_ts": row.get("last_event_ts"),
+                        }
+                    )
+                indicators = [
+                    {
+                        "health_status": r.get("health_status"),
+                        "health_message": None,
+                        "blink_mode": "slow"
+                        if str(r.get("health_status") or "").lower() in ("critical", "red")
+                        else "none",
+                    }
+                    for r in table_rows
+                ]
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {
+                        "source_type": "resolved_device_collection",
+                        "display_name": str(_bget(binding, "object_name", "objectName") or "Endpoint Group"),
+                        "updated_at": latest_updated,
+                        "rows": table_rows,
+                        "fields": [
+                            "device_label",
+                            "device_type",
+                            "lifecycle_status",
+                            "health_status",
+                            "last_event_ts",
+                        ],
+                        "row_indicators": indicators,
+                        "column_headers": {
+                            "device_label": "Device",
+                            "device_type": "Type",
+                            "lifecycle_status": "Lifecycle",
+                            "health_status": "Health",
+                            "last_event_ts": "Last event",
+                        },
+                    },
+                }
+            if wtype == "chart":
+                x = ["online", "late", "offline", "error", "healthy", "warning", "critical", "unknown"]
+                y = [int(summary.get(k, 0)) for k in x]
+                ct = str(_bget(binding, "chart_type", "chartType") or "bar")
+                tw = str(_bget(binding, "chart_time_window", "chartTimeWindow") or "24h")
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {
+                        "source_type": "resolved_device_collection",
+                        "display_name": str(_bget(binding, "object_name", "objectName") or "Endpoint Group"),
+                        "updated_at": latest_updated,
+                        "chart_type": ct,
+                        "x_field": "summary_bucket",
+                        "y_field": "count",
+                        "chart_time_window": tw,
+                        "series": {"x": x, "y": y},
+                    },
+                }
+            if wtype == "device_tile":
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {
+                        "source_type": "resolved_device_collection",
+                        "display_name": str(_bget(binding, "object_name", "objectName") or "Endpoint Group"),
+                        "device_name": f"Endpoint Group · {summary.get('total', 0)} devices",
+                        "source_id": str(_bget(binding, "endpoint_id", "endpointId") or ""),
+                        "updated_at": latest_updated,
+                        "health_status": "critical"
+                        if int(summary.get("critical", 0)) > 0
+                        else ("warning" if int(summary.get("warning", 0)) > 0 else "healthy"),
+                        "blink_mode": "slow" if int(summary.get("critical", 0)) > 0 else "none",
+                        "kpis": {
+                            "total": summary.get("total", 0),
+                            "online": summary.get("online", 0),
+                            "late": summary.get("late", 0),
+                            "offline": summary.get("offline", 0),
+                            "error": summary.get("error", 0),
+                            "healthy": summary.get("healthy", 0),
+                            "warning": summary.get("warning", 0),
+                            "critical": summary.get("critical", 0),
+                            "avg_health_score": summary.get("avg_health_score"),
+                        },
+                    },
+                }
+            if wtype == "alert_summary":
+                recent = [
+                    {
+                        "severity": r.get("health_status"),
+                        "title": r.get("device_label"),
+                        "acknowledged": False,
+                        "created_at": r.get("updated_at"),
+                    }
+                    for r in rows[:20]
+                ]
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {
+                        "active_by_severity": {
+                            "critical": int(summary.get("critical", 0)),
+                            "warning": int(summary.get("warning", 0)),
+                        },
+                        "recent": recent,
+                        "unacknowledged_count": int(summary.get("critical", 0)) + int(summary.get("warning", 0)),
+                        "blink_mode": "slow" if int(summary.get("critical", 0)) > 0 else "none",
+                    },
+                }
         return {
             "widget_id": wid,
             "type": wtype,

@@ -5,6 +5,31 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Endpoint Group dashboard source: Step 3 + 4 runtime + guards
+
+Completed Step 3 (widget runtime adapters) and Step 4 (validation/runtime guardrails) after Step 1+2 commit.
+
+**Runtime adapters (`services/api/app/services/dashboard_live.py`):**
+- Added `resolved_device_collection` runtime loading path that resolves endpoint-group rows and aggregate summary.
+- Wired widget data generation for endpoint-group bindings:
+  - `map`: emits `manual_sources` list of `latest_device_state` IDs for marker query path,
+  - `table`: one row per resolved device with health/lifecycle fields,
+  - `kpi`: summary metric support (`total`, lifecycle/health counts, `avg_health_score`, metric fallback),
+  - `chart`: current-state bucket chart series from collection summary,
+  - `device_tile`: cohort summary tile payload,
+  - `alert_summary`: warning/critical summary + recent per-device entries.
+
+**Guardrails:**
+- `dashboard_live._load_source_record` now rejects `data_object` resolution (returns no source for v2 dashboards).
+- Existing layout/source validation continues to block `data_object` bindings and now includes endpoint/site coherence checks for `resolved_device_collection`.
+
+**Documentation:**
+- Updated root `README.md` with endpoint-group default binding model, new APIs, deterministic ordering/cursor semantics, and explicit “Individual Device is advanced / no data_object fallback” note.
+
+Follow-up pending (Step 5): acceptance tests.
+
+---
+
 ## 2026-04-28 — Endpoint Group dashboard source (Step 1 + 2)
 
 Implemented initial Endpoint Group support with the product rule: **Endpoint Group is default; Individual Device is advanced**.

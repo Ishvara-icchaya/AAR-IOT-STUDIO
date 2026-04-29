@@ -56,6 +56,8 @@ services/
   workers/       # worker-ingest, scrubber, workflow, publish, ai, scheduler (scaffold)
 ```
 
+From the **repo root**, `npm run build`, `npm run dev`, `npm run lint`, and `npm run lint:design` forward to `services/frontend` (run `npm install` in `services/frontend` first, or from root: `npm install --prefix services/frontend`).
+
 Workers subscribe to canonical topics (`raw.ingest`, `scrubber.input`, …); the API creates topics on startup.
 
 ## Local development (without Docker for JS/Python)
@@ -78,6 +80,33 @@ Set `VITE_API_BASE_URL` in `services/frontend/.env` if the API is not on `http:/
 1. Alembic migrations + SQLAlchemy models with `customer_id` on tenant rows.
 2. Wire device registration, raw ingest → MinIO → `raw.ingest` Kafka.
 3. Port **Scrubber / Workflow / Dashboard** UIs from the previous project into `services/frontend`.
+
+## Dashboard endpoint-group binding (v2)
+
+Dashboards now support endpoint-level logical groups as the default source mode:
+
+```json
+{
+  "sourceType": "resolved_device_collection",
+  "endpointId": "...",
+  "siteId": "...",
+  "objectName": "..."
+}
+```
+
+- **Default in builder:** Endpoint Group
+- **Advanced mode:** Individual Device
+- **No `data_object` fallback** for v2 dashboard binding validation/runtime
+
+New dashboard APIs:
+
+- `GET /api/v1/dashboards/sources/resolved-device-collections?site_id=...`
+- `GET /api/v1/dashboards/runtime/resolved-device-collection?site_id=...&endpoint_id=...&object_name=...`
+
+Runtime collection ordering/cursor are deterministic:
+
+- `ORDER BY updated_at DESC, scrubbed_event_id DESC, resolved_device_id ASC`
+- cursor encodes `updated_at`, `scrubbed_event_id`, and `resolved_device_id`
 4. Implement **Restore to Default** (full reset) per §0.7 — orchestration + reseed.
 
 ## License
