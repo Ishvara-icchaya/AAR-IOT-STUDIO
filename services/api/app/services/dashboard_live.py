@@ -199,6 +199,7 @@ def _load_resolved_collection_rows(
     customer_id: uuid.UUID,
     binding: dict[str, Any],
     dashboard_site_id: uuid.UUID | None,
+    require_location: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], str | None]:
     endpoint_raw = _bget(binding, "endpoint_id", "endpointId")
     object_name = str(_bget(binding, "object_name", "objectName") or "").strip()
@@ -230,8 +231,10 @@ def _load_resolved_collection_rows(
     cursor: str | None = None
     pages = 0
     max_rows = 5000
+    excluded_missing_location = 0
     while True:
-        page, next_cursor, _summary = query_collection_page(
+        decoded = decode_cursor(cursor) if cursor else None
+        page, next_cursor, page_summary = query_collection_page(
             db,
             customer_id=customer_id,
             site_id=site_id,
@@ -241,8 +244,12 @@ def _load_resolved_collection_rows(
             health_status=health_status,
             device_type=device_type,
             limit=500,
-            cursor=decode_cursor(cursor) if cursor else None,
+            cursor=decoded,
+            require_location=require_location,
+            include_excluded_missing_location_count=require_location and decoded is None,
         )
+        if require_location and decoded is None:
+            excluded_missing_location = int(page_summary.get("excluded_missing_location") or 0)
         pages += 1
         for st, rd in page:
             rows.append(
@@ -291,6 +298,7 @@ def _load_resolved_collection_rows(
         cursor = next_cursor
     summary: dict[str, Any] = {**counts}
     summary["avg_health_score"] = round(score_sum / score_n, 4) if score_n else None
+    summary["excluded_missing_location"] = excluded_missing_location if require_location else 0
     return rows, summary, None
 
 
@@ -1017,7 +1025,7 @@ def resolve_widget_data(
     st = _bget(binding, "source_type", "sourceType")
     sid_raw = _bget(binding, "source_id", "sourceId")
 
-    if wtype in ("map", "fleet_map"):
+    if wtype in ("map", "fleet_map", "location_heading_map"):
         fleet_profile = wtype == "fleet_map"
         latf = str(_bget(binding, "latitude_field", "latitudeField") or "gps.lat")
         lonf = str(_bget(binding, "longitude_field", "longitudeField") or "gps.lon")
@@ -1041,6 +1049,7 @@ def resolve_widget_data(
                 customer_id=customer_id,
                 binding=binding,
                 dashboard_site_id=dashboard_site_id,
+                require_location=True,
             )
             if err:
                 return {

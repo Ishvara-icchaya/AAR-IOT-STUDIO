@@ -82,6 +82,90 @@ def _coalesced_scrubbed_id_expr():
     return func.coalesce(LatestDeviceState.scrubbed_event_id, _NIL_UUID)
 
 
+def _location_json_coords_present():
+    """PostgreSQL JSONB: non-null lat/lon text values (dashboard map uses top-level lat/lon)."""
+    j = LatestDeviceState.location_json
+    lat = j["lat"].astext
+    lon = j["lon"].astext
+    return and_(
+        j.isnot(None),
+        lat.isnot(None),
+        lon.isnot(None),
+        func.length(func.trim(lat)) > 0,
+        func.length(func.trim(lon)) > 0,
+    )
+
+
+def _ranked_latest_device_state_subquery(
+    *,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID,
+    endpoint_id: uuid.UUID,
+    object_name: str,
+    lifecycle_status: str | None,
+    health_status: str | None,
+):
+    scrubbed_key = _coalesced_scrubbed_id_expr()
+    ranked = (
+        select(
+            LatestDeviceState.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=LatestDeviceState.resolved_device_id,
+                order_by=(
+                    LatestDeviceState.updated_at.desc(),
+                    scrubbed_key.desc(),
+                    LatestDeviceState.resolved_device_id.asc(),
+                ),
+            )
+            .label("rn"),
+        )
+        .where(
+            LatestDeviceState.customer_id == customer_id,
+            LatestDeviceState.site_id == site_id,
+            LatestDeviceState.endpoint_id == endpoint_id,
+            LatestDeviceState.object_name == object_name,
+        )
+    )
+    if lifecycle_status:
+        ranked = ranked.where(LatestDeviceState.lifecycle_status == lifecycle_status)
+    if health_status:
+        ranked = ranked.where(LatestDeviceState.health_status == health_status)
+    return ranked.subquery("ranked_latest_device_state")
+
+
+def count_deduped_missing_location(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID,
+    endpoint_id: uuid.UUID,
+    object_name: str,
+    lifecycle_status: str | None,
+    health_status: str | None,
+    device_type: str | None,
+) -> int:
+    """How many resolved devices (latest row each) lack usable lat/lon in location_json."""
+    ranked_sq = _ranked_latest_device_state_subquery(
+        customer_id=customer_id,
+        site_id=site_id,
+        endpoint_id=endpoint_id,
+        object_name=object_name,
+        lifecycle_status=lifecycle_status,
+        health_status=health_status,
+    )
+    stmt = (
+        select(func.count())
+        .select_from(LatestDeviceState)
+        .join(ranked_sq, ranked_sq.c.id == LatestDeviceState.id)
+        .join(ResolvedDevice, ResolvedDevice.id == LatestDeviceState.resolved_device_id, isouter=True)
+        .where(ranked_sq.c.rn == 1, ~_location_json_coords_present())
+    )
+    if device_type:
+        stmt = stmt.where(ResolvedDevice.device_type == device_type)
+    return int(db.scalar(stmt) or 0)
+
+
 def list_collection_sources(
     db: Session,
     *,
@@ -142,35 +226,18 @@ def query_collection_page(
     device_type: str | None,
     limit: int,
     cursor: ResolvedDeviceCollectionCursor | None,
+    require_location: bool = False,
+    include_excluded_missing_location_count: bool = True,
 ) -> tuple[list[tuple[LatestDeviceState, ResolvedDevice | None]], str | None, dict[str, Any]]:
     scrubbed_key = _coalesced_scrubbed_id_expr()
-    ranked = (
-        select(
-            LatestDeviceState.id.label("id"),
-            func.row_number()
-            .over(
-                partition_by=LatestDeviceState.resolved_device_id,
-                order_by=(
-                    LatestDeviceState.updated_at.desc(),
-                    scrubbed_key.desc(),
-                    LatestDeviceState.resolved_device_id.asc(),
-                ),
-            )
-            .label("rn"),
-        )
-        .where(
-            LatestDeviceState.customer_id == customer_id,
-            LatestDeviceState.site_id == site_id,
-            LatestDeviceState.endpoint_id == endpoint_id,
-            LatestDeviceState.object_name == object_name,
-        )
+    ranked_sq = _ranked_latest_device_state_subquery(
+        customer_id=customer_id,
+        site_id=site_id,
+        endpoint_id=endpoint_id,
+        object_name=object_name,
+        lifecycle_status=lifecycle_status,
+        health_status=health_status,
     )
-    if lifecycle_status:
-        ranked = ranked.where(LatestDeviceState.lifecycle_status == lifecycle_status)
-    if health_status:
-        ranked = ranked.where(LatestDeviceState.health_status == health_status)
-
-    ranked_sq = ranked.subquery("ranked_latest_device_state")
 
     stmt = (
         select(LatestDeviceState, ResolvedDevice)
@@ -180,6 +247,8 @@ def query_collection_page(
     )
     if device_type:
         stmt = stmt.where(ResolvedDevice.device_type == device_type)
+    if require_location:
+        stmt = stmt.where(_location_json_coords_present())
 
     if cursor is not None:
         cursor_scrubbed = cursor.scrubbed_event_id or _NIL_UUID
@@ -218,6 +287,21 @@ def query_collection_page(
             )
         )
 
+    excluded_missing_location = (
+        count_deduped_missing_location(
+            db,
+            customer_id=customer_id,
+            site_id=site_id,
+            endpoint_id=endpoint_id,
+            object_name=object_name,
+            lifecycle_status=lifecycle_status,
+            health_status=health_status,
+            device_type=device_type,
+        )
+        if require_location and include_excluded_missing_location_count
+        else 0
+    )
+
     summary = {
         "total": 0,
         "online": 0,
@@ -229,6 +313,7 @@ def query_collection_page(
         "critical": 0,
         "unknown": 0,
         "avg_health_score": None,
+        "excluded_missing_location": excluded_missing_location,
     }
     scores: list[float] = []
     for state, _rd in page:

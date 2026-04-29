@@ -300,6 +300,65 @@ def test_resolved_collection_loader_paginates_and_aggregates(monkeypatch) -> Non
     assert summary["avg_health_score"] == 50.0
 
 
+def test_resolved_collection_map_load_passes_require_location(monkeypatch) -> None:
+    captured: dict[str, bool] = {}
+
+    def _fake_load(*_a, require_location: bool = False, **_k):
+        captured["require_location"] = require_location
+        empty_summary = {
+            "total": 0,
+            "online": 0,
+            "late": 0,
+            "offline": 0,
+            "error": 0,
+            "healthy": 0,
+            "warning": 0,
+            "critical": 0,
+            "unknown": 0,
+            "excluded_missing_location": 0,
+        }
+        return [], empty_summary, None
+
+    monkeypatch.setattr(dashboard_live_module, "_load_resolved_collection_rows", _fake_load)
+    for wtype in ("map", "location_heading_map"):
+        dashboard_live_module.resolve_widget_data(
+            db=None,  # type: ignore[arg-type]
+            customer_id=uuid.uuid4(),
+            widget={
+                "widgetId": "w-map",
+                "type": wtype,
+                "title": "Fleet map",
+                "binding": {
+                    "sourceType": "resolved_device_collection",
+                    "siteId": str(uuid.uuid4()),
+                    "endpointId": str(uuid.uuid4()),
+                    "objectName": "telemetry",
+                },
+                "config": {},
+            },
+            dashboard_site_id=uuid.uuid4(),
+        )
+        assert captured["require_location"] is True
+
+
+def test_runtime_resolved_collection_openapi_has_contract_fields() -> None:
+    client = TestClient(app)
+    schema = client.get("/openapi.json").json()
+    get_op = schema["paths"]["/api/v1/dashboards/runtime/resolved-device-collection"]["get"]
+    param_names = {p["name"] for p in get_op.get("parameters", [])}
+    assert "require_location" in param_names
+    ref = get_op["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    model_name = ref.rsplit("/", maxsplit=1)[-1]
+    defn = schema["components"]["schemas"][model_name]
+    props = defn.get("properties", {})
+    assert "rollups" in props
+    assert "trends" in props
+    summary_ref = props["summary"]["$ref"]
+    summary_name = summary_ref.rsplit("/", maxsplit=1)[-1]
+    summary_def = schema["components"]["schemas"][summary_name]
+    assert "excluded_missing_location" in summary_def.get("properties", {})
+
+
 def test_resolved_collection_map_uses_latest_device_state_sources_only(monkeypatch) -> None:
     widget = {
         "widgetId": "w-map",

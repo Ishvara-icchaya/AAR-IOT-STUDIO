@@ -166,6 +166,7 @@ class DashboardResolvedDeviceCollectionSummary(BaseModel):
     critical: int = 0
     unknown: int = 0
     avg_health_score: float | None = None
+    excluded_missing_location: int = 0
 
 
 class DashboardResolvedDeviceCollectionResponse(BaseModel):
@@ -174,6 +175,8 @@ class DashboardResolvedDeviceCollectionResponse(BaseModel):
         default_factory=DashboardResolvedDeviceCollectionSummary
     )
     next_cursor: str | None = None
+    rollups: dict[str, Any] = Field(default_factory=dict)
+    trends: dict[str, Any] = Field(default_factory=dict)
 
 
 class DashboardPreviewBody(BaseModel):

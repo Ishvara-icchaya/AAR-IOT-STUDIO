@@ -251,6 +251,11 @@ def get_runtime_resolved_device_collection(
     device_type: str | None = Query(None),
     limit: int = Query(25, ge=1, le=500),
     cursor: str | None = Query(None),
+    require_location: bool = Query(
+        False,
+        description="When true, only rows with non-empty location_json.lat/lon are returned; "
+        "summary.excluded_missing_location counts deduped devices missing coordinates.",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -287,6 +292,7 @@ def get_runtime_resolved_device_collection(
         device_type=device_type,
         limit=limit,
         cursor=decoded_cursor,
+        require_location=require_location,
     )
     items = [
         {
@@ -311,6 +317,8 @@ def get_runtime_resolved_device_collection(
         items=items,
         summary=summary,
         next_cursor=next_cursor,
+        rollups={},
+        trends={},
     )
 
 
