@@ -5,10 +5,11 @@ export function AlertFeedWidget({
   data,
 }: {
   widget: DashboardWidgetInstance2;
-  data: ResolvedDeviceCollectionRuntimeResponse | null;
+  data: unknown;
   mode: "designer" | "preview" | "live";
 }) {
-  const rows = (data?.items ?? []).filter((r) => ["critical", "warning"].includes(String(r.health_status ?? "").toLowerCase()));
+  const collection = data as ResolvedDeviceCollectionRuntimeResponse | null;
+  const rows = (collection?.items ?? []).filter((r) => ["critical", "warning"].includes(String(r.health_status ?? "").toLowerCase()));
   if (!rows.length) return <p className="dashboard-widget-placeholder">No warning/critical alerts in current cohort.</p>;
   return (
     <ul className="dashboard2-alert-list">

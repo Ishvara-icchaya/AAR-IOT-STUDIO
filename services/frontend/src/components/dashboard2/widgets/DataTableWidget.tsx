@@ -5,10 +5,11 @@ export function DataTableWidget({
   data,
 }: {
   widget: DashboardWidgetInstance2;
-  data: ResolvedDeviceCollectionRuntimeResponse | null;
+  data: unknown;
   mode: "designer" | "preview" | "live";
 }) {
-  const rows = data?.items ?? [];
+  const collection = data as ResolvedDeviceCollectionRuntimeResponse | null;
+  const rows = collection?.items ?? [];
   if (!rows.length) return <p className="dashboard-widget-placeholder">No rows.</p>;
   return (
     <div className="dashboard2-table-wrap">

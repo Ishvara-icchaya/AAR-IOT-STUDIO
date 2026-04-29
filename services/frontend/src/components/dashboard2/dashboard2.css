@@ -281,3 +281,34 @@
   color: var(--color-text-muted);
   font-size: 0.75rem;
 }
+
+.dashboard2-page {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.dashboard2-page__head {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.dashboard2-page__head h1 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.dashboard2-review-box {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.6rem;
+  max-width: 520px;
+}
+
+.dashboard2-review-box__links {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}

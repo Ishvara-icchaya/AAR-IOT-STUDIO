@@ -5,6 +5,37 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 9: dashboard2 route integration and safe review gating
+
+Integrated Dashboard 2.0 for safe runtime review behind feature flag, without touching legacy dashboard edit/live routes:
+- Added feature-flag utility `services/frontend/src/lib/featureFlags.ts` using `VITE_DASHBOARD2_ENABLED`.
+- Added dashboard2 pages/routes:
+  - `Dashboard2EditPage` (`/dashboard2/:dashboardId/edit`)
+  - `Dashboard2LivePage` (`/dashboard2/:dashboardId/live`)
+  - `Dashboard2PreviewPage` (`/dashboard2/:dashboardId/preview`)
+  - `Dashboard2ReviewPage` (`/dashboard2/review`) for controlled route entry.
+- Updated `services/frontend/src/App.tsx` to register dashboard2 routes only when flag enabled.
+- Added nav entry (`Dashboard2 Review`) only when flag enabled via `services/frontend/src/layouts/shell/navigation.ts`.
+- Added compatibility loader path:
+  - `services/frontend/src/lib/dashboard2/normalizeDashboard2Definition.ts`
+  - `services/frontend/src/pages/dashboard2/useDashboard2Load.ts`
+  to load existing dashboard records via schema-v2 shape or legacy migration fallback.
+- Added dashboard2 page/shell styling extensions in `services/frontend/src/components/dashboard2/dashboard2.css`.
+
+Intent: allow live evaluation of dashboard2 edit/live/preview flows while preserving current production dashboard wiring and routes.
+
+Validation:
+- `npm --prefix services/frontend run lint` passed.
+- `npm --prefix services/frontend run build` passed.
+
+Acceptance checks covered:
+- legacy `/dashboard/:dashboardId/edit` and `/dashboard/:dashboardId/live` routes remain intact in router,
+- new dashboard2 routes render through migration compatibility layer,
+- widget surfaces (including map widget path) are reachable in dashboard2 runtime,
+- no legacy route replacement or data wiring mutation introduced.
+
+---
+
 ## 2026-04-29 — v7 Phase 8: CSS boundary cleanup guardrails
 
 Completed Dashboard 2.0 CSS isolation guardrail phase:

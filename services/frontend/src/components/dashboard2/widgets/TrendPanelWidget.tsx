@@ -5,10 +5,11 @@ export function TrendPanelWidget({
   data,
 }: {
   widget: DashboardWidgetInstance2;
-  data: ResolvedDeviceCollectionRuntimeResponse | null;
+  data: unknown;
   mode: "designer" | "preview" | "live";
 }) {
-  const trend = (((data?.trends ?? {}) as Record<string, unknown>).online_count ?? []) as Array<Record<string, unknown>>;
+  const collection = data as ResolvedDeviceCollectionRuntimeResponse | null;
+  const trend = (((collection?.trends ?? {}) as Record<string, unknown>).online_count ?? []) as Array<Record<string, unknown>>;
   if (!trend.length) return <p className="dashboard-widget-placeholder">No trend data.</p>;
   return (
     <div className="dashboard2-trend-list">

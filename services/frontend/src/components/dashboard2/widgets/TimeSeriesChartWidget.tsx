@@ -6,10 +6,11 @@ export function TimeSeriesChartWidget({
   data,
 }: {
   widget: DashboardWidgetInstance2;
-  data: ResolvedDeviceCollectionRuntimeResponse | null;
+  data: unknown;
   mode: "designer" | "preview" | "live";
 }) {
-  const trend = (((data?.trends ?? {}) as Record<string, unknown>).health_score ?? []) as Array<Record<string, unknown>>;
+  const collection = data as ResolvedDeviceCollectionRuntimeResponse | null;
+  const trend = (((collection?.trends ?? {}) as Record<string, unknown>).health_score ?? []) as Array<Record<string, unknown>>;
   const rows = trend.map((r) => ({ ts: String(r.ts ?? ""), value: Number(r.value ?? 0) }));
   if (!rows.length) return <p className="dashboard-widget-placeholder">No trend points yet.</p>;
   return (

@@ -5,10 +5,11 @@ export function HealthSummaryWidget({
   data,
 }: {
   widget: DashboardWidgetInstance2;
-  data: ResolvedDeviceCollectionRuntimeResponse | null;
+  data: unknown;
   mode: "designer" | "preview" | "live";
 }) {
-  const s = (data?.summary ?? {}) as Record<string, unknown>;
+  const collection = data as ResolvedDeviceCollectionRuntimeResponse | null;
+  const s = (collection?.summary ?? {}) as Record<string, unknown>;
   const cards = [
     { label: "Healthy", value: Number(s.healthy ?? 0) },
     { label: "Warning", value: Number(s.warning ?? 0) },

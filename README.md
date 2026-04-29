@@ -215,6 +215,26 @@ This phase establishes the v2 live-screen container contract (read-only + auto-r
 - Updated `services/frontend/scripts/check-design-drift.mjs` to detect and reject comma-coupled live+preview dashboard selectors in `src/index.css`.
 - Kept legacy selectors operational but added automated protection against introducing new cross-context coupling.
 
+### Phase 9 complete — route integration behind feature flag
+
+- Added `VITE_DASHBOARD2_ENABLED` feature flag support (`services/frontend/src/lib/featureFlags.ts`).
+- Added new review routes (flag-gated):
+  - `/dashboard2/:dashboardId/edit`
+  - `/dashboard2/:dashboardId/live`
+  - `/dashboard2/:dashboardId/preview`
+- Added helper route `/dashboard2/review` (flag-gated) for safe route access/testing.
+- Kept legacy routes unchanged:
+  - `/dashboard/:dashboardId/edit`
+  - `/dashboard/:dashboardId/live`
+- Added nav entry `Dashboard2 Review` only when the feature flag is enabled.
+- Added compatibility loading path that normalizes existing dashboard definitions through schema/migration helpers before rendering dashboard2 shells.
+
+Set in frontend env for review:
+
+```bash
+VITE_DASHBOARD2_ENABLED=true
+```
+
 ## License
 
 Proprietary — assign per your organization.

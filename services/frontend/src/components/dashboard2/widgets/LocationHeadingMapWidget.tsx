@@ -55,16 +55,20 @@ export function LocationHeadingMapWidget({
   mode,
 }: {
   widget: DashboardWidgetInstance2;
-  data: ResolvedDeviceCollectionRuntimeResponse | null;
+  data: unknown;
   mode: "designer" | "preview" | "live";
 }) {
+  const collection = data as ResolvedDeviceCollectionRuntimeResponse | null;
   const cfg = { ...DEFAULT_LOCATION_HEADING_MAP_CONFIG, ...(widget.config as LocationHeadingMapWidgetConfig) };
   const mapNode = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Record<string, Marker>>({});
   const didFitRef = useRef(false);
 
-  const points = useMemo(() => (data?.items ?? []).map(toPoint).filter(Boolean) as NonNullable<ReturnType<typeof toPoint>>[], [data]);
+  const points = useMemo(
+    () => (collection?.items ?? []).map(toPoint).filter(Boolean) as NonNullable<ReturnType<typeof toPoint>>[],
+    [collection],
+  );
 
   useEffect(() => {
     if (!mapNode.current || mapRef.current) return;
