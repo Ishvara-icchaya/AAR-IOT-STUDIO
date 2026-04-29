@@ -5,6 +5,75 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-28 — Endpoint Group dashboard source (Step 1 + 2)
+
+Implemented initial Endpoint Group support with the product rule: **Endpoint Group is default; Individual Device is advanced**.
+
+**Step 1 (DB/service/API):**
+- Added dashboard runtime endpoint: `GET /api/v1/dashboards/runtime/resolved-device-collection`.
+- Added builder source endpoint: `GET /api/v1/dashboards/sources/resolved-device-collections`.
+- Added deterministic ordering and cursor semantics in service layer:
+  - `ORDER BY updated_at DESC, scrubbed_event_id DESC, resolved_device_id ASC`
+  - cursor encodes `updated_at`, `scrubbed_event_id`, `resolved_device_id`.
+- Added server-side dedupe fallback by `resolved_device_id` via window ranking (`row_number()`) with the same deterministic ordering.
+- Added shared lifecycle/health summary bucket mapping and API summary payload (`online/late/offline/error`, `healthy/warning/critical/unknown`).
+
+**Step 2 (builder binding model):**
+- Extended dashboard widget binding model with endpoint-group fields (`sourceMode`, `siteId`, `endpointId`, `objectName`, optional filters).
+- Switched default bindings for `kpi/table/chart/device_tile` to `sourceType: resolved_device_collection` and `sourceMode: endpoint_group`.
+- Updated dashboard widget config UI to select:
+  - Source mode: Endpoint Group (default) vs Individual Device (advanced),
+  - Endpoint Group picker from resolved-device-collection source list.
+
+**Safety/validation touched for compatibility:**
+- Dashboard layout validation now accepts `resolved_device_collection` and checks endpoint/site coherence for this binding type.
+
+Follow-ups intentionally deferred: runtime widget adapters, stricter guardrails, and acceptance tests (Steps 3–5).
+
+---
+
+## 2026-04-28 — Dashboard edit preview clipping fix (sticky panel + inner scroll)
+
+Adjusted dashboard builder preview panel CSS in `services/frontend/src/index.css` to prevent visual clipping/truncation in edit mode:
+- `.dash-preview-panel` now keeps sticky behavior with explicit shell-aware height (`top: var(--dash-preview-sticky-top, 12px)`, `max-height: calc(100dvh - ... - 96px)`, `min-height: 320px`, flex column, `overflow: hidden`).
+- `.dash-preview-panel__scroll--fit` changed from `overflow: hidden` to `overflow: auto` with `min-height: 0`.
+- Added shrink-safe live preview rules for both fit and regular preview scroll containers:
+  - `.dash-preview-panel__scroll--fit > .dash-live`
+  - `.dash-preview-panel__scroll > .dash-live`
+  both use `flex: 1 1 auto`, `min-height: 0`, `min-width: 0`.
+
+Intent: keep right preview sticky and usable while allowing preview content to scroll instead of being cut off; no global page overflow hacks, nav changes, or widget-size changes.
+
+---
+
+## 2026-04-28 — Dashboard widget config: 3-column editor with larger preview
+
+Updated `DashboardWidgetConfigDrawer` to a three-column non-chart layout:
+- **Column 1:** `Title`, `Source type`, `Source` selector, plus expandable **Advanced widget options** (`DashboardBindingEditor`).
+- **Column 2:** enlarged **Preview** pane with larger minimum height and scroll container to prevent clipped/truncated content.
+- **Column 3:** always-visible **Debug JSON** pane with independent scrolling.
+
+Supporting CSS in `index.css`:
+- widened `.dash-config-modal` for desktop (`min(1380px, 98vw)`),
+- added responsive 3-column grid + pane sizing,
+- added fallback single-column stacking under narrower widths.
+
+Intent: improve dashboard edit usability by making preview readable without collapsing controls or hiding debug output.
+
+---
+
+## 2026-04-28 — Design cleanup tranche 1 (CSS tokens + components)
+
+**Buttons:** Moved canonical `.aar-btn` / variants and `.dm-btn` **aliases** into `aar-primitives.css`; removed duplicate button block from `device-register-page.css`. `AarButton` now emits `aar-btn` + `dm-btn` classes. Dashboard builder / header CSS in `index.css` extended for `.aar-btn` where it already targeted `.dm-btn`.
+
+**Pager:** `PlainOperationalTable` pager uses `AarButton` + `.op-table-pager__action`; removed `op-table-pager__btn`. **Lint:** ESLint + `check-design-drift.mjs` forbid `op-table-pager__btn`.
+
+**Call sites (sample migration):** `FieldExplorerPanel`, `ScrubberPipelinesPage`, `WorkflowListPage`, `DashboardListPage` (AarButton / link classes).
+
+**Docs:** [`FRONTEND_DESIGN_COMPONENTS.md`](./FRONTEND_DESIGN_COMPONENTS.md); ticket [`DESIGN_CLEANUP_CSS_TOKENS_TICKET.md`](./DESIGN_CLEANUP_CSS_TOKENS_TICKET.md) updated to in-progress.
+
+---
+
 ## 2026-04-28 — Scrubber 2.0: remove hero scope strip
 
 Removed `dm-page-hero__scope` block (inline `OpsScopeControls` / time range) from `Scrubber2Page.tsx`; dropped unused `.dm-page-hero__scope` rules from `device-register-page.css`.

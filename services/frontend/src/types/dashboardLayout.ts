@@ -19,11 +19,18 @@ export type DashboardWidgetPresentationConfig = {
 };
 
 export type DashboardWidgetBinding = {
+  sourceMode?: "endpoint_group" | "individual_device";
   sourceType?:
     | "latest_device_state"
     | "resolved_device_stream"
     | "resolved_device_collection"
     | "result_object";
+  siteId?: string;
+  endpointId?: string;
+  objectName?: string;
+  lifecycleStatus?: string;
+  healthStatus?: string;
+  deviceType?: string;
   sourceId?: string;
   fields?: string[];
   metric?: string;

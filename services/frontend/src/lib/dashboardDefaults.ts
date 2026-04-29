@@ -53,19 +53,36 @@ export function createDefaultWidget(type: string): DashboardWidgetModel {
     case "kpi":
       return {
         ...base,
-        binding: { sourceType: "latest_device_state", sourceId: "", metric: "value" },
+        binding: {
+          sourceMode: "endpoint_group",
+          sourceType: "resolved_device_collection",
+          siteId: "",
+          endpointId: "",
+          objectName: "",
+          metric: "value",
+        },
       };
     case "table":
       return {
         ...base,
-        binding: { sourceType: "latest_device_state", sourceId: "", fields: [] as string[] },
+        binding: {
+          sourceMode: "endpoint_group",
+          sourceType: "resolved_device_collection",
+          siteId: "",
+          endpointId: "",
+          objectName: "",
+          fields: [] as string[],
+        },
       };
     case "chart":
       return {
         ...base,
         binding: {
-          sourceType: "latest_device_state",
-          sourceId: "",
+          sourceMode: "endpoint_group",
+          sourceType: "resolved_device_collection",
+          siteId: "",
+          endpointId: "",
+          objectName: "",
           chartType: "line",
           chartTimeWindow: "24h",
           xField: "t",
@@ -76,8 +93,11 @@ export function createDefaultWidget(type: string): DashboardWidgetModel {
       return {
         ...base,
         binding: {
-          sourceType: "latest_device_state",
-          sourceId: "",
+          sourceMode: "endpoint_group",
+          sourceType: "resolved_device_collection",
+          siteId: "",
+          endpointId: "",
+          objectName: "",
           kpiFields: [] as string[],
         },
       };

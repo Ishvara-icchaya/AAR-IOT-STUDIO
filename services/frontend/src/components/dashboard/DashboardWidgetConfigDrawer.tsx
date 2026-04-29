@@ -33,6 +33,7 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
 
   const [draft, setDraft] = useState<DashboardWidgetModel | null>(null);
   const [singlePreview, setSinglePreview] = useState<Awaited<ReturnType<typeof dashApi.previewDashboard>> | null>(null);
+  const [collectionOptions, setCollectionOptions] = useState<dashApi.ResolvedDeviceCollectionSourceItem[]>([]);
 
   useEffect(() => {
     setDraft(base);
@@ -46,6 +47,25 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, closeDrawer]);
+
+  useEffect(() => {
+    if (!open || !siteId) {
+      setCollectionOptions([]);
+      return;
+    }
+    let cancelled = false;
+    void dashApi
+      .listDashboardResolvedDeviceCollectionSources(siteId)
+      .then((r) => {
+        if (!cancelled) setCollectionOptions(r?.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCollectionOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, siteId]);
 
   const draftKey = draft ? JSON.stringify(draft) : "";
 
@@ -116,6 +136,9 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
   const previewWidget = singlePreview?.widgets?.[0];
 
   const isChart = draft.type === "chart";
+  const sourceMode =
+    (draft.binding.sourceMode as "endpoint_group" | "individual_device" | undefined) ??
+    (draft.binding.sourceType === "resolved_device_collection" ? "endpoint_group" : "individual_device");
 
   return (
     <div className="dash-config-modal-backdrop" role="presentation" onClick={closeDrawer}>
@@ -146,39 +169,104 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
               </label>
 
               <label className="dash-drawer__label dash-chart-config-flow__row">
-                Source type
+                Source mode
                 <select
                   className="dash-drawer__input"
-                  value={(draft.binding.sourceType as string) || "latest_device_state"}
+                  value={sourceMode}
                   disabled={frozen}
                   onChange={(e) =>
                     setDraft({
                       ...draft,
                       binding: {
                         ...draft.binding,
-                        sourceType: e.target.value as "result_object" | "latest_device_state",
+                        sourceMode: e.target.value as "endpoint_group" | "individual_device",
+                        sourceType:
+                          e.target.value === "endpoint_group"
+                            ? "resolved_device_collection"
+                            : ("latest_device_state" as const),
                         sourceId: "",
                       },
                     })
                   }
                 >
-                  <option value="result_object">result_object</option>
-                  <option value="latest_device_state">latest_device_state</option>
+                  <option value="endpoint_group">Endpoint Group (default)</option>
+                  <option value="individual_device">Individual Device (advanced)</option>
                 </select>
               </label>
 
-              <div className="dash-chart-config-flow__row">
-                <DashboardSourceSelector
-                  siteId={siteId}
-                  sourceType={
-                    (draft.binding.sourceType as "result_object" | "latest_device_state") ||
-                    "latest_device_state"
-                  }
-                  value={String(draft.binding.sourceId ?? "")}
-                  disabled={frozen}
-                  onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
-                />
-              </div>
+              {sourceMode === "endpoint_group" ? (
+                <label className="dash-drawer__label dash-chart-config-flow__row">
+                  Endpoint Group
+                  <select
+                    className="dash-drawer__input"
+                    value={`${String(draft.binding.endpointId ?? "")}|${String(draft.binding.objectName ?? "")}`}
+                    disabled={frozen || !siteId}
+                    onChange={(e) => {
+                      const [endpointId, objectName] = e.target.value.split("|");
+                      setDraft({
+                        ...draft,
+                        binding: {
+                          ...draft.binding,
+                          sourceMode: "endpoint_group",
+                          sourceType: "resolved_device_collection",
+                          siteId: String(siteId ?? ""),
+                          endpointId: endpointId || "",
+                          objectName: objectName || "",
+                          sourceId: "",
+                        },
+                      });
+                    }}
+                  >
+                    <option value="">— Select endpoint + object —</option>
+                    {collectionOptions.map((opt) => {
+                      const v = `${opt.endpoint_id}|${opt.object_name}`;
+                      const endpointLabel = opt.endpoint_name || opt.endpoint_id.slice(0, 8);
+                      return (
+                        <option key={v} value={v}>
+                          {endpointLabel} · {opt.object_name} ({opt.resolved_device_count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              ) : (
+                <>
+                  <label className="dash-drawer__label dash-chart-config-flow__row">
+                    Source type
+                    <select
+                      className="dash-drawer__input"
+                      value={(draft.binding.sourceType as string) || "latest_device_state"}
+                      disabled={frozen}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          binding: {
+                            ...draft.binding,
+                            sourceMode: "individual_device",
+                            sourceType: e.target.value as "result_object" | "latest_device_state",
+                            sourceId: "",
+                          },
+                        })
+                      }
+                    >
+                      <option value="latest_device_state">latest_device_state</option>
+                      <option value="result_object">result_object</option>
+                    </select>
+                  </label>
+                  <div className="dash-chart-config-flow__row">
+                    <DashboardSourceSelector
+                      siteId={siteId}
+                      sourceType={
+                        (draft.binding.sourceType as "result_object" | "latest_device_state") ||
+                        "latest_device_state"
+                      }
+                      value={String(draft.binding.sourceId ?? "")}
+                      disabled={frozen}
+                      onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="dash-chart-config-flow__row dash-chart-config-flow__row--axes">
                 <DashboardChartConfigSection widget={draft} onChange={setDraft} disabled={frozen} />
@@ -199,60 +287,163 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
               </details>
             </div>
           ) : (
-            <>
-              <DashboardBindingEditor widget={draft} onChange={setDraft} disabled={frozen} siteId={siteId} />
-
-              {needsSource && (
+            <div className="dash-widget-config-grid">
+              <section className="dash-widget-config-col dash-widget-config-col--controls">
+                <h3>Widget settings</h3>
                 <label className="dash-drawer__label">
-                  Source type
-                  <select
+                  Title
+                  <input
                     className="dash-drawer__input"
-                    value={(draft.binding.sourceType as string) || "latest_device_state"}
+                    value={draft.title}
                     disabled={frozen}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        binding: {
-                          ...draft.binding,
-                          sourceType: e.target.value as "result_object" | "latest_device_state",
-                          sourceId: "",
-                        },
-                      })
-                    }
-                  >
-                    <option value="result_object">result_object</option>
-                    <option value="latest_device_state">latest_device_state</option>
-                  </select>
+                    onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  />
                 </label>
-              )}
 
-              {needsSource && (
-                <DashboardSourceSelector
-                  siteId={siteId}
-                  sourceType={
-                    (draft.binding.sourceType as "result_object" | "latest_device_state") ||
-                    "latest_device_state"
-                  }
-                  value={String(draft.binding.sourceId ?? "")}
-                  disabled={frozen}
-                  onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
-                />
-              )}
-
-              <section className="dash-drawer__preview">
-                <h3>Preview</h3>
-                {previewWidget ? (
-                  <DashboardWidgetView block={previewWidget} />
-                ) : (
-                  <p className="dash-widget__muted">Resolve preview…</p>
+                {needsSource && (
+                  <label className="dash-drawer__label">
+                    Source mode
+                    <select
+                      className="dash-drawer__input"
+                      value={String(draft.binding.sourceMode ?? "endpoint_group")}
+                      disabled={frozen}
+                      onChange={(e) => {
+                        const mode = e.target.value as "endpoint_group" | "individual_device";
+                        if (mode === "endpoint_group") {
+                          setDraft({
+                            ...draft,
+                            binding: {
+                              ...draft.binding,
+                              sourceMode: "endpoint_group",
+                              sourceType: "resolved_device_collection",
+                              sourceId: "",
+                              siteId: String(siteId ?? draft.binding.siteId ?? ""),
+                            },
+                          });
+                          return;
+                        }
+                        setDraft({
+                          ...draft,
+                          binding: {
+                            ...draft.binding,
+                            sourceMode: "individual_device",
+                            sourceType: "latest_device_state",
+                            sourceId: "",
+                          },
+                        });
+                      }}
+                    >
+                      <option value="endpoint_group">Endpoint Group (default)</option>
+                      <option value="individual_device">Individual Device (advanced)</option>
+                    </select>
+                  </label>
                 )}
+
+                {needsSource && sourceMode === "endpoint_group" && (
+                  <div className="dash-drawer__label">
+                    Endpoint Group
+                    <select
+                      className="dash-drawer__input"
+                      value={`${String(draft.binding.endpointId ?? "")}|${String(draft.binding.objectName ?? "")}`}
+                      disabled={frozen || !siteId}
+                      onChange={(e) => {
+                        const [endpointId, objectName] = e.target.value.split("|");
+                        setDraft({
+                          ...draft,
+                          binding: {
+                            ...draft.binding,
+                            sourceMode: "endpoint_group",
+                            sourceType: "resolved_device_collection",
+                            siteId: String(siteId ?? ""),
+                            endpointId: endpointId || "",
+                            objectName: objectName || "",
+                            sourceId: "",
+                          },
+                        });
+                      }}
+                    >
+                      <option value="">— Select endpoint + object —</option>
+                      {collectionOptions.map((opt) => {
+                        const v = `${opt.endpoint_id}|${opt.object_name}`;
+                        const endpointLabel = opt.endpoint_name || opt.endpoint_id.slice(0, 8);
+                        return (
+                          <option key={v} value={v}>
+                            {endpointLabel} · {opt.object_name} ({opt.resolved_device_count})
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <span className="dash-widget__muted" style={{ fontSize: "0.75rem" }}>
+                      Site scope: {siteId ?? "Select site first"}
+                    </span>
+                  </div>
+                )}
+
+                {needsSource && sourceMode === "individual_device" && (
+                  <label className="dash-drawer__label">
+                    Source type
+                    <select
+                      className="dash-drawer__input"
+                      value={(draft.binding.sourceType as string) || "latest_device_state"}
+                      disabled={frozen}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          binding: {
+                            ...draft.binding,
+                            sourceMode: "individual_device",
+                            sourceType: e.target.value as "result_object" | "latest_device_state",
+                            sourceId: "",
+                          },
+                        })
+                      }
+                    >
+                      <option value="result_object">result_object</option>
+                      <option value="latest_device_state">latest_device_state</option>
+                    </select>
+                  </label>
+                )}
+
+                {needsSource && sourceMode === "individual_device" && (
+                  <div className="dash-drawer__label">
+                    Source
+                    <DashboardSourceSelector
+                      siteId={siteId}
+                      sourceType={
+                        (draft.binding.sourceType as "result_object" | "latest_device_state") ||
+                        "latest_device_state"
+                      }
+                      value={String(draft.binding.sourceId ?? "")}
+                      disabled={frozen}
+                      onChange={(id) => setDraft({ ...draft, binding: { ...draft.binding, sourceId: id } })}
+                    />
+                  </div>
+                )}
+
+                <details className="dash-widget-config-advanced">
+                  <summary>Advanced widget options</summary>
+                  <DashboardBindingEditor widget={draft} onChange={setDraft} disabled={frozen} siteId={siteId} />
+                </details>
               </section>
 
-              <details className="dash-drawer__debug">
-                <summary>Debug JSON</summary>
-                <pre>{JSON.stringify(draft, null, 2)}</pre>
-              </details>
-            </>
+              <section className="dash-widget-config-col dash-widget-config-col--preview">
+                <h3>Preview</h3>
+                <div className="dash-widget-config-preview-pane">
+                  {previewWidget ? (
+                    <DashboardWidgetView block={previewWidget} />
+                  ) : (
+                    <p className="dash-widget__muted">Resolve preview…</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="dash-widget-config-col dash-widget-config-col--debug">
+                <h3>Debug JSON</h3>
+                <div className="dash-widget-config-debug-pane">
+                  <pre>{JSON.stringify(draft, null, 2)}</pre>
+                </div>
+              </section>
+            </div>
           )}
         </div>
         <footer className="dash-config-modal__foot dash-drawer__foot">

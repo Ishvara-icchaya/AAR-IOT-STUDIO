@@ -148,9 +148,24 @@ export type LatestDeviceStateSourceItem = {
   updated_at: string;
 };
 
+export type ResolvedDeviceCollectionSourceItem = {
+  site_id: string;
+  endpoint_id: string;
+  endpoint_name?: string | null;
+  object_name: string;
+  latest_updated_at?: string | null;
+  resolved_device_count: number;
+};
+
 export async function listDashboardLatestDeviceStateSources(siteId: string) {
   return apiFetch<{ items: LatestDeviceStateSourceItem[] }>(
     `/dashboards/sources/latest-device-states?site_id=${encodeURIComponent(siteId)}`,
+  );
+}
+
+export async function listDashboardResolvedDeviceCollectionSources(siteId: string) {
+  return apiFetch<{ items: ResolvedDeviceCollectionSourceItem[] }>(
+    `/dashboards/sources/resolved-device-collections?site_id=${encodeURIComponent(siteId)}`,
   );
 }
 

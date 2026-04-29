@@ -18,6 +18,7 @@ from app.models.dashboard import Dashboard
 from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.data_object import DataObject
 from app.models.latest_device_state import LatestDeviceState
+from app.models.endpoint import Endpoint
 from app.services.data_object_query import order_by_metadata_recency
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
@@ -38,6 +39,8 @@ from app.schemas.dashboard import (
     DashboardShareUsersResponse,
     DashboardSourcesDataObjectsResponse,
     DashboardSourcesLatestDeviceStatesResponse,
+    DashboardSourcesResolvedDeviceCollectionsResponse,
+    DashboardResolvedDeviceCollectionResponse,
     DashboardSourcesResultObjectsResponse,
     DashboardUpdate,
     DataObjectSourceRow,
@@ -48,6 +51,11 @@ from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in
 from app.services.dependency_service import dashboard_delete_dependencies
 from app.services.dashboard_default_template import default_ops_template_layout
 from app.services.dashboard_live import build_live_payload
+from app.services.dashboard_resolved_device_collection import (
+    decode_cursor,
+    list_collection_sources,
+    query_collection_page,
+)
 from app.services.dashboard_resolve import build_dashboard_live_response
 from app.services.lifecycle_actions import (
     archive_dashboard,
@@ -203,6 +211,107 @@ def list_latest_device_state_sources(
         for r in rows
     ]
     return DashboardSourcesLatestDeviceStatesResponse(items=items)
+
+
+@router.get(
+    "/sources/resolved-device-collections",
+    response_model=DashboardSourcesResolvedDeviceCollectionsResponse,
+)
+def list_resolved_device_collection_sources(
+    site_id: uuid.UUID = Query(...),
+    limit: int = Query(200, ge=1, le=500),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    items = list_collection_sources(
+        db,
+        customer_id=user.customer_id,
+        site_id=site_id,
+        limit=limit,
+    )
+    return DashboardSourcesResolvedDeviceCollectionsResponse(items=items)
+
+
+@router.get(
+    "/runtime/resolved-device-collection",
+    response_model=DashboardResolvedDeviceCollectionResponse,
+)
+def get_runtime_resolved_device_collection(
+    site_id: uuid.UUID = Query(...),
+    endpoint_id: uuid.UUID = Query(...),
+    object_name: str = Query(..., min_length=1, max_length=255),
+    lifecycle_status: str | None = Query(None),
+    health_status: str | None = Query(None),
+    device_type: str | None = Query(None),
+    limit: int = Query(25, ge=1, le=500),
+    cursor: str | None = Query(None),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+
+    ep = db.get(Endpoint, endpoint_id)
+    if not ep or ep.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    if ep.site_id != site_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "endpoint.site_id does not match site_id")
+    if not user_may_access_site(user, ep.site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+
+    decoded_cursor = None
+    if cursor and cursor.strip():
+        try:
+            decoded_cursor = decode_cursor(cursor.strip())
+        except ValueError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from e
+
+    rows, next_cursor, summary = query_collection_page(
+        db,
+        customer_id=user.customer_id,
+        site_id=site_id,
+        endpoint_id=endpoint_id,
+        object_name=object_name,
+        lifecycle_status=lifecycle_status,
+        health_status=health_status,
+        device_type=device_type,
+        limit=limit,
+        cursor=decoded_cursor,
+    )
+    items = [
+        {
+            "latest_device_state_id": st.id,
+            "resolved_device_id": st.resolved_device_id,
+            "device_label": rd.device_label if rd else None,
+            "device_type": rd.device_type if rd else None,
+            "lifecycle_status": st.lifecycle_status,
+            "health_status": st.health_status,
+            "last_event_ts": st.last_event_ts,
+            "location_json": st.location_json,
+            "identity_json": st.identity_json,
+            "display_json": st.display_json,
+            "kpi_json": st.kpi_json,
+            "health_json": st.health_json,
+            "updated_at": st.updated_at,
+            "scrubbed_event_id": st.scrubbed_event_id,
+        }
+        for st, rd in rows
+    ]
+    return DashboardResolvedDeviceCollectionResponse(
+        items=items,
+        summary=summary,
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/resolved-live", response_model=DashboardLiveResponse)

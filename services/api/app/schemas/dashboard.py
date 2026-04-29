@@ -125,6 +125,57 @@ class DashboardSourcesLatestDeviceStatesResponse(BaseModel):
     items: list[LatestDeviceStateSourceRow]
 
 
+class ResolvedDeviceCollectionSourceRow(BaseModel):
+    site_id: uuid.UUID
+    endpoint_id: uuid.UUID
+    endpoint_name: str | None = None
+    object_name: str
+    latest_updated_at: datetime | None = None
+    resolved_device_count: int = 0
+
+
+class DashboardSourcesResolvedDeviceCollectionsResponse(BaseModel):
+    items: list[ResolvedDeviceCollectionSourceRow]
+
+
+class DashboardResolvedDeviceCollectionItem(BaseModel):
+    latest_device_state_id: uuid.UUID
+    resolved_device_id: uuid.UUID
+    device_label: str | None = None
+    device_type: str | None = None
+    lifecycle_status: str
+    health_status: str | None = None
+    last_event_ts: datetime | None = None
+    location_json: dict[str, Any] | None = None
+    identity_json: dict[str, Any] = Field(default_factory=dict)
+    display_json: dict[str, Any] = Field(default_factory=dict)
+    kpi_json: dict[str, Any] = Field(default_factory=dict)
+    health_json: dict[str, Any] | None = None
+    updated_at: datetime
+    scrubbed_event_id: uuid.UUID | None = None
+
+
+class DashboardResolvedDeviceCollectionSummary(BaseModel):
+    total: int = 0
+    online: int = 0
+    late: int = 0
+    offline: int = 0
+    error: int = 0
+    healthy: int = 0
+    warning: int = 0
+    critical: int = 0
+    unknown: int = 0
+    avg_health_score: float | None = None
+
+
+class DashboardResolvedDeviceCollectionResponse(BaseModel):
+    items: list[DashboardResolvedDeviceCollectionItem] = Field(default_factory=list)
+    summary: DashboardResolvedDeviceCollectionSummary = Field(
+        default_factory=DashboardResolvedDeviceCollectionSummary
+    )
+    next_cursor: str | None = None
+
+
 class DashboardPreviewBody(BaseModel):
     """Optional layout override for builder preview (unsaved canvas)."""
 

@@ -7,11 +7,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.workflow_result_object import WorkflowResultObject
 from app.schemas.dashboard_layout import iter_widgets
 
-ALLOWED_SOURCE = frozenset({"result_object", "latest_device_state", "device_state"})
+ALLOWED_SOURCE = frozenset({"result_object", "latest_device_state", "device_state", "resolved_device_collection"})
 ALLOWED_WIDGET_TYPES = frozenset(
     {
         "table",
@@ -130,10 +131,19 @@ def validate_layout_for_save(
         st = _bget(b, "source_type", "sourceType")
         if st not in ALLOWED_SOURCE:
             errs.append(
-                f"widget {wid} requires binding source_type result_object|latest_device_state|device_state (data_object removed for v2)"
+                f"widget {wid} requires binding source_type result_object|latest_device_state|device_state|resolved_device_collection (data_object removed for v2)"
             )
             continue
         sid = _bget(b, "source_id", "sourceId")
+        if st == "resolved_device_collection":
+            endpoint_id = _bget(b, "endpoint_id", "endpointId")
+            object_name = _bget(b, "object_name", "objectName")
+            site_bind = _bget(b, "site_id", "siteId")
+            if not endpoint_id or not object_name:
+                errs.append(f"widget {wid} requires endpoint_id + object_name for resolved_device_collection")
+            if not site_bind:
+                errs.append(f"widget {wid} requires site_id in binding for resolved_device_collection")
+            continue
         if not sid:
             errs.append(f"widget {wid} requires source_id")
     if site_id is None and widgets:
@@ -192,6 +202,24 @@ def validate_sources_exist(db: Session, *, customer_id: uuid.UUID, layout: dict[
             continue
         st = _bget(b, "source_type", "sourceType")
         sid_raw = _bget(b, "source_id", "sourceId")
+        if st == "resolved_device_collection":
+            endpoint_raw = _bget(b, "endpoint_id", "endpointId")
+            object_name = str(_bget(b, "object_name", "objectName") or "").strip()
+            site_raw = _bget(b, "site_id", "siteId")
+            if not endpoint_raw or not object_name or not site_raw:
+                continue
+            try:
+                endpoint_id = uuid.UUID(str(endpoint_raw))
+                site_id = uuid.UUID(str(site_raw))
+            except ValueError:
+                errs.append(f"invalid endpoint/site binding on widget {w.get('widgetId')}")
+                continue
+            ep = db.get(Endpoint, endpoint_id)
+            if not ep or ep.customer_id != customer_id:
+                errs.append(f"endpoint {endpoint_id} not found")
+            elif ep.site_id != site_id:
+                errs.append(f"endpoint {endpoint_id} site does not match binding site_id")
+            continue
         if not sid_raw or st not in ALLOWED_SOURCE:
             continue
         try:
@@ -227,6 +255,26 @@ def validate_site_coherence(
         b = w.get("binding") or {}
         st = _bget(b, "source_type", "sourceType")
         sid_raw = _bget(b, "source_id", "sourceId")
+        if str(st).lower() == "resolved_device_collection":
+            endpoint_raw = _bget(b, "endpoint_id", "endpointId")
+            bind_site_raw = _bget(b, "site_id", "siteId")
+            if not endpoint_raw or not bind_site_raw:
+                continue
+            try:
+                endpoint_id = uuid.UUID(str(endpoint_raw))
+                bind_site = uuid.UUID(str(bind_site_raw))
+            except ValueError:
+                continue
+            if bind_site != dashboard_site_id:
+                errs.append(
+                    f"widget {w.get('widgetId')}: binding site_id does not match dashboard site"
+                )
+            ep = db.get(Endpoint, endpoint_id)
+            if ep and ep.site_id != dashboard_site_id:
+                errs.append(
+                    f"widget {w.get('widgetId')}: endpoint site does not match dashboard site"
+                )
+            continue
         if not sid_raw:
             continue
         stn = str(st).lower()
