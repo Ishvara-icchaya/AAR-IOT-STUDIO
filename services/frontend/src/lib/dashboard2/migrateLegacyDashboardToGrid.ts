@@ -2,6 +2,7 @@ import type {
   DashboardDefinition2,
   DashboardLayoutItem2,
   DashboardLayouts2,
+  DashboardWidgetBinding2,
   DashboardWidgetInstance2,
   DashboardWidgetType2,
 } from "@/types/dashboard2";
@@ -56,6 +57,28 @@ function normalizeWidgetType(raw: string | undefined): DashboardWidgetType2 {
   return "text";
 }
 
+function migrateBindingFromLegacy(legacyWidget: LegacyWidget, dashboardSiteId: string | undefined): DashboardWidgetBinding2 {
+  const b = legacyWidget.binding;
+  if (b && typeof b === "object") {
+    const raw = b as Record<string, unknown>;
+    const st = String(raw.sourceType ?? raw.source_type ?? "").trim();
+    if (st === "resolved_device_collection") {
+      return {
+        sourceType: "resolved_device_collection",
+        siteId: String(raw.siteId ?? raw.site_id ?? dashboardSiteId ?? ""),
+        endpointId: String(raw.endpointId ?? raw.endpoint_id ?? ""),
+        objectName: String(raw.objectName ?? raw.object_name ?? ""),
+      };
+    }
+  }
+  return {
+    sourceType: "resolved_device_collection",
+    siteId: String(dashboardSiteId ?? ""),
+    endpointId: "",
+    objectName: "",
+  };
+}
+
 export function migrateLegacyDashboardToGrid(d: LegacyDashboardLike): DashboardDefinition2 {
   const rows = Array.isArray(d.layout?.rows) ? d.layout?.rows ?? [] : [];
   const layoutLg: DashboardLayoutItem2[] = [];
@@ -76,13 +99,8 @@ export function migrateLegacyDashboardToGrid(d: LegacyDashboardLike): DashboardD
         id,
         type: widgetType,
         title: String(legacyWidget.title ?? "Widget"),
-        binding: {
-          sourceType: "resolved_device_collection",
-          siteId: String(d.site_id ?? ""),
-          endpointId: "",
-          objectName: "",
-        },
-        config: { ...(legacyWidget.config ?? {}), ...(legacyWidget.binding ? { legacyBinding: legacyWidget.binding } : {}) },
+        binding: migrateBindingFromLegacy(legacyWidget, d.site_id ?? undefined),
+        config: { ...(legacyWidget.config ?? {}) },
         createdAt: String(d.created_at ?? new Date().toISOString()),
         updatedAt: String(d.updated_at ?? new Date().toISOString()),
       });

@@ -170,6 +170,8 @@ export type ResolvedDeviceCollectionRuntimeItem = {
   display_json?: Record<string, unknown>;
   kpi_json?: Record<string, unknown>;
   health_json?: Record<string, unknown> | null;
+  updated_at?: string;
+  scrubbed_event_id?: string | null;
 };
 
 export type ResolvedDeviceCollectionRuntimeResponse = {
@@ -201,6 +203,8 @@ export async function fetchResolvedDeviceCollection(params: {
   lifecycleStatus?: string;
   healthStatus?: string;
   deviceType?: string;
+  /** When true, API omits rows without lat/lon and sets summary.excluded_missing_location. */
+  requireLocation?: boolean;
 }) {
   const query = new URLSearchParams();
   query.set("site_id", params.siteId);
@@ -211,6 +215,7 @@ export async function fetchResolvedDeviceCollection(params: {
   if (params.lifecycleStatus) query.set("lifecycle_status", params.lifecycleStatus);
   if (params.healthStatus) query.set("health_status", params.healthStatus);
   if (params.deviceType) query.set("device_type", params.deviceType);
+  if (params.requireLocation) query.set("require_location", "true");
   return apiFetch<ResolvedDeviceCollectionRuntimeResponse>(
     `/dashboards/runtime/resolved-device-collection?${query.toString()}`,
     { cache: "no-store" },

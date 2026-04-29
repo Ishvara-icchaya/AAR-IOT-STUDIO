@@ -10,5 +10,5 @@ export function Dashboard2LivePage() {
   if (loading) return <p className="dm-empty">Loading Dashboard2 live…</p>;
   if (error) return <p className="dm-empty">{error}</p>;
   if (!dashboard) return <p className="dm-empty">Dashboard not found.</p>;
-  return <DashboardLiveScreen2 dashboard={dashboard} />;
+  return <DashboardLiveScreen2 dashboard={dashboard} dashboardId={dashboardId ?? dashboard.id} />;
 }

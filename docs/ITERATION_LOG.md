@@ -5,6 +5,49 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Phase 11: Dashboard2 review UX, widget states, map overlays, demo seed
+
+Polished the flag-gated Dashboard2 review path and runtime shell without changing legacy `/dashboard/:id/edit|live` routes (comment in `services/frontend/src/App.tsx`).
+
+**Frontend**
+- `Dashboard2ReviewPage`: API-backed dashboard list, search, demo highlight, links to live/edit/preview and legacy editor.
+- `DashboardRuntimeGrid` + `DashboardRuntimeDataProvider`: loading/error/empty (table) states; `lastFetchedAt` per resolved-collection binding; `refreshVersion` ties live auto-refresh to refetch.
+- `DashboardLiveScreen2`, `Dashboard2PreviewPage`, `Dashboard2EditPage`: navigation between review, live, edit, preview, legacy.
+- `LocationHeadingMapWidget`: map legend + summary overlay; `dashboard2.css` extended (review layout, overlays, `.dm-sr-only`).
+- `normalizeDashboard2Definition`: accept schema v2 blob embedded in `layout`; `migrateLegacyDashboardToGrid`: preserve `resolved_device_collection` bindings from legacy JSON.
+- `lib/dashboard2/demoConstants.ts`: shared demo dashboard title.
+
+**Backend**
+- `services/api/app/core/dashboard2_demo_seed.py`: idempotent startup seed for **Demo — Fleet / Map (Dashboard2)** (v1 layout passing validation); wired from `services/api/app/main.py` after bootstrap admin.
+- `services/api/tests/test_dashboard2_demo_seed.py`: layout validation smoke.
+
+**Docs / repo layout**
+- `docs/DASHBOARD2_REVIEW.md`: manual verification checklist (screenshots not stored in-repo).
+- `README.md`: Phase 11 summary.
+- `services/platform-api/README.md`: pointer stub for cross-service docs.
+
+Validation: `pytest tests/test_dashboard2_demo_seed.py tests/test_dashboard_endpoint_group_acceptance.py`; `npm --prefix services/frontend run lint` + `run build`.
+
+---
+
+## 2026-04-29 — Phase 10: resolved-device-collection runtime contract (map, summary, rollups/trends)
+
+Hardened `GET /api/v1/dashboards/runtime/resolved-device-collection` and dashboard2 consumers around real payloads:
+
+- **Backend** (`services/api/app/services/dashboard_resolved_device_collection.py`): refactored ranked LDS subquery; added `require_location` + SQL filter on non-empty `location_json.lat`/`lon`; `summary.excluded_missing_location` via `count_deduped_missing_location`; optional `include_excluded_missing_location_count` so multi-page internal loads skip repeat counts while HTTP pages keep a correct excluded count.
+- **API** (`services/api/app/api/v1/dashboard.py`, `services/api/app/schemas/dashboard.py`): query param `require_location`; response always includes `rollups` and `trends` (empty objects for now); summary includes `excluded_missing_location`.
+- **Live map** (`services/api/app/services/dashboard_live.py`): `location_heading_map` treated like `map`/`fleet_map`; `_load_resolved_collection_rows(..., require_location=True)` for resolved-collection map so markers stay LDS-only with server-side coordinate filtering.
+- **Frontend** (`services/frontend/src/api/dashboard.ts`, `DashboardRuntimeDataProvider.tsx`, `LocationHeadingMapWidget.tsx`): `requireLocation` on fetch when the binding is used only by `location_heading_map`; map meta shows excluded count; runtime item types include `updated_at` / `scrubbed_event_id`.
+- **Tests** (`services/api/tests/test_dashboard_endpoint_group_acceptance.py`): OpenAPI contract assertions; map/load `require_location=True` for `map` and `location_heading_map`.
+
+Intent: Phase 10 runtime/data contract verification—map payload shape unchanged (items from `latest_device_state` read model), explicit missing-GPS cohort count, stable keys for KPI/health (`summary`) and placeholder `rollups`/`trends` for chart/trend widgets.
+
+Validation: `pytest tests/test_dashboard_endpoint_group_acceptance.py`; `npm --prefix services/frontend run lint` and `run build`.
+
+Follow-ups: populate `rollups` / `trends` from time-series storage when product defines those aggregates; optional nested `gps.lat`/`gps.lon` if LDS payloads standardize on nested paths.
+
+---
+
 ## 2026-04-29 — v7 Phase 9: dashboard2 route integration and safe review gating
 
 Integrated Dashboard 2.0 for safe runtime review behind feature flag, without touching legacy dashboard edit/live routes:

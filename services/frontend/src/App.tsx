@@ -120,6 +120,7 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardResolvedPage />} />
               <Route path="/dashboard/list" element={<DashboardListPage />} />
               <Route path="/dashboard/create" element={<DashboardCreatePage />} />
+              {/* Legacy dashboard builder & live (unchanged); Dashboard2 uses /dashboard2/... when flag enabled. */}
               <Route path="/dashboard/:dashboardId/edit" element={<DashboardBuilderPage />} />
               <Route path="/dashboard/:dashboardId/live" element={<DashboardLivePage />} />
               {DASHBOARD2_ENABLED ? (

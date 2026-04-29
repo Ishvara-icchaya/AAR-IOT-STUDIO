@@ -70,6 +70,25 @@ export function LocationHeadingMapWidget({
     [collection],
   );
 
+  const legend = useMemo(() => {
+    if (cfg.markerColorMode === "lifecycle_status") {
+      return [
+        { label: "Online (default)", color: "#60a5fa" },
+        { label: "Late", color: "#f59e0b" },
+        { label: "Offline", color: "#9ca3af" },
+        { label: "Error", color: "#a855f7" },
+      ];
+    }
+    return [
+      { label: "Healthy", color: "#22c55e" },
+      { label: "Warning", color: "#f59e0b" },
+      { label: "Critical", color: "#ef4444" },
+      { label: "Other / lifecycle", color: "#60a5fa" },
+    ];
+  }, [cfg.markerColorMode]);
+
+  const summary = collection?.summary as Record<string, unknown> | undefined;
+
   useEffect(() => {
     if (!mapNode.current || mapRef.current) return;
     const map = new maplibregl.Map({
@@ -144,8 +163,50 @@ export function LocationHeadingMapWidget({
       <div className="dashboard2-map-widget__meta">
         <span>{mode.toUpperCase()}</span>
         <span>Devices: {points.length}</span>
+        {typeof collection?.summary?.excluded_missing_location === "number" &&
+        collection.summary.excluded_missing_location > 0 ? (
+          <span className="dashboard2-map-widget__excluded">
+            No coordinates: {String(collection.summary.excluded_missing_location)}
+          </span>
+        ) : null}
       </div>
-      <div ref={mapNode} className="dashboard2-map-widget__canvas" />
+      <div className="dashboard2-map-widget__canvas-wrap">
+        <div ref={mapNode} className="dashboard2-map-widget__canvas" />
+        <div className="dashboard2-map-widget__overlay dashboard2-map-widget__overlay--legend" aria-label="Marker legend">
+          <div className="dashboard2-map-legend__title">Legend</div>
+          <ul className="dashboard2-map-legend">
+            {legend.map((row) => (
+              <li key={row.label}>
+                <span className="dashboard2-map-legend__swatch" style={{ background: row.color }} />
+                <span>{row.label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {summary ? (
+          <div className="dashboard2-map-widget__overlay dashboard2-map-widget__overlay--summary" aria-label="Collection summary">
+            <div className="dashboard2-map-summary__title">Summary</div>
+            <dl className="dashboard2-map-summary">
+              <div>
+                <dt>Total</dt>
+                <dd>{String(summary.total ?? "—")}</dd>
+              </div>
+              <div>
+                <dt>Online</dt>
+                <dd>{String(summary.online ?? "—")}</dd>
+              </div>
+              <div>
+                <dt>Healthy</dt>
+                <dd>{String(summary.healthy ?? "—")}</dd>
+              </div>
+              <div>
+                <dt>Critical</dt>
+                <dd>{String(summary.critical ?? "—")}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

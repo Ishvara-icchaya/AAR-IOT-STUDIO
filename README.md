@@ -235,6 +235,15 @@ Set in frontend env for review:
 VITE_DASHBOARD2_ENABLED=true
 ```
 
+### Phase 11 complete — review UX, widget states, demo seed
+
+- **Review hub** (`/dashboard2/review`): lists dashboards from the API with search, demo row highlight, and links to live / edit / preview plus **Legacy edit** (`/dashboard/:id/edit`).
+- **Runtime grid**: loading / error / empty (table) states; **Updated** clock per widget for `resolved_device_collection` bindings; live **auto-refresh** re-fetches runtime data via `refreshVersion`.
+- **Map**: legend + summary overlay on `LocationHeadingMapWidget`; live / preview / edit headers link back to review and across modes.
+- **Demo dashboard**: API startup seeds draft **Demo — Fleet / Map (Dashboard2)** when a site + endpoint exist (`services/api/app/core/dashboard2_demo_seed.py`). Name is mirrored in `services/frontend/src/lib/dashboard2/demoConstants.ts`.
+- **Migration**: legacy `resolved_device_collection` bindings are preserved when normalizing v1 layouts to the v2 grid (`migrateLegacyDashboardToGrid.ts`); v2 payloads may also live **inside** `layout` (`normalizeDashboard2Definition.ts`).
+- **Docs**: `docs/DASHBOARD2_REVIEW.md` (manual verification notes). `services/platform-api/README.md` placeholder for cross-service docs.
+
 ## License
 
 Proprietary — assign per your organization.

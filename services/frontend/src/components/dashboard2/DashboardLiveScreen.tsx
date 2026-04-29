@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { DashboardDefinition2 } from "@/types/dashboard2";
 import { DashboardRuntimeGrid } from "./DashboardRuntimeGrid";
 import { useDashboard2AutoRefresh } from "./useDashboard2AutoRefresh";
 
 export function DashboardLiveScreen2({
   dashboard,
+  dashboardId,
   canRefresh = true,
 }: {
   dashboard: DashboardDefinition2;
+  dashboardId: string;
   canRefresh?: boolean;
 }) {
   const [refreshTick, setRefreshTick] = useState(0);
@@ -32,14 +35,31 @@ export function DashboardLiveScreen2({
   return (
     <section className="dashboard2-live-shell" data-refresh-tick={refreshTick}>
       <header className="dashboard2-live-shell__header">
-        <h2>{dashboard.name}</h2>
+        <div className="dashboard2-live-shell__title-row">
+          <h2>{dashboard.name}</h2>
+          <nav className="dashboard2-live-shell__nav" aria-label="Dashboard actions">
+            <Link className="aar-btn aar-btn--outline dm-btn dm-btn--outline" to={`/dashboard2/${dashboardId}/edit`}>
+              Edit
+            </Link>
+            <Link className="aar-btn aar-btn--outline dm-btn dm-btn--outline" to="/dashboard2/review">
+              Review hub
+            </Link>
+            <Link
+              className="aar-btn aar-btn--outline dm-btn dm-btn--outline dashboard2-live-shell__legacy"
+              to={`/dashboard/${dashboardId}/edit`}
+              title="Classic builder (unchanged)"
+            >
+              Legacy edit
+            </Link>
+          </nav>
+        </div>
         <div className="dashboard2-live-shell__meta">
           <span>Read-only runtime</span>
           <span>Auto refresh: {canRefresh ? `${refreshSec}s` : "disabled"}</span>
-          <span>Last refresh: {new Date(lastRefreshedAt).toLocaleTimeString()}</span>
+          <span>Shell refresh: {new Date(lastRefreshedAt).toLocaleTimeString()}</span>
         </div>
       </header>
-      <DashboardRuntimeGrid dashboard={dashboard} mode="live" />
+      <DashboardRuntimeGrid dashboard={dashboard} mode="live" refreshVersion={refreshTick} />
     </section>
   );
 }
