@@ -585,6 +585,13 @@
   vertical-align: middle;
 }
 
+.dm-data-table__th-label-with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+
 .dm-data-table__td--actions .dm-act-grid {
   justify-content: center;
 }

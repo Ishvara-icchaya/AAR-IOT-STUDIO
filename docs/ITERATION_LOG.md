@@ -5,6 +5,42 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 1: Dashboard 2.0 foundation scaffold
+
+Added additive Dashboard 2.0 frontend scaffolding (no runtime wiring replacement yet):
+- Installed `react-grid-layout` + `react-resizable` in frontend dependencies.
+- Added v2 dashboard definition/layout/widget/binding types in `services/frontend/src/types/dashboard2.ts`.
+- Added v2 widget registry and runtime renderer scaffold:
+  - `services/frontend/src/components/dashboard2/DashboardWidgetRegistry.tsx`
+  - `services/frontend/src/components/dashboard2/DashboardWidgetRuntimeRenderer.tsx`
+- Added v2 widget frame/chrome in `services/frontend/src/components/dashboard2/DashboardWidgetCard.tsx`.
+- Added v2 grid shells:
+  - `DashboardDesignerGrid` (draggable/resizable)
+  - `DashboardRuntimeGrid` (preview/live read-only)
+- Added isolated v2 stylesheet namespace in `services/frontend/src/components/dashboard2/dashboard2.css`.
+
+Intent: establish a clean Dashboard 2.0 architecture surface without disturbing existing Dashboard Edit page behavior or current data wiring.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up (Phase 2): introduce legacy-to-grid compatibility/migration helpers and schema-version aware shape handling.
+
+---
+
+## 2026-04-29 — v7 kickoff: Dashboard List actions icon polish (UI-only)
+
+Added an icon to the Dashboard List Actions column header without changing dashboard edit/runtime behavior:
+- Updated `services/frontend/src/pages/dashboard/DashboardListPage.tsx` to show a `MoreHorizontal` icon next to `Actions`.
+- Added shared header-icon alignment helper `.dm-data-table__th-label-with-icon` in `services/frontend/src/pages/device-register-page.css`.
+
+Intent: improve dashboard list visual clarity while keeping all existing data wiring, action handlers, and dashboard edit page logic unchanged.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up: proceed with Dashboard 2.0 phased architecture refactor (designer/preview/live separation) in isolated milestones to avoid regressions.
+
+---
+
 ## 2026-04-29 — Temporarily disabled preview-isolation CSS block
 
 Per request, commented out the new builder preview-isolation CSS section in `services/frontend/src/index.css` to defer this fix:

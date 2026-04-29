@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Copy,
   Lock,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
@@ -469,7 +470,10 @@ export function DashboardListPage() {
                       Updated
                     </th>
                     <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
-                      Actions
+                      <span className="dm-data-table__th-label-with-icon">
+                        <MoreHorizontal size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                        Actions
+                      </span>
                     </th>
                   </tr>
                 </thead>

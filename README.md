@@ -121,6 +121,21 @@ Runtime collection ordering/cursor are deterministic:
 
 1. Implement **Restore to Default** (full reset) per §0.7 — orchestration + reseed.
 
+## Dashboard 2.0 (v7) phased rollout
+
+### Phase 1 complete — foundation scaffold
+
+- Added `dashboard2` foundational frontend models in `services/frontend/src/types/dashboard2.ts`.
+- Added a central v2 widget registry scaffold in `services/frontend/src/components/dashboard2/DashboardWidgetRegistry.tsx`.
+- Added reusable v2 widget frame/chrome in `services/frontend/src/components/dashboard2/DashboardWidgetCard.tsx`.
+- Added initial `React Grid Layout` based grids:
+  - `DashboardDesignerGrid` (draggable/resizable),
+  - `DashboardRuntimeGrid` (read-only preview/live shell).
+- Added `dashboard2.css` with isolated class namespace:
+  - `dashboard-designer`, `dashboard-preview`, `dashboard-live`, `dashboard-widget-card`.
+
+This phase is additive scaffolding only and does not change existing Dashboard Edit page data wiring or behavior.
+
 ## License
 
 Proprietary — assign per your organization.
