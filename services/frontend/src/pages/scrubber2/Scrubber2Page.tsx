@@ -5,7 +5,6 @@ import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { listDevices } from "@/api/devices";
-import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
@@ -505,10 +504,6 @@ export function Scrubber2Page() {
       />
 
       <p className="scrubber2-publish-hint">{PUBLISH_PIPELINE_BUTTON_HINT}</p>
-
-      <div className="dm-page-hero__scope">
-        <OpsScopeControls variant="inline" timeRangeLabel="Time range" />
-      </div>
 
       <div className="scrubber2-toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
         <label className="scrubber2-muted" style={{ fontSize: "0.75rem" }}>

@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-28 — Scrubber 2.0: remove hero scope strip
+
+Removed `dm-page-hero__scope` block (inline `OpsScopeControls` / time range) from `Scrubber2Page.tsx`; dropped unused `.dm-page-hero__scope` rules from `device-register-page.css`.
+
+---
+
 ## 2026-04-28 — Split `ba8d19c` into five commits (crash-safer history)
 
 Replaced single squash with sequential commits on `v2-endpoints-rebuild`:
