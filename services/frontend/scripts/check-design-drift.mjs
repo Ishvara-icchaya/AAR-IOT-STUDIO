@@ -15,6 +15,7 @@ const PAGES_ROOT = path.join(SRC_ROOT, "pages");
 
 const NATIVE_DIALOG = /\bwindow\.(confirm|alert|prompt)\s*\(/;
 const LEGACY_CLASS = /\bdm-(pill|table-pager__btn)\b/;
+const LEGACY_PAGER_BTN = /\bop-table-pager__btn\b/;
 const SCRUBBER_BTN = /\bscrubber2-btn\b/;
 const HEX = /#[0-9a-fA-F]{3,8}\b/;
 
@@ -55,6 +56,13 @@ function checkFile(absPath) {
         file: rel(absPath),
         line: lineNo,
         message: "Forbidden legacy class string (dm-pill / dm-table-pager__btn).",
+      });
+    }
+    if (LEGACY_PAGER_BTN.test(line)) {
+      findings.push({
+        file: rel(absPath),
+        line: lineNo,
+        message: "Forbidden legacy class op-table-pager__btn — use AarButton + op-table-pager__action (PlainOperationalTable pattern).",
       });
     }
     if (SCRUBBER_BTN.test(line) && !inScrubberEditor) {

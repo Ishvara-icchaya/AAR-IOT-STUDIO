@@ -134,6 +134,18 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
   }
 
   const previewWidget = singlePreview?.widgets?.[0];
+  const previewWidgetNoTitle = previewWidget
+    ? {
+        ...previewWidget,
+        config: {
+          ...(previewWidget.config ?? {}),
+          presentation: {
+            ...((previewWidget.config as { presentation?: Record<string, unknown> } | undefined)?.presentation ?? {}),
+            showTitle: false,
+          },
+        },
+      }
+    : null;
 
   const isChart = draft.type === "chart";
   const sourceMode =
@@ -274,8 +286,11 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
 
               <section className="dash-drawer__preview dash-chart-config-flow__row dash-chart-config-flow__row--preview">
                 <h3>Chart preview</h3>
-                {previewWidget ? (
-                  <DashboardWidgetView block={previewWidget} />
+                {previewWidgetNoTitle ? (
+                  <>
+                    <div className="dash-widget-config-preview-title">{draft.title || "Widget preview"}</div>
+                    <DashboardWidgetView block={previewWidgetNoTitle} />
+                  </>
                 ) : (
                   <p className="dash-widget__muted">Resolve preview…</p>
                 )}
@@ -429,8 +444,11 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
               <section className="dash-widget-config-col dash-widget-config-col--preview">
                 <h3>Preview</h3>
                 <div className="dash-widget-config-preview-pane">
-                  {previewWidget ? (
-                    <DashboardWidgetView block={previewWidget} />
+                  {previewWidgetNoTitle ? (
+                    <>
+                      <div className="dash-widget-config-preview-title">{draft.title || "Widget preview"}</div>
+                      <DashboardWidgetView block={previewWidgetNoTitle} />
+                    </>
                   ) : (
                     <p className="dash-widget__muted">Resolve preview…</p>
                   )}

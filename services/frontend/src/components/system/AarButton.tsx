@@ -7,10 +7,10 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variantClass: Record<AarButtonVariant, string> = {
-  primary: "dm-btn dm-btn--primary",
-  outline: "dm-btn dm-btn--outline",
-  danger: "dm-btn dm-btn--danger",
-  warning: "dm-btn dm-btn--warning",
+  primary: "aar-btn aar-btn--primary dm-btn dm-btn--primary",
+  outline: "aar-btn aar-btn--outline dm-btn dm-btn--outline",
+  danger: "aar-btn aar-btn--danger dm-btn dm-btn--danger",
+  warning: "aar-btn aar-btn--warning dm-btn dm-btn--warning",
 };
 
 export function AarButton({ variant = "outline", className, type = "button", ...rest }: Props) {

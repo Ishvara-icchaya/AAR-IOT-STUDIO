@@ -538,10 +538,169 @@ export function Scrubber2StepContent({
           </div>
         )}
         {model.health.mode === "simple_rules" && (
-          <div className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: "0.35rem" }}>
-            Configure rules in mapping JSON (advanced) or extend this step in a follow-up. Defaults to green when no
-            rule matches.
-          </div>
+          <>
+            <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: "0.35rem", marginBottom: 0 }}>
+              Lower priority number is evaluated first. First matching rule wins; otherwise the default status applies.
+            </p>
+            <label style={{ display: "block", marginTop: "0.5rem" }}>
+              <span className="scrubber2-muted">Default when no rule matches</span>
+              <select
+                className="scrubber2-input"
+                style={{ display: "block", marginTop: 4, minWidth: 160 }}
+                value={String(cfg.default_status ?? "green")}
+                onChange={(e) =>
+                  setModel((m) => ({
+                    ...m,
+                    health: {
+                      ...m.health,
+                      config: { ...m.health.config, default_status: e.target.value },
+                    },
+                  }))
+                }
+              >
+                <option value="green">green</option>
+                <option value="yellow">yellow</option>
+                <option value="red">red</option>
+              </select>
+            </label>
+            <div className="scrubber2-toolbar" style={{ marginTop: "0.5rem" }}>
+              <button
+                type="button"
+                className="scrubber2-btn scrubber2-btn--ghost"
+                onClick={() =>
+                  setModel((m) => {
+                    const c = m.health.config;
+                    const rr = Array.isArray(c.rules) ? [...c.rules] : [];
+                    rr.push({
+                      name: `rule${rr.length + 1}`,
+                      condition: "",
+                      status: "yellow",
+                      priority: String((rr.length + 1) * 10),
+                      code: "",
+                      message: "",
+                    });
+                    return { ...m, health: { ...m.health, config: { ...c, rules: rr } } };
+                  })
+                }
+              >
+                Add rule
+              </button>
+            </div>
+            <div className="scrubber2-table-scroll" style={{ marginTop: "0.35rem" }}>
+              <table className="scrubber2-table">
+                <thead>
+                  <tr>
+                    <th>Priority</th>
+                    <th>Condition</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {!Array.isArray(cfg.rules) || cfg.rules.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="scrubber2-muted" style={{ padding: "0.75rem" }}>
+                        No rules yet. Use default only, or add rules (e.g. path checks you will wire in mapping JSON).
+                      </td>
+                    </tr>
+                  ) : (
+                    cfg.rules.map((rawRow, i) => {
+                      const row = isObjectRecord(rawRow) ? rawRow : {};
+                      return (
+                        <tr key={i}>
+                          <td>
+                            <input
+                              className="scrubber2-input"
+                              style={{ width: 72 }}
+                              value={String(row.priority ?? "")}
+                              onChange={(e) =>
+                                setModel((m) => {
+                                  const c = m.health.config;
+                                  const rr = Array.isArray(c.rules) ? [...c.rules] : [];
+                                  const prev = isObjectRecord(rr[i]) ? rr[i] : {};
+                                  rr[i] = { ...prev, priority: e.target.value };
+                                  return { ...m, health: { ...m.health, config: { ...c, rules: rr } } };
+                                })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              className="scrubber2-input"
+                              style={{ minWidth: 140 }}
+                              placeholder="e.g. path or expression"
+                              value={String(row.condition ?? "")}
+                              onChange={(e) =>
+                                setModel((m) => {
+                                  const c = m.health.config;
+                                  const rr = Array.isArray(c.rules) ? [...c.rules] : [];
+                                  const prev = isObjectRecord(rr[i]) ? rr[i] : {};
+                                  rr[i] = { ...prev, condition: e.target.value };
+                                  return { ...m, health: { ...m.health, config: { ...c, rules: rr } } };
+                                })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <select
+                              className="scrubber2-input"
+                              value={String(row.status ?? "yellow")}
+                              onChange={(e) =>
+                                setModel((m) => {
+                                  const c = m.health.config;
+                                  const rr = Array.isArray(c.rules) ? [...c.rules] : [];
+                                  const prev = isObjectRecord(rr[i]) ? rr[i] : {};
+                                  rr[i] = { ...prev, status: e.target.value };
+                                  return { ...m, health: { ...m.health, config: { ...c, rules: rr } } };
+                                })
+                              }
+                            >
+                              <option value="green">green</option>
+                              <option value="yellow">yellow</option>
+                              <option value="red">red</option>
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              className="scrubber2-input"
+                              style={{ minWidth: 120 }}
+                              placeholder="Optional"
+                              value={String(row.message ?? "")}
+                              onChange={(e) =>
+                                setModel((m) => {
+                                  const c = m.health.config;
+                                  const rr = Array.isArray(c.rules) ? [...c.rules] : [];
+                                  const prev = isObjectRecord(rr[i]) ? rr[i] : {};
+                                  rr[i] = { ...prev, message: e.target.value };
+                                  return { ...m, health: { ...m.health, config: { ...c, rules: rr } } };
+                                })
+                              }
+                            />
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="scrubber2-btn scrubber2-btn--ghost"
+                              onClick={() =>
+                                setModel((m) => {
+                                  const c = m.health.config;
+                                  const rr = Array.isArray(c.rules) ? c.rules.filter((_, j) => j !== i) : [];
+                                  return { ...m, health: { ...m.health, config: { ...c, rules: rr } } };
+                                })
+                              }
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
         {model.health.mode === "threshold_reference_json" && (
           <textarea

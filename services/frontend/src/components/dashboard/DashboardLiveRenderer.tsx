@@ -45,7 +45,7 @@ export function DashboardLiveRenderer({
   /** Enterprise landing: enables map side panel (object counts by site). */
   enterpriseMode?: boolean;
   fitPage?: boolean;
-  layoutDensity?: "default" | "reference";
+  layoutDensity?: "default" | "reference" | "preview";
 }) {
   const list = Array.isArray(widgets) ? widgets : [];
   const byId = Object.fromEntries(list.map((w) => [w.widget_id, w])) as Record<string, DashboardLiveWidgetDTO>;
@@ -67,15 +67,16 @@ export function DashboardLiveRenderer({
 
   const rootClass = [
     "dash-live",
-    fitPage && layoutDensity !== "reference" ? "dash-live--fit-page" : "",
+    fitPage && layoutDensity !== "reference" && layoutDensity !== "preview" ? "dash-live--fit-page" : "",
     layoutDensity === "reference" ? "dash-live--reference" : "",
+    layoutDensity === "preview" ? "dash-live--preview" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
     <DashboardLiveProvider value={runtime}>
-      <DashboardRuntimeShell fitPage={fitPage && layoutDensity !== "reference"}>
+      <DashboardRuntimeShell fitPage={fitPage && layoutDensity !== "reference" && layoutDensity !== "preview"}>
         <div className={rootClass}>
           <Suspense
             fallback={
@@ -87,7 +88,7 @@ export function DashboardLiveRenderer({
             <DashboardResponsiveGridLazy
               rows={rows}
               widgetsById={byId}
-              fitPage={fitPage && layoutDensity !== "reference"}
+              fitPage={fitPage && layoutDensity !== "reference" && layoutDensity !== "preview"}
               renderedAt={renderedAt}
               hideRenderedMeta={layoutDensity === "reference"}
             />

@@ -18,6 +18,7 @@ import * as dashApi from "@/api/dashboard";
 import type { DashboardListItemDTO } from "@/types/dashboard";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
+import { AarButton } from "@/components/system/AarButton";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
@@ -278,7 +279,7 @@ export function DashboardListPage() {
           }
           subtitle="Create dashboard — build or edit Dashboard; return to the list anytime."
           actions={
-            <Link to="/dashboard/create" className="dm-btn dm-btn--primary">
+            <Link to="/dashboard/create" className="aar-btn aar-btn--primary dm-btn dm-btn--primary">
               <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
               Create dashboard
             </Link>
@@ -411,9 +412,9 @@ export function DashboardListPage() {
               >
                 Clear filters
               </button>
-              <button type="submit" className="dm-btn dm-btn--primary dm-btn--search" disabled={tableLoading}>
+              <AarButton type="submit" variant="primary" className="aar-btn--search dm-btn--search" disabled={tableLoading}>
                 Search
-              </button>
+              </AarButton>
             </div>
           </form>
         </OpsFilterPanel>

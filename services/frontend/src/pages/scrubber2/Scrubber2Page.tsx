@@ -372,8 +372,8 @@ export function Scrubber2Page() {
     if (!okPreview) return;
     const okSave = await saveDraft();
     if (!okSave) return;
-    setOk("Saved. Returning to Manage Devices…");
-    navigate("/devices/register#registered-devices-table");
+    setOk("Saved. Returning to pipelines list…");
+    navigate("/scrubber/v2/pipelines");
   }, [runScrubberPreview, saveDraft, navigate]);
 
   /** Canonical live publish: legacy studio draft + version bump + publishedBody; keeps scrubber2.model in sync. */

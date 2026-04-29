@@ -1,0 +1,12 @@
+{
+  "name": "aar-iot-studio",
+  "private": true,
+  "description": "Monorepo root — UI and scripts live under services/",
+  "scripts": {
+    "build": "npm run build --prefix services/frontend",
+    "build:frontend": "npm run build --prefix services/frontend",
+    "dev": "npm run dev --prefix services/frontend",
+    "lint": "npm run lint --prefix services/frontend",
+    "lint:design": "npm run lint:design --prefix services/frontend"
+  }
+}

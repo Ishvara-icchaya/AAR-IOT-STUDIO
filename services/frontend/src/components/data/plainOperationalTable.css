@@ -159,24 +159,8 @@
   gap: 0.5rem;
 }
 
-.op-table-pager__btn {
+/* Pager actions use AarButton — compact sizing (replaces legacy op-table-pager__btn). */
+.op-table-pager__controls .op-table-pager__action {
   padding: 0.28rem 0.65rem;
-  border-radius: 6px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text);
   font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.op-table-pager__btn:hover:not(:disabled) {
-  border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-border));
-  color: var(--color-accent);
-}
-
-.op-table-pager__btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }

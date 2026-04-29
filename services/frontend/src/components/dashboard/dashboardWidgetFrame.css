@@ -54,6 +54,11 @@
   padding-top: 0.04rem;
 }
 
+/* KPI strip can render large icon fonts; avoid clipping ascenders in compact containers. */
+.dash-wf--kpi-strip {
+  overflow: visible;
+}
+
 .dash-wf__header-actions {
   flex-shrink: 0;
   display: flex;

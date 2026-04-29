@@ -5,6 +5,67 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Temporarily disabled preview-isolation CSS block
+
+Per request, commented out the new builder preview-isolation CSS section in `services/frontend/src/index.css` to defer this fix:
+- Disabled `.dash-live--preview` layout rules (row/grid/stack/widget/map/chart overrides).
+- Disabled preview-only widget/container override block tied to `dash-preview-panel__scroll--fit`.
+- Left explicit TODO markers so this section can be re-enabled/refined later.
+
+Intent: pause unstable preview behavior changes and revisit with a focused fix later.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up: when resuming, isolate one preview path at a time (right rail vs configure modal) and validate computed styles in-browser before adding global overrides.
+
+---
+
+## 2026-04-29 — Hard separation: live fit-page vs builder preview runtime
+
+Implemented runtime-mode and CSS separation so right-rail preview no longer uses live full-page fit behavior:
+- `services/frontend/src/components/dashboard/DashboardPreviewPanel.tsx`: preview now renders `DashboardLiveRenderer` with `fitPage={false}` and `layoutDensity="preview"`.
+- `services/frontend/src/components/dashboard/DashboardLiveRenderer.tsx`: added `"preview"` layout density, `dash-live--preview` class, and excluded preview from fit-page logic in both runtime shell and responsive-grid fit wiring.
+- `services/frontend/src/index.css`: removed shared comma-coupled live+preview selector usage in the live dashboard tile/tuning block and kept those rules live-only.
+- Added preview-only structural rules (`.dash-live--preview`, `.dash-live--preview .dash-row`, `.dash-live--preview .dash-widget-stack`, `.dash-live--preview .dash-wf`, map/chart min-heights) and adjusted preview widget container behavior (`container-type: inline-size`, natural height flow).
+- Builder rail dimensions retained for isolation (`.dash-builder` right rail min 360, `.dash-preview-panel` min-width 360, min-height 0).
+
+Intent: preserve live dashboard full-page weighted/flex behavior while making builder preview natural-height, scrollable, and independent of live compression rules.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up: if a specific widget still clips in preview, tune only that widget’s `.dash-live--preview` subtree styles instead of re-introducing shared live+preview selectors.
+
+---
+
+## 2026-04-29 — Dashboard builder preview/live CSS separation and right-rail sizing fix
+
+Applied preview-specific layout rules in `services/frontend/src/index.css` so builder preview does not inherit live-dashboard compression behavior:
+- Updated `.dash-builder` columns to `11rem minmax(0, 1fr) minmax(360px, 30vw)` and set `.dash-preview-panel` minimum width to `360px`.
+- Kept preview scroll containers independently scrollable and changed preview `.dash-live`/`.dash-row`/`.dash-widget-stack` to natural-height flow in right rail.
+- Added explicit preview widget sizing for map/chart (`min-height`), removed map flex dominance in preview (`flex: none !important`), and added preview-only overrides to prevent live container-size/flex rules from forcing full-height compression.
+
+Intent: separate live-page sizing from builder-preview sizing so widget sections stop mixing/stacking incorrectly in the narrow preview rail.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up: if any single widget still over-compresses, tune that widget's preview-specific body wrapper rather than re-coupling to live page selectors.
+
+---
+
+## 2026-04-29 — Dashboard preview clipping fix (all widgets, structural)
+
+Reworked Configure Widget preview rendering to avoid frame-header clipping across all widget types:
+- Updated `services/frontend/src/components/dashboard/DashboardWidgetConfigDrawer.tsx` to render a dedicated preview title row above the widget preview and to force `presentation.showTitle = false` for the preview-only block.
+- Added `.dash-widget-config-preview-title` styling in `services/frontend/src/index.css` for consistent spacing/typography in both chart and non-chart configure flows.
+
+Intent: remove dependence on fragile per-widget/per-class overflow overrides by making preview titles deterministic and outside widget frame clipping contexts.
+
+Validation: `npm --prefix services/frontend run lint` passed.
+
+Follow-up: if clipping is still observed in preview content (not header text), the next step is auditing content-body height/overflow in `DashboardWidgetView` render wrappers.
+
+---
+
 ## 2026-04-29 — Dashboard widget-config preview title truncation fix
 
 Adjusted Configure Widget preview-pane typography in `services/frontend/src/index.css` to prevent title/meta truncation:
@@ -25,6 +86,7 @@ Follow-up fix for Configure Widget preview when widget frame class includes `das
 - `dash-ops-kpi-inner.dm-kpi-row--equal-5` in preview now reflows to 2 columns (3 on wider preview), avoiding forced 5-column squeeze that truncated text.
 - Additional hardening: preview-specific overflow/height overrides for `.dash-widget-stack` and `.dash-wf--kpi-strip` (`overflow: visible`, `height: auto`, `min-height: 0`) so the frame itself does not crop KPI-strip content.
 - Root-frame fix in `components/dashboard/dashboardWidgetFrame.css`: `dash-wf--kpi-strip` header/title now reserve explicit vertical room and visible overflow (`.dash-wf__header-main` / `.dash-wf__title` / `.dash-wf--kpi-strip .dash-wf__header` / `.dash-wf--kpi-strip .dash-wf__title`) so the title is enclosed by the widget frame instead of clipping at the top edge.
+- Additional escalation after repeated repro: force `dash-wf--kpi-strip` root overflow visible in component frame CSS, and add preview-only `!important` overrides in `index.css` for `overflow/height/header` so later stylesheet order cannot reintroduce clipping.
 
 Scope is preview-pane only; no live dashboard page/global nav/widget-size changes.
 

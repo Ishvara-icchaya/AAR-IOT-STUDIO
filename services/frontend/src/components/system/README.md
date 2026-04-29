@@ -5,7 +5,7 @@ Atomic UI primitives and global **design tokens** (`src/styles/design-tokens.css
 ## Token philosophy
 
 - **`--aar-*`**: canonical design tokens (colors, spacing, radius, type, shadows, status). Defined once on `:root` in `design-tokens.css`.
-- **`--dm-*`**: legacy alias used by Manage Devices / ops tables. On ops shells (see `device-register-page.css`), `--dm-*` maps to `var(--aar-*)` so existing pages keep working while new code prefers `--aar-*`.
+- **`--dm-*` / `.dm-btn`**: legacy alias used by Manage Devices / ops tables. On ops shells (see `device-register-page.css`), `--dm-*` maps to `var(--aar-*)` so existing pages keep working while new code prefers `--aar-*`. **Base button rules** (`.aar-btn`, `.dm-btn` and variants) live in `aar-primitives.css` — do not redeclare them in page CSS.
 - Import `design-tokens.css` and `aar-components.css` only from app entry (`main.tsx`), not per page.
 
 ## Approved colors (new UI)
@@ -57,5 +57,5 @@ Maps to the shared `dm-btn` system used across ops:
 
 ## Enforcement
 
-- `npm run lint` — ESLint (includes guardrails against `dm-pill` / `dm-table-pager__btn` strings in TS/TSX; Scrubber 2 editor path excluded).
+- `npm run lint` — ESLint (includes guardrails against `dm-pill` / `dm-table-pager__btn` / `op-table-pager__btn` strings in TS/TSX; Scrubber 2 editor path excluded).
 - `npm run lint:design` — `scripts/check-design-drift.mjs` (native dialogs, legacy classes, `scrubber2-btn` outside editor). Optional: `DESIGN_DRIFT_STRICT=1` fails on hex in `src/pages` TS/TSX.

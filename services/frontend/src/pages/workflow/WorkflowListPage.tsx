@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Activity, Ban, Copy, Pencil, Rocket, Search, Trash2 } from "lucide-react";
+import { AarButton } from "@/components/system/AarButton";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
@@ -207,9 +208,9 @@ export function WorkflowListPage() {
           title="Workflows"
           subtitle="View and manage automation workflows across your sites."
           actions={
-            <button type="button" className="dm-btn dm-btn--primary" onClick={() => navigate("/workflow/create")}>
+            <AarButton type="button" variant="primary" onClick={() => navigate("/workflow/create")}>
               + Create workflow
-            </button>
+            </AarButton>
           }
         />
       }
@@ -292,13 +293,9 @@ export function WorkflowListPage() {
                 placeholder="Client filter on name + lifecycle…"
               />
             </label>
-            <button
-              type="button"
-              className="dm-btn dm-btn--primary dm-btn--search"
-              onClick={() => setAppliedQ(searchInput)}
-            >
+            <AarButton type="button" variant="primary" className="aar-btn--search dm-btn--search" onClick={() => setAppliedQ(searchInput)}>
               Search
-            </button>
+            </AarButton>
           </div>
         </OpsFilterPanel>
       }

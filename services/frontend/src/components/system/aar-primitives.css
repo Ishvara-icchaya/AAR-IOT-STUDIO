@@ -81,3 +81,95 @@
   border-color: color-mix(in oklab, var(--dm-accent-blue, var(--aar-accent-blue)) 55%, var(--dm-border, var(--aar-border)));
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--dm-accent-blue, var(--aar-accent-blue)) 22%, transparent);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Buttons — canonical .aar-btn*; .dm-btn* are compatibility aliases          */
+/* -------------------------------------------------------------------------- */
+
+.aar-btn,
+.dm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.38rem 0.75rem;
+  border-radius: var(--aar-radius-md, 8px);
+  border: 1px solid var(--dm-border-strong, var(--aar-border-strong));
+  background: var(--dm-surface, var(--aar-surface));
+  color: var(--dm-text, var(--aar-text));
+  font-size: var(--aar-font-size-sm, 0.8rem);
+  font-weight: var(--aar-font-weight-semibold, 600);
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.aar-btn:hover:not(:disabled),
+.dm-btn:hover:not(:disabled) {
+  border-color: color-mix(
+    in oklab,
+    var(--dm-accent-blue, var(--aar-accent-blue)) 45%,
+    var(--dm-border, var(--aar-border))
+  );
+  background: color-mix(
+    in oklab,
+    var(--dm-surface, var(--aar-surface)) 85%,
+    var(--dm-accent-blue, var(--aar-accent-blue)) 15%
+  );
+}
+
+.aar-btn:disabled,
+.dm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.aar-btn--primary,
+.dm-btn--primary {
+  border: none;
+  background: var(--dm-accent-blue, var(--aar-accent-blue));
+  color: var(--btn-on-accent, #fff);
+}
+
+.aar-btn--primary:hover:not(:disabled),
+.dm-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--dm-accent-blue, var(--aar-accent-blue));
+}
+
+.aar-btn--outline,
+.dm-btn--outline {
+  background: var(--dm-surface-2, var(--aar-surface-2));
+  color: var(--dm-text, var(--aar-text));
+}
+
+.aar-btn--danger,
+.dm-btn--danger {
+  border: none;
+  background: var(--dm-danger, var(--aar-accent-red));
+  color: #fff;
+}
+
+.aar-btn--danger:hover:not(:disabled),
+.dm-btn--danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.aar-btn--warning,
+.dm-btn--warning {
+  border: none;
+  background: var(--dm-warn, var(--aar-accent-amber));
+  color: #111827;
+}
+
+.aar-btn--warning:hover:not(:disabled),
+.dm-btn--warning:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.aar-btn--search,
+.dm-btn--search {
+  min-width: 5.5rem;
+  justify-content: center;
+}

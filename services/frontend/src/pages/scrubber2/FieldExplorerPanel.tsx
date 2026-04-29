@@ -1,4 +1,5 @@
 import type { Scrubber2FieldMeta } from "@/lib/scrubber2Fields";
+import { AarButton } from "@/components/system/AarButton";
 
 type Props = {
   rawJson: string;
@@ -52,21 +53,21 @@ export function FieldExplorerPanel({
             value={fieldSearch}
             onChange={(e) => onFieldSearchChange(e.target.value)}
           />
-          <button type="button" className="dm-btn dm-btn--outline" onClick={onRefreshSample}>
+          <AarButton type="button" variant="outline" onClick={onRefreshSample}>
             Refresh
-          </button>
+          </AarButton>
         </div>
         <div className="scrubber2-toolbar" style={{ justifyContent: "space-between" }}>
           <span className="scrubber2-muted">
             {selectedCount} of {fields.length} selected
           </span>
           <span style={{ display: "flex", gap: "0.35rem" }}>
-            <button type="button" className="scrubber2-btn scrubber2-btn--ghost" onClick={onSelectAll}>
+            <AarButton type="button" variant="outline" onClick={onSelectAll}>
               Select all
-            </button>
-            <button type="button" className="scrubber2-btn scrubber2-btn--ghost" onClick={onClearAll}>
+            </AarButton>
+            <AarButton type="button" variant="outline" onClick={onClearAll}>
               Clear all
-            </button>
+            </AarButton>
           </span>
         </div>
         <div className="scrubber2-table-scroll">

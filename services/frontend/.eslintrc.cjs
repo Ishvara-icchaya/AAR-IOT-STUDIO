@@ -37,12 +37,22 @@ module.exports = {
       {
         selector: "Literal[value=/dm-(pill|table-pager__btn)/]",
         message:
-          "Do not use dm-pill or dm-table-pager__btn class strings — use AarPill and shared pagination (dm-table-pager + dm-btn).",
+          "Do not use dm-pill or dm-table-pager__btn class strings — use AarPill and shared pagination (dm-table-pager + AarButton / aar-btn).",
       },
       {
         selector: "TemplateElement[value.raw=/dm-(pill|table-pager__btn)/]",
         message:
-          "Do not embed dm-pill or dm-table-pager__btn in templates — use AarPill and shared pagination (dm-table-pager + dm-btn).",
+          "Do not embed dm-pill or dm-table-pager__btn in templates — use AarPill and shared pagination (dm-table-pager + AarButton / aar-btn).",
+      },
+      {
+        selector: "Literal[value=/op-table-pager__btn/]",
+        message:
+          "Do not use op-table-pager__btn — use AarButton with class op-table-pager__action inside PlainOperationalTable (see plainOperationalTable.css).",
+      },
+      {
+        selector: "TemplateElement[value.raw=/op-table-pager__btn/]",
+        message:
+          "Do not embed op-table-pager__btn — use AarButton + op-table-pager__action for table pager controls.",
       },
     ],
   },

@@ -2626,7 +2626,7 @@ a:hover {
 
 .dash-builder {
   display: grid;
-  grid-template-columns: 11rem 1fr minmax(220px, 26vw);
+  grid-template-columns: 11rem minmax(0, 1fr) minmax(360px, 30vw);
   gap: var(--space-md);
   flex: 1;
   min-height: 0;
@@ -2699,11 +2699,11 @@ a:hover {
   position: sticky;
   top: var(--dash-preview-sticky-top, 12px);
   max-height: calc(100dvh - var(--dash-preview-sticky-top, 12px) - 96px);
-  min-height: 320px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  min-width: 0;
+  min-width: 360px;
 }
 
 .dash-preview-panel__title {
@@ -2726,9 +2726,12 @@ a:hover {
 }
 
 .dash-preview-panel__scroll--fit > .dash-live {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
 }
 
 .dash-preview-panel__scroll > .dash-live {
@@ -2736,6 +2739,70 @@ a:hover {
   min-height: 0;
   min-width: 0;
 }
+
+/* TODO(hpaid): preview layout isolation attempt (2026-04-29) is disabled for now.
+   Revisit when addressing right-rail clipping/mixed stacking behavior. */
+/*
+.dash-live--preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+.dash-live--preview .dash-row {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0.65rem;
+  flex: none !important;
+  min-height: auto !important;
+  height: auto !important;
+}
+
+.dash-live--preview .dash-widget-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: none !important;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.dash-live--preview .dash-widget,
+.dash-live--preview .dash-wf {
+  min-height: 120px;
+  height: auto;
+  flex: none !important;
+  overflow: hidden;
+}
+
+.dash-live--preview .dash-wf {
+  height: auto;
+  min-height: 0;
+}
+
+.dash-live--preview .dash-wf__body {
+  flex: none;
+  min-height: 0;
+}
+
+.dash-live--preview .dash-widget--map,
+.dash-live--preview .dash-wf--map {
+  min-height: 260px;
+}
+
+.dash-live--preview .dash-widget--chart,
+.dash-live--preview .dash-wf--chart {
+  min-height: 220px;
+}
+
+.dash-live--preview .dash-widget-stack > .dash-widget--map {
+  flex: none !important;
+}
+*/
 
 .dash-builder-row {
   display: flex;
@@ -2981,6 +3048,14 @@ a:hover {
   min-height: 100%;
 }
 
+.dash-widget-config-preview-title {
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0 0 0.45rem;
+  color: var(--color-text);
+}
+
 .dash-widget-config-preview-pane .dash-wf__title,
 .dash-widget-config-preview-pane .dash-widget__title {
   white-space: normal;
@@ -3026,17 +3101,18 @@ a:hover {
 
 .dash-widget-config-preview-pane .dash-widget-stack,
 .dash-widget-config-preview-pane .dash-wf--kpi-strip {
-  overflow: visible;
+  overflow: visible !important;
 }
 
 .dash-widget-config-preview-pane .dash-wf--kpi-strip {
-  height: auto;
-  min-height: 0;
+  height: auto !important;
+  min-height: 0 !important;
+  padding-top: 0.18rem;
 }
 
 .dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-wf__header {
   padding-top: 0.22rem;
-  overflow: visible;
+  overflow: visible !important;
 }
 
 .dash-widget-config-preview-pane .dash-wf--kpi-strip .dash-wf__title {
@@ -3827,9 +3903,8 @@ a:hover {
   margin-bottom: 0.12rem !important;
 }
 
-/* Live + preview: floating tiles, type scales with container height (no inner scrollbars). */
-.page-card.dash-live-page .dash-widget,
-.dash-preview-panel__scroll--fit .dash-widget {
+/* Live dashboard only: floating tiles, type scales with container height. */
+.page-card.dash-live-page .dash-widget {
   container-type: size;
   container-name: dashw;
   font-size: clamp(0.48rem, 2.35cqh + 0.26rem, 0.88rem);
@@ -3847,8 +3922,7 @@ a:hover {
     inset 0 1px 0 color-mix(in oklab, #fff 12%, transparent);
 }
 
-:root[data-theme="light"] .page-card.dash-live-page .dash-widget,
-:root[data-theme="light"] .dash-preview-panel__scroll--fit .dash-widget {
+:root[data-theme="light"] .page-card.dash-live-page .dash-widget {
   background: color-mix(in oklab, var(--color-surface-elevated) 98%, #fff 2%);
   border-color: color-mix(in oklab, var(--color-border) 82%, #fff 18%);
   box-shadow:
@@ -3858,17 +3932,14 @@ a:hover {
 }
 
 .page-card.dash-live-page .dash-widget__title,
-.page-card.dash-live-page .dash-wf__title,
-.dash-preview-panel__scroll--fit .dash-widget__title,
-.dash-preview-panel__scroll--fit .dash-wf__title {
+.page-card.dash-live-page .dash-wf__title {
   font-size: 1em;
   font-weight: 600;
   margin-bottom: 0.4em !important;
   flex-shrink: 0;
 }
 
-.page-card.dash-live-page .dash-widget__body,
-.dash-preview-panel__scroll--fit .dash-widget__body {
+.page-card.dash-live-page .dash-widget__body {
   font-size: 1em;
   line-height: 1.35;
   flex: 1 1 auto;
@@ -3876,195 +3947,158 @@ a:hover {
   overflow: hidden;
 }
 
-.page-card.dash-live-page .dash-widget__muted,
-.dash-preview-panel__scroll--fit .dash-widget__muted {
+.page-card.dash-live-page .dash-widget__muted {
   font-size: 0.92em;
 }
 
-.page-card.dash-live-page .dash-widget__kpi-value,
-.dash-preview-panel__scroll--fit .dash-widget__kpi-value {
+.page-card.dash-live-page .dash-widget__kpi-value {
   font-size: 1.85em;
   font-weight: 700;
   line-height: 1.12;
 }
 
-.page-card.dash-live-page .dash-widget__kpi-meta,
-.dash-preview-panel__scroll--fit .dash-widget__kpi-meta {
+.page-card.dash-live-page .dash-widget__kpi-meta {
   font-size: 0.92em;
   margin-top: 0.35em !important;
 }
 
 .page-card.dash-live-page .dash-widget--kpi,
-.page-card.dash-live-page .dash-wf--kpi,
-.dash-preview-panel__scroll--fit .dash-widget--kpi,
-.dash-preview-panel__scroll--fit .dash-wf--kpi {
+.page-card.dash-live-page .dash-wf--kpi {
   border-left-width: 3px !important;
 }
 
-.page-card.dash-live-page .dash-widget--table .dash-widget__table-wrap,
-.dash-preview-panel__scroll--fit .dash-widget--table .dash-widget__table-wrap {
+.page-card.dash-live-page .dash-widget--table .dash-widget__table-wrap {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
 }
 
-.page-card.dash-live-page .dash-wf--table .dash-wf-table__scroll,
-.dash-preview-panel__scroll--fit .dash-wf--table .dash-wf-table__scroll {
+.page-card.dash-live-page .dash-wf--table .dash-wf-table__scroll {
   flex: 1 1 auto;
   min-height: 0;
 }
 
 .page-card.dash-live-page .dash-widget--table .dash-table,
-.dash-preview-panel__scroll--fit .dash-widget--table .dash-table,
-.page-card.dash-live-page .dash-wf--table .dash-wf-table__scroll--ag .ag-cell,
-.dash-preview-panel__scroll--fit .dash-wf--table .dash-wf-table__scroll--ag .ag-cell {
+.page-card.dash-live-page .dash-wf--table .dash-wf-table__scroll--ag .ag-cell {
   font-size: 0.92em;
 }
 
 .page-card.dash-live-page .dash-widget--table th,
-.page-card.dash-live-page .dash-widget--table td,
-.dash-preview-panel__scroll--fit .dash-widget--table th,
-.dash-preview-panel__scroll--fit .dash-widget--table td {
+.page-card.dash-live-page .dash-widget--table td {
   padding: 0.2em 0.35em !important;
 }
 
 .page-card.dash-live-page .dash-widget--chart,
-.page-card.dash-live-page .dash-wf--chart,
-.dash-preview-panel__scroll--fit .dash-widget--chart,
-.dash-preview-panel__scroll--fit .dash-wf--chart {
+.page-card.dash-live-page .dash-wf--chart {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-.page-card.dash-live-page .dash-widget__chart-canvas,
-.dash-preview-panel__scroll--fit .dash-widget__chart-canvas {
+.page-card.dash-live-page .dash-widget__chart-canvas {
   flex: 1 1 auto;
   min-height: 0 !important;
   height: auto !important;
 }
 
-.page-card.dash-live-page .dash-widget-stack,
-.dash-preview-panel__scroll--fit .dash-widget-stack {
+.page-card.dash-live-page .dash-widget-stack {
   gap: 0.35em !important;
 }
 
-.page-card.dash-live-page .dash-widget-degraded,
-.dash-preview-panel__scroll--fit .dash-widget-degraded {
+.page-card.dash-live-page .dash-widget-degraded {
   font-size: 0.92em;
   padding: 0.35em 0.5em !important;
   flex-shrink: 0;
 }
 
-.page-card.dash-live-page .dash-live .dash-widget-stack > .dash-widget--map,
-.dash-preview-panel__scroll--fit .dash-live .dash-widget-stack > .dash-widget--map {
+.page-card.dash-live-page .dash-live .dash-widget-stack > .dash-widget--map {
   flex: 6 1 0 !important;
   min-height: 0;
 }
 
-.page-card.dash-live-page .dash-live .dash-widget-stack > .dash-widget:not(.dash-widget--map),
-.dash-preview-panel__scroll--fit .dash-live .dash-widget-stack > .dash-widget:not(.dash-widget--map) {
+.page-card.dash-live-page .dash-live .dash-widget-stack > .dash-widget:not(.dash-widget--map) {
   flex: 1 1 auto !important;
   min-height: 0;
 }
 
-.page-card.dash-live-page .dash-map-widget__head,
-.dash-preview-panel__scroll--fit .dash-map-widget__head {
+.page-card.dash-live-page .dash-map-widget__head {
   margin-bottom: 0.35em !important;
   gap: 0.35rem !important;
   flex-shrink: 0;
 }
 
-.page-card.dash-live-page .dash-map-widget__expand-btn,
-.dash-preview-panel__scroll--fit .dash-map-widget__expand-btn {
+.page-card.dash-live-page .dash-map-widget__expand-btn {
   font-size: 0.88em !important;
   padding: 0.2em 0.45em !important;
 }
 
-.page-card.dash-live-page .dash-map-widget__enterprise-grid,
-.dash-preview-panel__scroll--fit .dash-map-widget__enterprise-grid {
+.page-card.dash-live-page .dash-map-widget__enterprise-grid {
   min-height: 0 !important;
 }
 
-.page-card.dash-live-page .dash-map-widget__count-table,
-.dash-preview-panel__scroll--fit .dash-map-widget__count-table {
+.page-card.dash-live-page .dash-map-widget__count-table {
   font-size: 0.9em;
 }
 
 .page-card.dash-live-page .dash-map-widget__count-table th,
-.page-card.dash-live-page .dash-map-widget__count-table td,
-.dash-preview-panel__scroll--fit .dash-map-widget__count-table th,
-.dash-preview-panel__scroll--fit .dash-map-widget__count-table td {
+.page-card.dash-live-page .dash-map-widget__count-table td {
   padding: 0.15em 0.12em !important;
 }
 
-.page-card.dash-live-page .dash-map-widget__side-title,
-.dash-preview-panel__scroll--fit .dash-map-widget__side-title {
+.page-card.dash-live-page .dash-map-widget__side-title {
   font-size: 0.88em !important;
 }
 
-.page-card.dash-live-page .dash-map-widget__pager-btn,
-.dash-preview-panel__scroll--fit .dash-map-widget__pager-btn {
+.page-card.dash-live-page .dash-map-widget__pager-btn {
   font-size: 0.85em !important;
   padding: 0.12em 0.35em !important;
 }
 
-.page-card.dash-live-page .dash-map-widget__pager-meta,
-.dash-preview-panel__scroll--fit .dash-map-widget__pager-meta {
+.page-card.dash-live-page .dash-map-widget__pager-meta {
   font-size: 0.82em !important;
 }
 
-.page-card.dash-live-page .dash-widget--device,
-.dash-preview-panel__scroll--fit .dash-widget--device {
+.page-card.dash-live-page .dash-widget--device {
   font-size: 1em;
 }
 
-.page-card.dash-live-page .dash-widget--device dl,
-.dash-preview-panel__scroll--fit .dash-widget--device dl {
+.page-card.dash-live-page .dash-widget--device dl {
   font-size: 0.95em;
   gap: 0.2em !important;
 }
 
-.page-card.dash-live-page .dash-widget--health-summary > div,
-.dash-preview-panel__scroll--fit .dash-widget--health-summary > div {
+.page-card.dash-live-page .dash-widget--health-summary > div {
   gap: 0.35em !important;
 }
 
-.page-card.dash-live-page .dash-widget--health-summary > div > div,
-.dash-preview-panel__scroll--fit .dash-widget--health-summary > div > div {
+.page-card.dash-live-page .dash-widget--health-summary > div > div {
   padding: 0.25em 0.45em !important;
   min-width: 3.25em !important;
   border-width: 1px !important;
 }
 
-.page-card.dash-live-page .dash-widget--health-summary > div > div > div:first-child,
-.dash-preview-panel__scroll--fit .dash-widget--health-summary > div > div > div:first-child {
+.page-card.dash-live-page .dash-widget--health-summary > div > div > div:first-child {
   font-size: 0.88em !important;
 }
 
-.page-card.dash-live-page .dash-widget--health-summary > div > div > div:last-child,
-.dash-preview-panel__scroll--fit .dash-widget--health-summary > div > div > div:last-child {
+.page-card.dash-live-page .dash-widget--health-summary > div > div > div:last-child {
   font-size: 1.35em !important;
 }
 
-.page-card.dash-live-page .dash-widget--alerts .dash-widget__muted,
-.dash-preview-panel__scroll--fit .dash-widget--alerts .dash-widget__muted {
+.page-card.dash-live-page .dash-widget--alerts .dash-widget__muted {
   margin-bottom: 0.25em !important;
 }
 
-.page-card.dash-live-page .dash-widget--alerts > div[style],
-.dash-preview-panel__scroll--fit .dash-widget--alerts > div[style] {
+.page-card.dash-live-page .dash-widget--alerts > div[style] {
   gap: 0.3rem !important;
   margin-bottom: 0.35rem !important;
 }
 
-.page-card.dash-live-page .dash-widget--alerts > div[style] > span,
-.dash-preview-panel__scroll--fit .dash-widget--alerts > div[style] > span {
+.page-card.dash-live-page .dash-widget--alerts > div[style] > span {
   padding: 0.12em 0.38em !important;
   font-size: 0.9em !important;
 }
 
 .page-card.dash-live-page .dash-widget--alerts ul,
-.dash-preview-panel__scroll--fit .dash-widget--alerts ul,
 .dash-widget--alerts .dash-widget__alerts-list {
   font-size: 0.92em !important;
   overflow: hidden;
@@ -4074,22 +4108,45 @@ a:hover {
   min-height: 0;
 }
 
-.page-card.dash-live-page .dash-widget--alerts ul li,
-.dash-preview-panel__scroll--fit .dash-widget--alerts ul li {
+.page-card.dash-live-page .dash-widget--alerts ul li {
   margin-bottom: 0.1em !important;
 }
 
-.page-card.dash-live-page .dash-widget--map .maplibregl-ctrl-group button,
-.dash-preview-panel__scroll--fit .dash-widget--map .maplibregl-ctrl-group button {
+.page-card.dash-live-page .dash-widget--map .maplibregl-ctrl-group button {
   width: clamp(22px, 5.5cqh, 30px) !important;
   height: clamp(22px, 5.5cqh, 30px) !important;
 }
 
-.page-card.dash-live-page .dash-widget--map .maplibregl-ctrl-scale,
-.dash-preview-panel__scroll--fit .dash-widget--map .maplibregl-ctrl-scale {
+.page-card.dash-live-page .dash-widget--map .maplibregl-ctrl-scale {
   font-size: 0.82em !important;
   padding: 1px 5px !important;
 }
+
+/* TODO(hpaid): preview-specific widget overrides disabled with dash-live--preview block above. */
+/*
+.dash-preview-panel__scroll--fit .dash-widget {
+  container-type: inline-size;
+  container-name: dashw-preview;
+  font-size: inherit;
+  min-height: 120px;
+  height: auto;
+  display: block;
+}
+
+.dash-preview-panel__scroll--fit .dash-widget__body,
+.dash-preview-panel__scroll--fit .dash-widget--table .dash-widget__table-wrap,
+.dash-preview-panel__scroll--fit .dash-wf--table .dash-wf-table__scroll,
+.dash-preview-panel__scroll--fit .dash-widget__chart-canvas {
+  overflow: visible;
+  min-height: auto;
+  height: auto !important;
+  flex: none !important;
+}
+
+.dash-live--preview .dash-widget-stack > .dash-widget:not(.dash-widget--map) {
+  flex: none !important;
+}
+*/
 
 .dash-live-capture-root {
   flex: 1;

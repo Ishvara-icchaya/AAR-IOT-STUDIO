@@ -23,6 +23,8 @@ export function DashboardPreviewPanel() {
             widgets={Array.isArray(previewPayload.widgets) ? previewPayload.widgets : []}
             renderedAt={previewPayload.rendered_at}
             dashboard={dash}
+            fitPage={false}
+            layoutDensity="preview"
           />
         </div>
       ) : (

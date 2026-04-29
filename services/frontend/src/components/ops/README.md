@@ -12,7 +12,7 @@ Use these primitives for every operations landing page (`Manage Devices`, `Workf
   - one-off pager button classes (use `dm-table-pager` + `dm-btn dm-btn--outline` only).
 - **All row icon actions** must use **`OpsActionButton`**.
 - **All row status display** on these pages must use **`OpsStatusPill`** (backed by `AarStatusPill` / design tokens).
-- **Do not** use in TS/TSX: `dm-pill`, `dm-table-pager__btn`, native `window.confirm` / `alert` / `prompt`, or `scrubber2-btn` outside `src/pages/scrubber2/`. (Enforced by ESLint + `npm run lint:design`.)
+- **Do not** use in TS/TSX: `dm-pill`, `dm-table-pager__btn`, `op-table-pager__btn`, native `window.confirm` / `alert` / `prompt`, or `scrubber2-btn` outside `src/pages/scrubber2/`. (Enforced by ESLint + `npm run lint:design`.)
 
 For tokens and atomic components, see `src/components/system/README.md`.
 

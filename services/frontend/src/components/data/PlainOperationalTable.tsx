@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { AarButton } from "@/components/system/AarButton";
 import "./plainOperationalTable.css";
 
 export const PLAIN_TABLE_PAGE_SIZE_DEFAULT = 25;
@@ -175,25 +176,25 @@ export function PlainOperationalTable<T>({
             {rangeStart}–{rangeEnd} of {rows.length}
           </span>
           <div className="op-table-pager__controls">
-            <button
-              type="button"
-              className="op-table-pager__btn"
+            <AarButton
+              variant="outline"
+              className="op-table-pager__action"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               Previous
-            </button>
+            </AarButton>
             <span>
               Page {page} / {totalPages}
             </span>
-            <button
-              type="button"
-              className="op-table-pager__btn"
+            <AarButton
+              variant="outline"
+              className="op-table-pager__action"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             >
               Next
-            </button>
+            </AarButton>
           </div>
         </div>
       ) : null}

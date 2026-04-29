@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Eye, GitBranch, Pencil, RefreshCw, Search } 
 import { apiFetch } from "@/api/client";
 import { listDevices, type DeviceRead } from "@/api/devices";
 import { PageStatus } from "@/components/PageStatus";
+import { AarButton } from "@/components/system/AarButton";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
@@ -208,18 +209,13 @@ export function ScrubberPipelinesPage() {
           subtitle="Manage active data transformation pipelines."
           actions={
             <>
-              <button type="button" className="dm-btn dm-btn--outline" onClick={() => void load()} disabled={loading}>
+              <AarButton type="button" variant="outline" onClick={() => void load()} disabled={loading}>
                 <RefreshCw size={16} aria-hidden />
                 Refresh
-              </button>
-              <button
-                type="button"
-                className="dm-btn dm-btn--primary"
-                onClick={() => navigate("/scrubber/v2/create")}
-                disabled={loading}
-              >
+              </AarButton>
+              <AarButton type="button" variant="primary" onClick={() => navigate("/scrubber/v2/create")} disabled={loading}>
                 Create Pipeline
-              </button>
+              </AarButton>
             </>
           }
         />
@@ -270,9 +266,9 @@ export function ScrubberPipelinesPage() {
                 ))}
               </select>
             </label>
-            <button type="button" className="dm-btn dm-btn--primary dm-btn--search" onClick={() => setAppliedSearch(search)}>
+            <AarButton type="button" variant="primary" className="aar-btn--search dm-btn--search" onClick={() => setAppliedSearch(search)}>
               Search
-            </button>
+            </AarButton>
           </div>
         </OpsFilterPanel>
       }

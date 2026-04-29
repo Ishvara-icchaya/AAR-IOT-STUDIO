@@ -158,75 +158,7 @@
   flex-shrink: 0;
 }
 
-/* —— Buttons —— */
-.dm-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.38rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid var(--dm-border-strong);
-  background: var(--dm-surface);
-  color: var(--dm-text);
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: inherit;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.dm-btn:hover:not(:disabled) {
-  border-color: color-mix(in oklab, var(--dm-accent-blue) 45%, var(--dm-border));
-  background: color-mix(in oklab, var(--dm-surface) 85%, var(--dm-accent-blue) 15%);
-}
-
-.dm-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.dm-btn--primary {
-  border: none;
-  background: var(--dm-accent-blue);
-  color: #fff;
-}
-
-.dm-btn--primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-  background: var(--dm-accent-blue);
-}
-
-.dm-btn--outline {
-  background: var(--dm-surface-2);
-  color: var(--dm-text);
-}
-
-.dm-btn--danger {
-  border: none;
-  background: var(--dm-danger, var(--aar-accent-red));
-  color: #fff;
-}
-
-.dm-btn--danger:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.dm-btn--warning {
-  border: none;
-  background: var(--dm-warn, var(--aar-accent-amber));
-  color: #111827;
-}
-
-.dm-btn--warning:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.dm-btn--search {
-  min-width: 5.5rem;
-  justify-content: center;
-}
+/* Buttons: canonical rules live in `components/system/aar-primitives.css` (.aar-btn + .dm-btn aliases). */
 
 /* —— KPI row —— */
 .dm-kpi-row {
