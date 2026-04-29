@@ -136,6 +136,18 @@ Runtime collection ordering/cursor are deterministic:
 
 This phase is additive scaffolding only and does not change existing Dashboard Edit page data wiring or behavior.
 
+### Phase 2 complete — layout compatibility migration helpers
+
+- Added frontend migration utility `services/frontend/src/lib/dashboard2/migrateLegacyDashboardToGrid.ts` to convert legacy row/column dashboard JSON into v2 `layouts + widgets`.
+- Added backend additive helper `services/api/app/services/dashboard_schema_migration.py` for schema-version migration support.
+- Added API unit test `services/api/tests/test_dashboard_schema_migration.py`.
+- Extended `DashboardReadDTO` with optional compatibility fields:
+  - `schema_version`,
+  - `layouts_json`,
+  - `widgets_json`.
+
+This phase is compatibility-only groundwork and does not alter current live API wiring behavior.
+
 ## License
 
 Proprietary — assign per your organization.

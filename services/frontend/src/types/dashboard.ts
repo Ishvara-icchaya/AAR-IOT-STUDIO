@@ -19,6 +19,9 @@ export type DashboardReadDTO = {
   name: string;
   description: string | null;
   status: string;
+  schema_version?: number;
+  layouts_json?: Record<string, unknown> | null;
+  widgets_json?: Record<string, unknown>[] | null;
   layout: Record<string, unknown>;
   created_by: string | null;
   created_at: string;

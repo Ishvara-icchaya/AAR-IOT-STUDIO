@@ -5,6 +5,24 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — v7 Phase 2: legacy-to-grid compatibility helpers
+
+Added migration/compatibility utilities for schema-versioned Dashboard 2.0 rollout:
+- Frontend: added `services/frontend/src/lib/dashboard2/migrateLegacyDashboardToGrid.ts` to convert legacy `layout.rows[].columns[]` into v2 `layouts/widgets` shape.
+- Backend: added additive helper `services/api/app/services/dashboard_schema_migration.py` to produce a baseline schema_version=2 payload from legacy layout JSON.
+- Tests: added `services/api/tests/test_dashboard_schema_migration.py` (basic migration shape coverage).
+- Type compatibility: extended `services/frontend/src/types/dashboard.ts` `DashboardReadDTO` with optional `schema_version`, `layouts_json`, `widgets_json`.
+
+Intent: keep existing dashboards readable while enabling a controlled migration path to Dashboard 2.0 grid schema.
+
+Validation:
+- `npm --prefix services/frontend run lint` passed.
+- `pytest -q services/api/tests/test_dashboard_schema_migration.py` passed.
+
+Follow-up (Phase 3): add runtime data provider + request grouping/caching for binding-key based widget fetches.
+
+---
+
 ## 2026-04-29 — v7 Phase 1: Dashboard 2.0 foundation scaffold
 
 Added additive Dashboard 2.0 frontend scaffolding (no runtime wiring replacement yet):
