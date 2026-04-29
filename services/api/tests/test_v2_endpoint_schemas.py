@@ -46,6 +46,8 @@ def test_router_has_endpoints_routes() -> None:
     assert "/{endpoint_id}/resolved-devices" in paths
     assert "/{endpoint_id}/latest-device-states" in paths
     assert "/{endpoint_id}/scrubbed-events" in paths
+    assert "/{endpoint_id}/publish-identity" in paths
+    assert "/{endpoint_id}/sample-field-metadata" in paths
 
 
 def test_app_includes_endpoints_openapi_path() -> None:

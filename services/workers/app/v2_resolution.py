@@ -63,7 +63,8 @@ def try_write_v2_from_scrubber(
             cur.execute(
                 """
                 SELECT id::text, customer_id::text, site_id::text, object_name,
-                       primary_device_key_fields, device_label_fields, location_fields
+                       primary_device_key_fields, device_label_fields, location_fields,
+                       identity_published_at
                 FROM endpoints
                 WHERE id = %s::uuid
                   AND enabled = true
@@ -76,7 +77,20 @@ def try_write_v2_from_scrubber(
                 conn.rollback()
                 log.warning("v2_resolution skip: endpoint not found/disabled endpoint_id=%s", endpoint_id)
                 return
-            _ep_id, ep_customer, ep_site, ep_object_name, pk_fields_raw, label_fields_raw, location_fields_raw = row
+            (
+                _ep_id,
+                ep_customer,
+                ep_site,
+                ep_object_name,
+                pk_fields_raw,
+                label_fields_raw,
+                location_fields_raw,
+                identity_pub,
+            ) = row
+            if identity_pub is None:
+                conn.rollback()
+                log.warning("v2_resolution skip: identity not published endpoint_id=%s", endpoint_id)
+                return
             if ep_customer != customer_id or ep_site != site_id:
                 conn.rollback()
                 log.warning(

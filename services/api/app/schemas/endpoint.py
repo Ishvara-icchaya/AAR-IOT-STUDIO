@@ -16,7 +16,7 @@ class EndpointCreate(BaseModel):
     object_name: str = Field(..., min_length=1, max_length=255, description="Logical scrubber / data stream name")
     primary_device_key_fields: list[str] | None = Field(
         None,
-        description="Ordered field paths for PK extraction; omit until Scrubber 2.0 publish (lifecycle draft).",
+        description="If set, stored in identity_draft only until POST …/publish-identity (never activates alone).",
     )
     device_label_fields: list[str] | None = None
     location_fields: dict[str, Any] | list[Any] | None = None
@@ -31,10 +31,14 @@ class EndpointUpdate(BaseModel):
     object_name: str | None = Field(None, min_length=1, max_length=255)
     primary_device_key_fields: list[str] | None = Field(
         None,
-        description="Set non-empty to activate identity; null or [] clears keys and moves lifecycle toward mapping.",
+        description="Updates identity_draft only; use publish-identity to activate.",
     )
     device_label_fields: list[str] | None = None
     location_fields: dict[str, Any] | list[Any] | None = None
+    identity_draft: dict[str, Any] | None = Field(
+        None,
+        description="Partial merge into identity_draft (primary_device_key_fields, device_label_fields, location_fields).",
+    )
     auth_config: dict[str, Any] | None = None
     device_endpoint_id: uuid.UUID | None = None
     enabled: bool | None = None
@@ -57,6 +61,8 @@ class EndpointRead(BaseModel):
     device_endpoint_id: uuid.UUID | None
     sample_payload: dict[str, Any] | list[Any] | None = None
     sample_ingested_at: datetime | None = None
+    identity_published_at: datetime | None = None
+    identity_draft: dict[str, Any] | None = None
     enabled: bool
     created_at: datetime
     updated_at: datetime

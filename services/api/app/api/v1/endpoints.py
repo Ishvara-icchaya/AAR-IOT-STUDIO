@@ -20,6 +20,8 @@ from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
 from app.models.user import User
 from app.schemas.payload_field_metadata import PayloadFieldEntry, PayloadFieldMetadataResponse
+from app.services.endpoint_identity_publish import merge_identity_draft, publish_endpoint_identity, sample_document_for_validation
+from app.services.endpoint_sample_service import normalize_sample_document
 from app.services.payload_field_catalog import build_payload_field_entries
 from app.schemas.endpoint import (
     MapMarkerListResponse,
@@ -97,10 +99,17 @@ def create_endpoint(
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot create endpoint for this site")
 
-    pk_fields = (
-        _normalize_key_list(body.primary_device_key_fields) if body.primary_device_key_fields is not None else []
-    )
-    lifecycle = "active" if pk_fields else "draft"
+    draft: dict[str, Any] = {}
+    if body.primary_device_key_fields is not None:
+        pk_pre = _normalize_key_list(body.primary_device_key_fields)
+        if pk_pre:
+            draft["primary_device_key_fields"] = pk_pre
+    if body.device_label_fields is not None:
+        dl = _normalize_key_list(body.device_label_fields)
+        if dl:
+            draft["device_label_fields"] = dl
+    if body.location_fields is not None:
+        draft["location_fields"] = body.location_fields
     ep = Endpoint(
         id=uuid.uuid4(),
         customer_id=user.customer_id,
@@ -108,10 +117,11 @@ def create_endpoint(
         endpoint_name=body.endpoint_name.strip(),
         protocol=body.protocol.strip().lower()[:32],
         object_name=body.object_name.strip(),
-        lifecycle_status=lifecycle,
-        primary_device_key_fields=pk_fields if pk_fields else None,
-        device_label_fields=_normalize_key_list(body.device_label_fields) if body.device_label_fields else None,
-        location_fields=body.location_fields,
+        lifecycle_status="draft",
+        primary_device_key_fields=None,
+        device_label_fields=None,
+        location_fields=None,
+        identity_draft=draft or None,
         auth_config=body.auth_config,
         device_endpoint_id=body.device_endpoint_id,
         enabled=body.enabled,
@@ -137,6 +147,40 @@ def get_endpoint(
     return EndpointRead.model_validate(ep)
 
 
+@router.get(
+    "/{endpoint_id}/sample-field-metadata",
+    response_model=PayloadFieldMetadataResponse,
+)
+def get_endpoint_sample_field_metadata(
+    endpoint_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+    doc = sample_document_for_validation(ep)
+    raw = build_payload_field_entries(doc)
+    return PayloadFieldMetadataResponse(items=[PayloadFieldEntry.model_validate(x) for x in raw])
+
+
+@router.post("/{endpoint_id}/publish-identity", response_model=EndpointRead)
+def post_publish_endpoint_identity(
+    endpoint_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+    ep = publish_endpoint_identity(db, ep)
+    return EndpointRead.model_validate(ep)
+
+
 @router.patch("/{endpoint_id}", response_model=EndpointRead)
 def update_endpoint(
     endpoint_id: uuid.UUID,
@@ -151,32 +195,47 @@ def update_endpoint(
     _ensure_endpoint_visible(ep, user, allowed)
 
     data = body.model_dump(exclude_unset=True)
+    draft = dict(ep.identity_draft or {})
     if "primary_device_key_fields" in data:
-        raw_pk = data["primary_device_key_fields"]
+        raw_pk = data.pop("primary_device_key_fields")
         if raw_pk is None:
-            ep.primary_device_key_fields = None
-            if ep.lifecycle_status == "active":
-                ep.lifecycle_status = "needs_identity_mapping"
+            draft.pop("primary_device_key_fields", None)
         else:
             pk_fields = _normalize_key_list(raw_pk)
-            if not pk_fields:
-                ep.primary_device_key_fields = None
-                if ep.lifecycle_status == "active":
-                    ep.lifecycle_status = "needs_identity_mapping"
+            if pk_fields:
+                draft["primary_device_key_fields"] = pk_fields
             else:
-                ep.primary_device_key_fields = pk_fields
-                ep.lifecycle_status = "active"
+                draft.pop("primary_device_key_fields", None)
     if "device_label_fields" in data:
-        raw = data["device_label_fields"]
-        ep.device_label_fields = _normalize_key_list(raw) if raw else None
+        raw = data.pop("device_label_fields")
+        if raw is None:
+            draft.pop("device_label_fields", None)
+        else:
+            dl = _normalize_key_list(raw) if raw else []
+            if dl:
+                draft["device_label_fields"] = dl
+            else:
+                draft.pop("device_label_fields", None)
+    if "location_fields" in data:
+        lf = data.pop("location_fields")
+        if lf is None:
+            draft.pop("location_fields", None)
+        else:
+            draft["location_fields"] = lf
+    if "identity_draft" in data and data["identity_draft"] is not None:
+        patch = data.pop("identity_draft")
+        if isinstance(patch, dict):
+            draft = merge_identity_draft(draft, patch)
+    ep.identity_draft = draft or None
+    if ep.identity_published_at is None and ep.lifecycle_status not in ("error", "disabled"):
+        if ep.sample_payload is not None and (ep.identity_draft or {}):
+            ep.lifecycle_status = "needs_identity_mapping"
     if "endpoint_name" in data and data["endpoint_name"] is not None:
         ep.endpoint_name = data["endpoint_name"].strip()
     if "protocol" in data and data["protocol"] is not None:
         ep.protocol = data["protocol"].strip().lower()[:32]
     if "object_name" in data and data["object_name"] is not None:
         ep.object_name = data["object_name"].strip()
-    if "location_fields" in data:
-        ep.location_fields = data["location_fields"]
     if "auth_config" in data:
         ep.auth_config = data["auth_config"]
     if "device_endpoint_id" in data:
