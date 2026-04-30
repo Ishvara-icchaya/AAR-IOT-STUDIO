@@ -5,6 +5,14 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Trend rollup: rdev 5m series + true endpoint/site aggregates
+
+- **Workers:** Rewrote `trend_window_rollup.py` — **`trend:rdev|endpoint|site:{id}:{metric}:5m`** JSON arrays with **n, sum, sumsq, min, max, avg, stddev, is_partial**; **endpoint** and **site** rebuilt by **merge_bucket_stats** over all **`resolved_devices`** on the endpoint / all **`endpoints`** on the site; **window** keys sliced from 5m data (`slice_window` 1h / 24h) with TTL **90m / 26h**; **5m series TTL 26h**. `map_aggregator_db`: **`last_event_ts`/`updated_at`** on LDS fetch; **`fetch_resolved_device_ids_for_endpoint`**, **`fetch_endpoint_ids_for_site`**. `map_object_aggregator` calls **`apply_trend_rollups_from_lds_row`**. Lazy-import DB helpers so unit tests run without `psycopg2`.
+- **API:** `trends_window_service._normalize_bucket` — derive **`avg`** from **sum/n**; **`stddev`** from **sumsq** when missing and **n ≥ 2**.
+- **Docs:** `MAP_POPUP_TREND_WINDOWS_CONTRACT.md` **v1.3** (worker behavior + backlog tweak).
+
+---
+
 ## 2026-04-29 — Trend Redis worker (LDS) + popup empty state + contract backlog
 
 - **Workers:** `trend_window_rollup.py` — upserts **5m-floor** buckets into **`trend:window:rdev:{id}:{metric}:1h|24h`**, mirrors JSON to **`trend:window:endpoint:…`** (interim; cohort merge later); TTL **5400s** / **93600s**. **`map_object_aggregator`** now consumes **`latest_device_state.updated`** (`KAFKA_LATEST_DEVICE_STATE_TOPIC`) and loads LDS via **`fetch_latest_device_state_row`** (`map_aggregator_db.py`).

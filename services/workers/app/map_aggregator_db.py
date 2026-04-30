@@ -58,7 +58,8 @@ def fetch_data_object_row(data_object_id: str) -> dict[str, Any] | None:
 def fetch_latest_device_state_row(latest_device_state_id: str) -> dict[str, Any] | None:
     """Latest device state row for trend rollup (resolved_device + KPI payloads)."""
     sql = """
-    SELECT id, customer_id, site_id, endpoint_id, resolved_device_id, kpi_json, display_json
+    SELECT id, customer_id, site_id, endpoint_id, resolved_device_id, kpi_json, display_json,
+           last_event_ts, updated_at
     FROM latest_device_state WHERE id = %s::uuid
     """
     conn = psycopg2.connect(_metadata_url())
@@ -76,7 +77,33 @@ def fetch_latest_device_state_row(latest_device_state_id: str) -> dict[str, Any]
                 "resolved_device_id": str(row[4]),
                 "kpi_json": row[5] if isinstance(row[5], dict) else {},
                 "display_json": row[6] if isinstance(row[6], dict) else {},
+                "last_event_ts": row[7],
+                "updated_at": row[8],
             }
+    finally:
+        conn.close()
+
+
+def fetch_resolved_device_ids_for_endpoint(endpoint_id: str) -> list[str]:
+    """All resolved_device PKs for an endpoint (trend endpoint cohort)."""
+    sql = "SELECT id::text FROM resolved_devices WHERE endpoint_id = %s::uuid ORDER BY id"
+    conn = psycopg2.connect(_metadata_url())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (endpoint_id,))
+            return [str(r[0]) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def fetch_endpoint_ids_for_site(site_id: str) -> list[str]:
+    """All endpoint PKs for a site (trend site cohort)."""
+    sql = "SELECT id::text FROM endpoints WHERE site_id = %s::uuid ORDER BY id"
+    conn = psycopg2.connect(_metadata_url())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (site_id,))
+            return [str(r[0]) for r in cur.fetchall()]
     finally:
         conn.close()
 

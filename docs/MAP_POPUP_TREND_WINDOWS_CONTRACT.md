@@ -1,4 +1,4 @@
-# Map popup & trend windows — architecture contract (v1.2)
+# Map popup & trend windows — architecture contract (v1.3)
 
 This document is the **engineering-ready contract** for map marker detail UX, **metadata-driven** numeric formatting, **5-minute trend buckets** (resolved device, endpoint, and site), **moving windows** (1h / 24h), **Redis hot cache**, **durable storage**, **workers**, and the **React MapLibre popup**. OpenAPI remains the normative API spec once implemented.
 
@@ -117,7 +117,7 @@ scrubbed telemetry sample
         → write / refresh Redis hot cache (window + series keys)
 ```
 
-**Implemented (workers):** `worker-map-aggregator` consumes **`latest_device_state.updated`** and writes **`trend:window:rdev:…:1h|24h`** then mirrors the same JSON to **`trend:window:endpoint:…:1h|24h`** (interim mirror; cohort merge later). TTLs: **90m** / **26h** (§8).
+**Implemented (workers):** `worker-map-aggregator` consumes **`latest_device_state.updated`**, maintains **`trend:{rdev|endpoint|site}:…:5m`** bucket arrays (fields **`n`, `sum`, `sumsq`, `min`, `max`, `avg`, `stddev`, `is_partial`**, `bucket_start`, `bucket_size_sec`), slices **`trend:window:*:1h|24h`** from those series, and **rebuilds endpoint and site** windows by **aggregating** all member rdev / endpoint buckets for the same 5m slot (not a single-device mirror). TTLs: **5m series → 26h**, **1h window → 90m**, **24h window → 26h** (§8).
 
 **Redis holds (conceptual):** materialized **5m series** slices and/or **pre-merged window** blobs for fast popup reads — exact keys in §8.
 
@@ -265,8 +265,8 @@ Review queue (prioritize after Redis worker + UI polish):
 | 2 | **Dashboard widget binding permissions** — align trend keys with widget-bound metric sets where applicable. |
 | 3 | **Site-level metric allowlist** — optional cap list per site/customer. |
 | 4 | **Cluster / endpoint map popup** — pass feature state `{ scope: "endpoint", entityId, metricKeys }` and reuse the same React popup shell as resolved_device. |
-| 5 | **Endpoint cohort rollup** — today’s worker may mirror rdev windows onto endpoint keys as an interim step; **true** multi-device endpoint aggregation is a follow-up. |
-| 6 | **Site rollup** (`trend:site:*`) — after endpoint rollup is stable. |
+| 5 | **Endpoint cohort edge cases** — e.g. stale endpoint windows if all rdevs lack a bucket for a slot (no delete pass yet). |
+| 6 | **Site rollup** — Redis `trend:site:*` is written by worker; **policy** / UX for `scope=site` may still evolve. |
 | 7 | **Durable Timescale bucket table** — source of truth + backfill; Redis remains hot cache. |
 
 Current slice: **site + entity ownership** auth on `GET /trends/window` is acceptable until the policy layer above lands.
@@ -305,3 +305,4 @@ Implement as:
 | 2026-04-29 | Initial draft (HTML → React popup, buckets, Redis, workers, display rules). |
 | 2026-04-29 | **v1.1** — `entityId` / `scope` API; `rdev` Redis keys; full default stats; `avg` denormalized; partial bucket default; TTL rationale; authz alignment; `TrendPopupProps` + MapLibre rules; cluster feature-state; implementation order; site rollup keys. |
 | 2026-04-29 | **v1.2** — Backlog table (metric visibility, bindings, allowlist, cluster popup, cohort/site rollup, Timescale); worker populates `trend:window:rdev|endpoint` from LDS; popup empty-state copy. |
+| 2026-04-29 | **v1.3** — Worker: **5m series** keys + **true endpoint/site aggregation** from all cohort members; **sum/sumsq/stddev** on rdev merge; API normalizes **`avg`/`stddev`** from `sum`/`sumsq` when needed. |

@@ -20,7 +20,7 @@ from app.map_aggregator_db import (
     fetch_site_name,
     insert_map_kpi_history,
 )
-from app.trend_window_rollup import apply_trend_windows_for_lds, extract_numerics_from_lds_row
+from app.trend_window_rollup import apply_trend_rollups_from_lds_row, extract_numerics_from_lds_row
 from app.map_eligibility import map_eligible_data_object, map_eligible_result_object
 from app.pipeline import emit
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
@@ -456,7 +456,7 @@ def _process_latest_device_state_trends(r: Any, data: dict[str, Any]) -> None:
     numerics = extract_numerics_from_lds_row(row)
     if not numerics:
         return
-    apply_trend_windows_for_lds(r, resolved_device_id=rd, endpoint_id=ep, numerics=numerics)
+    apply_trend_rollups_from_lds_row(r, row=row, numerics=numerics)
 
 
 def _handle(r: Any, data: dict[str, Any]) -> None:

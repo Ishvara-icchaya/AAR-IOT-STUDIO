@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -58,6 +59,19 @@ def _normalize_bucket(raw: dict[str, Any]) -> TrendBucketPoint | None:
     if std is None:
         std = f("std")
 
+    avg = f("avg")
+    if avg is None and n is not None and n > 0:
+        s = f("sum")
+        if s is not None:
+            avg = float(s) / float(n)
+
+    if std is None and n is not None and n >= 2:
+        sumsq_v = f("sumsq")
+        s = f("sum")
+        if sumsq_v is not None and s is not None and avg is not None:
+            variance = (float(sumsq_v) / float(n)) - (float(avg) ** 2)
+            std = math.sqrt(max(variance, 0.0))
+
     partial = raw.get("is_partial")
     if partial is None:
         partial = raw.get("partial")
@@ -65,10 +79,10 @@ def _normalize_bucket(raw: dict[str, Any]) -> TrendBucketPoint | None:
 
     return TrendBucketPoint(
         ts=ts.strip(),
-        avg=f("avg"),
+        avg=avg,
         min=f("min"),
         max=f("max"),
-        stddev=std if n is None or n >= 2 else None,
+        stddev=None if n is None or n < 2 else std,
         n=n,
         is_partial=is_partial,
     )
