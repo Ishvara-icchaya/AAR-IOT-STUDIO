@@ -23,10 +23,8 @@
   overflow: hidden;
 }
 
+/* Frame surface + chrome live under `.dashboard-runtime` in dashboard-runtime.css */
 .dashboard-widget-cell .dash-wf {
-  border-radius: 14px;
-  border: 1px solid var(--aar-border, rgba(255, 255, 255, 0.08));
-  background: var(--aar-surface, #111822);
   overflow: hidden;
   box-sizing: border-box;
 }

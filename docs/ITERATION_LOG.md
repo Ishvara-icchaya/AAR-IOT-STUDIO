@@ -5,6 +5,15 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Dashboard runtime visual layer (Grafana-style shell + cards)
+
+- **Frontend:** `dashboard-runtime.css` — scoped `.dashboard-runtime` operational background (radials + optional grid), 24px padding, 16px row gap for fit-page, beveled `.dash-wf` cards under `.dashboard-widget-cell`, preview-only hover on `--builder`. Light theme softening via `:root[data-theme="light"]`.
+- **Components:** `DashboardRuntimeShell` gains `variant` (`live` | `builder` | `enterprise`); `DashboardLiveRenderer` infers variant from `layoutDensity` / `enterpriseMode` with optional `runtimeVariant` override; imports runtime CSS.
+- **CSS:** `dashboard-widget-contract.css` keeps cell/body sizing; frame border/gradient moved to runtime layer to avoid double chrome.
+- **Intent:** One shared visual layer for `/dashboard/:id/live`, preview, and enterprise resolved renderer without `/dashboard2` or duplicate widget headers.
+
+---
+
 ## 2026-04-29 — Stop tracking local editor-only rules in git
 
 - **Removed:** Tracked `iteration-log` rule file that lived under a local-only editor config directory; that directory is now listed in `.gitignore` so it is not re-committed.

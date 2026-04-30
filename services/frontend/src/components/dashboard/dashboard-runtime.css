@@ -1,0 +1,103 @@
+/**
+ * Legacy dashboard runtime visual layer (live / preview / enterprise resolved).
+ * Scoped under .dashboard-runtime — does not affect other app surfaces.
+ */
+
+.dashboard-runtime {
+  box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--radius-lg, 12px);
+  padding: 24px;
+  min-height: 0;
+  /* Operational “console” canvas */
+  background-color: var(--aar-surface-2, #0d121a);
+  background-image:
+    radial-gradient(1200px 520px at 18% -8%, color-mix(in oklab, var(--aar-accent-blue, #3d9aed) 14%, transparent), transparent 62%),
+    radial-gradient(900px 420px at 92% 12%, color-mix(in oklab, var(--aar-accent-green, #a3ff47) 8%, transparent), transparent 55%),
+    linear-gradient(165deg, color-mix(in oklab, var(--aar-surface, #111822) 88%, #000) 0%, var(--aar-surface-2, #0d121a) 48%, color-mix(in oklab, #000 55%, var(--aar-surface-2, #0d121a)) 100%);
+  background-attachment: local;
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--aar-border-strong, rgba(255, 255, 255, 0.12)) 35%, transparent);
+}
+
+/* Optional faint grid (very low contrast) */
+.dashboard-runtime::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--aar-border, rgba(255, 255, 255, 0.08)) 22%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--aar-border, rgba(255, 255, 255, 0.08)) 22%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  z-index: 0;
+}
+
+.dashboard-runtime > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Fit-page column: slightly larger row rhythm than legacy 0.35rem */
+.dashboard-runtime.dashboard-runtime--fit-page .dash-live--fit-page {
+  gap: 16px;
+}
+
+.dashboard-runtime .dash-live--fit-page .dash-row {
+  margin-bottom: 0 !important;
+}
+
+/* Preview rail: match spacing when not fit-page (override preview panel gap from index.css) */
+.dashboard-runtime--builder .dash-live.dash-live--preview {
+  gap: 16px !important;
+}
+
+/* Widget card chrome (single source under runtime; see dashboard-widget-contract.css for sizing) */
+.dashboard-runtime .dashboard-widget-cell .dash-wf {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--aar-border, rgba(255, 255, 255, 0.08)) 92%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--aar-surface, #151b26) 92%, var(--aar-text, #e6edf7) 4%) 0%,
+    color-mix(in oklab, var(--aar-surface-2, #101620) 94%, #000) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--aar-border-strong, rgba(255, 255, 255, 0.12)) 55%, transparent),
+    0 12px 28px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.28);
+  min-height: 0;
+}
+
+.dashboard-runtime .dashboard-widget-cell .dash-wf__body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Builder / preview only: no transform (avoids map/chart clipping) */
+.dashboard-runtime--builder .dashboard-widget-cell .dash-wf:hover {
+  border-color: color-mix(in oklab, var(--aar-border-strong, rgba(255, 255, 255, 0.16)) 80%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--aar-border-strong, rgba(255, 255, 255, 0.12)) 70%, transparent),
+    0 16px 34px rgba(0, 0, 0, 0.42),
+    0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+/* Light theme: soften console treatment */
+:root[data-theme="light"] .dashboard-runtime {
+  background-color: var(--color-surface-elevated, #f4f6fa);
+  background-image: linear-gradient(180deg, var(--color-surface-elevated, #f4f6fa) 0%, var(--color-bg, #eef1f6) 100%);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, var(--color-border) 40%, transparent);
+}
+
+:root[data-theme="light"] .dashboard-runtime::before {
+  opacity: 0.12;
+}
+
+:root[data-theme="light"] .dashboard-runtime .dashboard-widget-cell .dash-wf {
+  background: linear-gradient(180deg, var(--color-surface, #fff) 0%, color-mix(in oklab, var(--color-surface) 88%, var(--color-border) 12%) 100%);
+  border-color: var(--color-border);
+  box-shadow: var(--shadow-soft, 0 4px 14px rgba(15, 23, 42, 0.08));
+}

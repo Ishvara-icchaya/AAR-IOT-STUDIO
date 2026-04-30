@@ -6,7 +6,11 @@ import {
   DashboardLiveProvider,
   type DashboardLiveRuntimeValue,
 } from "./DashboardLiveContext";
-import { DashboardRuntimeShell } from "./runtime/DashboardRuntimeShell";
+import {
+  DashboardRuntimeShell,
+  type DashboardRuntimeVariant,
+} from "./runtime/DashboardRuntimeShell";
+import "./dashboard-runtime.css";
 
 /** Split grid + widget stack from live shell so map/chart/table lazy chunks load with the grid, not the shell. */
 const DashboardResponsiveGridLazy = lazy(() =>
@@ -36,6 +40,8 @@ export function DashboardLiveRenderer({
   fitPage = true,
   /** Reference / default ops dashboard: compact vertical flow, no flex fill, no raw rendered meta. */
   layoutDensity = "default",
+  /** Overrides inferred runtime shell variant (`builder` when layoutDensity is preview). */
+  runtimeVariant,
 }: {
   layout: unknown;
   widgets: DashboardLiveWidgetDTO[];
@@ -46,6 +52,7 @@ export function DashboardLiveRenderer({
   enterpriseMode?: boolean;
   fitPage?: boolean;
   layoutDensity?: "default" | "reference" | "preview";
+  runtimeVariant?: DashboardRuntimeVariant;
 }) {
   const list = Array.isArray(widgets) ? widgets : [];
   const byId = Object.fromEntries(list.map((w) => [w.widget_id, w])) as Record<string, DashboardLiveWidgetDTO>;
@@ -74,9 +81,16 @@ export function DashboardLiveRenderer({
     .filter(Boolean)
     .join(" ");
 
+  const shellVariant: DashboardRuntimeVariant =
+    runtimeVariant ??
+    (layoutDensity === "preview" ? "builder" : enterpriseMode ? "enterprise" : "live");
+
   return (
     <DashboardLiveProvider value={runtime}>
-      <DashboardRuntimeShell fitPage={fitPage && layoutDensity !== "reference" && layoutDensity !== "preview"}>
+      <DashboardRuntimeShell
+        fitPage={fitPage && layoutDensity !== "reference" && layoutDensity !== "preview"}
+        variant={shellVariant}
+      >
         <div className={rootClass}>
           <Suspense
             fallback={
