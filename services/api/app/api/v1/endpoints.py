@@ -328,14 +328,14 @@ def list_scrubbed_events(
         try:
             cid = uuid.UUID(c)
         except ValueError as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid cursor UUID") from e
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid pagination token UUID") from e
         brow = db.get(ScrubbedEvent, cid)
         if (
             not brow
             or brow.endpoint_id != endpoint_id
             or brow.customer_id != user.customer_id
         ):
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cursor does not match this endpoint")
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Pagination token does not match this endpoint")
         stmt = stmt.where(
             or_(
                 ScrubbedEvent.event_ts < brow.event_ts,
