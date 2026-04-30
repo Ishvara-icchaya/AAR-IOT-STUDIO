@@ -6,6 +6,11 @@ import type {
   DashboardReadDTO,
   EnterpriseSiteObjectCountsDTO,
 } from "@/types/dashboard";
+import type {
+  DashboardRuntimeLayoutDTO,
+  DashboardWidgetsResolveBatchRequestDTO,
+  DashboardWidgetsResolveBatchResponseDTO,
+} from "@/types/dashboardWidgetRuntime";
 
 export async function listDashboards(params?: { site_id?: string; q?: string }) {
   const qs = new URLSearchParams();
@@ -65,6 +70,19 @@ export async function clearPrimaryDashboard() {
   return apiFetch<{ primary_dashboard_id: string | null }>("/dashboards/clear-primary", {
     method: "POST",
   });
+}
+
+/** Layout + widget definitions only (no widget data). Use `postDashboardWidgetsResolveBatch` for data. */
+export async function getDashboardRuntimeLayout(id: string) {
+  return apiFetch<DashboardRuntimeLayoutDTO>(`/dashboards/${id}/runtime-layout`);
+}
+
+/** Canonical widget data path: backend-prepared payloads per DASHBOARD_WIDGET_CONTRACT. */
+export async function postDashboardWidgetsResolveBatch(body: DashboardWidgetsResolveBatchRequestDTO) {
+  return apiFetch<DashboardWidgetsResolveBatchResponseDTO>(
+    `/dashboards/runtime/widgets/resolve-batch`,
+    { method: "POST", json: body },
+  );
 }
 
 export async function getDashboardLive(id: string) {
