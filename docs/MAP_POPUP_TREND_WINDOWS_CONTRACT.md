@@ -1,20 +1,21 @@
-# Map popup & trend windows — architecture contract (draft)
+# Map popup & trend windows — architecture contract (v1.1)
 
-This document records **agreed direction** for map marker detail UX, numeric presentation, and **1h / 24h trend** data (device + endpoint rollups, storage, workers, and client shape). It is a **contract for implementation**; it does not replace OpenAPI until endpoints and schemas are added.
+This document is the **engineering-ready contract** for map marker detail UX, **metadata-driven** numeric formatting, **5-minute trend buckets** (resolved device, endpoint, and site), **moving windows** (1h / 24h), **Redis hot cache**, **durable storage**, **workers**, and the **React MapLibre popup**. OpenAPI remains the normative API spec once implemented.
 
-**Related context:** Today the map uses **HTML string** popups (`MapWidget` → `popupContentFromDetail`). Target state is a **React tree** in the MapLibre popup with **lazy-loaded** trend/chart UI and a **typed API** for windowed rollups.
+**Implementation context:** Today the map uses **HTML string** popups (`MapWidget` → `popupContentFromDetail`). Target: **no HTML string popups** for production detail — **one React root per open popup**, **lazy** trend UI, **unmount on close**.
 
 ---
 
 ## 1. Goals
 
-1. **Operator questions:** Support questions such as “What was my truck speed in the **last 1 hour**?” and the same class of question over **24 hours**, with **readable** numbers and **trend** context (not only a single latest value).
-2. **Aggregations:** Per bucket, expose at least **avg, min, max**, and **std dev** where statistically meaningful, on a **fixed bucket cadence** (default **5 minutes** unless changed by a later revision).
-3. **Two rollup surfaces:**
-   - **Device (resolved-device) level** — canonical series for a single asset.
-   - **Endpoint level** — rolled up across devices under an endpoint (and object/site scope as already modeled elsewhere), for fleet-style map popups and fewer reads when scanning many markers.
-4. **Performance:** Hot path for popup reads should be **fast** (Redis and/or narrow Timescale queries); **heavy aggregation** should not run **on each popup open**.
-5. **Presentation rules:** **Integers** render as **whole numbers (no decimals)**; **floats** render **rounded to 2 decimal places** (presentation layer; type- or metadata-driven, not string heuristics).
+1. **Operator questions:** “What happened to this **resolved device**, **endpoint**, or **site** over the **last hour** or **day**?” — with readable numbers and **trend** context.
+2. **Aggregations:** Per **5-minute** bucket: **avg, min, max, stddev, n, is_partial** (full set returned by default from API; see §8).
+3. **Rollup surfaces:**
+   - **`resolved_device`** — canonical series for one asset.
+   - **`endpoint`** — cohort under an endpoint (scoped through **tenant/site** context when endpoint IDs are not globally unique).
+   - **`site`** — site-level rollup where product requires fleet-by-site views.
+4. **Performance:** Popup reads hit **Redis / narrow TS queries**; **no raw recomputation** on popup open.
+5. **Presentation:** **Metadata-driven** formatting (§3), not value guessing.
 
 ---
 
@@ -22,129 +23,264 @@ This document records **agreed direction** for map marker detail UX, numeric pre
 
 | Term | Meaning |
 |------|--------|
-| **Bucket** | A fixed time interval (default **5 minutes**) for which rollups are computed and stored. Buckets are **immutable once closed**; the “current” bucket may be **partial** (see §6). |
-| **Moving window** | **Query-time** selection of buckets whose time range overlaps **last 1h** or **last 24h** relative to a defined **as-of** time (usually “now” or “last sample time”). Windows are **not** recomputed by scanning raw events on every UI open. |
-| **Device rollup** | Metrics aggregated for one **resolved device** (or equivalent identity) over buckets. |
-| **Endpoint rollup** | Same metric definitions, aggregated across the **cohort** of devices bound to an **endpoint** (and scoped by site/object as required by the product). |
-| **Trend** | Ordered series of bucket-level stats (and optionally sub-bucket detail where available) suitable for **sparkline / small chart** UI. |
-| **Popup shell** | MapLibre `Popup` content host: **React root** (or framework-approved pattern), **lazy** chart/trend modules, explicit **loading / error / empty** states. |
+| **`entityId`** | Canonical UUID (or stable string) for the **scope** in API and UI — **never** a generic `id` query param. |
+| **Bucket** | Fixed **300s** interval; **immutable once closed**. Open bucket = **`is_partial: true`**. |
+| **Moving window** | **Read** of stored buckets from **`as_of`** backward: **1h → 12 buckets**, **24h → 288 buckets** at 5m cadence (see §6). |
+| **Trend** | Time-ordered bucket stats for sparkline / small chart. |
+| **Popup shell** | MapLibre `Popup` DOM host with **one React root**, lazy trend bundle, **unmount on close**. |
 
 ---
 
 ## 3. Numeric presentation (UI contract)
 
-| Value kind | Display |
-|------------|--------|
-| **Integer** (counts, discrete states encoded as ints) | **No** fractional part (e.g. `42`, not `42.00`). |
-| **Float** (continuous metrics: speed, temperature, etc.) | **Two** decimal places (e.g. `63.47`). |
-| **Non-numeric** (IDs, enums, labels) | **No** numeric rounding; pass through as text. |
-| **Coordinates / special fields** | May override defaults (e.g. lat/lon precision) via **field metadata** in a later revision; until then, document exceptions per field in the binding/schema catalog. |
+Implement **`formatMetricValue(value, fieldMeta)`** (or equivalent) as a **presentation-layer** helper only.
 
-Formatting is a **presentation** concern; **stored bucket values** should retain **full precision** appropriate for downstream math (see §5).
+| Input | Display |
+|-------|--------|
+| **integer** (`fieldMeta.type === "integer"`) | Whole number, **no** decimals. |
+| **float** (`type === "float"`, optional `decimals`, default **2**) | Rounded to **2** decimals. |
+| **string / code / id / enum** | Unchanged. |
+| **null / undefined** | **`—`** |
 
----
-
-## 4. Bucket schema (logical contract)
-
-Each **closed** bucket (per metric, per rollup entity) should support at minimum:
-
-- **Bucket identity:** `bucket_start` (UTC), `bucket_width` (e.g. `5m`), rollup **entity** (device id vs endpoint id + scope), **metric key**.
-- **Aggregates:** `n` (sample count in bucket), `min`, `max`, `sum` (for avg = sum/n), and inputs needed for **std dev** (e.g. `sumsq` for population or sample variance — **choose one** and document in schema migration).
-- **Semantics:** **std dev** is only meaningful when **n ≥ 2** (or when sub-sample variance is defined); product may show **“—”** or hide when undefined.
-
-**Partial bucket:** the bucket containing **as-of** may be incomplete; mark **`partial: true`** or omit from “closed” rollup tables until closed, per implementation choice.
-
----
-
-## 5. Storage layers (contract)
-
-| Layer | Role |
-|-------|------|
-| **Durable time-series store** (e.g. Timescale) | **Source of truth** for bucket rows (and/or raw samples if buckets are derived in batch). Supports **backfill**, **audit**, and **recompute** if logic changes. |
-| **Redis** | **Hot cache** for “last 1h / 24h” **window reads** and/or **pre-materialized** endpoint/device summaries used by the map popup API. Keys and TTLs must be **explicit** in a follow-on “Redis key catalog” section or doc. |
-| **API DB** (Postgres) | Metadata only unless buckets are also mirrored here by design; **default** is TS + Redis for series. |
-
-**Retention (default intent):** retain enough **5m buckets** to cover **24h** at minimum for popup/trend; longer retention is a **product/cost** decision (separate from this contract unless fixed here).
-
----
-
-## 6. Moving windows (1h and 24h)
-
-- **1h window:** all **closed** (and optionally **current partial**) buckets with `bucket_start >= as_of - 1h` and `bucket_start < as_of` (exact inequality rules to be aligned with **inclusive/exclusive** end in implementation).
-- **24h window:** same pattern over **24 hours**.
-- **As-of time:** default **`now`**; may use **last event timestamp** for stale devices (product decision — document in API if supported).
-
-**Endpoint rollup:** same window logic, but each bucket’s values are aggregated **across the device cohort** for that endpoint (and scope). Definition of “cohort membership” at bucket time must match **v2 endpoint / resolved device** models already in the platform.
-
----
-
-## 7. Workers & write path (contract)
-
-- **Rollups must not** depend solely on **popup open** for correctness; a **worker or ingest-side path** must **update or finalize** buckets (or enqueue work) when **new scrubbed / sample data** arrives or on a **schedule** (e.g. close 5m buckets).
-- **Read path:** popup and map clients call a **narrow API** (see §8) that returns **windowed** series + optional **summary row** (e.g. last bucket, min/max over window).
-
-Exact worker placement (ingest vs scheduler vs dedicated rollup service) is **implementation detail** but must satisfy: **bounded latency** from ingest to **queryable** rollups for “live” map use cases, or documented **staleness SLA**.
-
----
-
-## 8. API contract (illustrative — to be formalized in OpenAPI)
-
-**Principle:** one or a few endpoints return **ready-to-render** structures for the React popup (trend series + summary), keyed by **resolved device** and/or **endpoint** + **metric set** + **window**.
-
-Illustrative request (shape only):
-
-```http
-GET /api/v1/.../trend-window?entity_type=resolved_device|endpoint&entity_id=...&window=1h|24h&metrics=speed,rpm&bucket=5m
-```
-
-Illustrative response (shape only):
+**Field metadata** drives behavior (example):
 
 ```json
 {
+  "key": "speed",
+  "label": "Speed",
+  "type": "float",
+  "unit": "mph",
+  "decimals": 2
+}
+```
+
+Coordinates / special fields: exceptions live in the **field metadata catalog** (see §12).
+
+---
+
+## 4. Bucket schema (durable + API series point)
+
+Store **5-minute** buckets at **`resolved_device`**, **`endpoint`**, and **`site`** levels (same schema shape; rollup pipeline defines how site buckets aggregate).
+
+**Logical record:**
+
+```json
+{
+  "bucket_start": "2026-04-30T10:00:00Z",
+  "bucket_size_sec": 300,
+  "metric_key": "speed",
+  "n": 42,
+  "sum": 2140.5,
+  "sumsq": 112340.9,
+  "min": 38.2,
+  "max": 61.7,
+  "avg": 50.96,
+  "stddev": 4.83,
+  "is_partial": false
+}
+```
+
+**Rules:**
+
+- **Authoritative** for recomputation: **`n`, `sum`, `sumsq`, `min`, `max`**. **`avg`** is **denormalized** at write time (`sum / n`) for read optimization; if corrected, rederive from **`sum` / `n`**.
+- **`stddev`:** compute and **return only when `n >= 2`**; otherwise omit or `null` (UI shows **—**).
+- **`is_partial`:** `true` for the **open** bucket until closed.
+
+---
+
+## 5. Moving windows
+
+- **Do not** rescan raw telemetry when the popup opens. **Query stored buckets** only.
+- **1h:** last **12** five-minute buckets ending at **`as_of`** (inclusive of open bucket per §7).
+- **24h:** last **288** buckets at 5m cadence.
+- **`as_of`:** default **now**; optional ISO timestamp for **frozen / debug / export** (`TrendPopupProps.asOf`, API param when added).
+
+**Partial bucket (default):**
+
+| Mode | Partial bucket |
+|------|----------------|
+| **Live popup / default API** | **Include** open/current partial bucket. |
+| **Historical / export** (later) | May **exclude** partial bucket; document per API or `?includePartial=false`. |
+
+---
+
+## 6. Worker / rollup pipeline
+
+**Flow:**
+
+```
+scrubbed telemetry sample
+        → update resolved_device 5m bucket
+        → update endpoint 5m rollup
+        → update site 5m rollup (if enabled for metric)
+        → write durable bucket store (Timescale = source of truth)
+        → write / refresh Redis hot cache (window + series keys)
+```
+
+**Redis holds (conceptual):** materialized **5m series** slices and/or **pre-merged window** blobs for fast popup reads — exact keys in §9.
+
+---
+
+## 7. Trend API (canonical)
+
+**Single read endpoint** (OpenAPI to follow):
+
+```http
+GET /api/v1/trends/window?scope=resolved_device|endpoint|site&entityId=<uuid>&metrics=speed,temperature&window=1h|24h&bucket=5m
+```
+
+- **`entityId`:** required; **never** use a generic `id` param name.
+- **`metrics`:** comma-separated metric keys.
+- **`window`:** `1h` | `24h`.
+- **`bucket`:** default **`5m`**; reserved for future cadence options.
+- **`stats`:** **omit** by default — response includes **full** bucket stats: **`avg`, `min`, `max`, `stddev` (when defined), `n`, `is_partial`**. Optional **`stats=`** projection may be added later for bandwidth only.
+
+**Example response:**
+
+```json
+{
+  "scope": "resolved_device",
+  "entityId": "b3e4f5a0-…",
   "window": "1h",
   "bucket": "5m",
-  "as_of": "2026-04-29T12:00:00Z",
-  "metrics": {
-    "speed": {
-      "buckets": [
-        { "t": "2026-04-29T11:00:00Z", "n": 12, "avg": 62.3, "min": 0, "max": 71.2, "std": 4.1 }
-      ],
-      "summary": { "n_total": 144, "avg": 61.8, "min": 0, "max": 72.0 }
-    }
+  "as_of": "2026-04-30T12:00:00Z",
+  "series": {
+    "speed": [
+      {
+        "ts": "2026-04-30T10:00:00Z",
+        "avg": 51.2,
+        "min": 44.1,
+        "max": 59.7,
+        "stddev": 3.4,
+        "n": 36,
+        "is_partial": false
+      }
+    ]
   }
 }
 ```
 
-**Pagination / max buckets:** cap response size for 24h at 5m (`≤ 288` buckets per metric) unless client requests **downsampled** series in a later revision.
+**Authz:** trend reads use the **same authorization model** as dashboard runtime reads: **tenant, site, endpoint, resolved_device**, and **metric visibility** policy. **`scope=endpoint` (and `site`)** must resolve through **tenant/site** (and object binding if required) when endpoint IDs are not globally unique.
 
 ---
 
-## 9. Map popup UI contract (target)
+## 8. Redis key strategy & TTL
 
-| Requirement | Detail |
-|-------------|--------|
-| **React tree** | Popup content is **not** built from ad hoc HTML strings for production detail; use a **mounted React** subtree (create root / unmount on popup close) or an equivalent approved pattern. |
-| **Lazy loading** | Chart / trend bundles **load on open** (or when the marker requires them), not on initial map load. |
-| **Layout** | Support **multi-column** layout inside the popup where product requires (e.g. three logical columns); **max-width** and **responsive collapse** (e.g. single column on narrow hosts) must be defined in UI/CSS spec so content is not clipped (see prior design discussion: widen popup vs stack). |
-| **States** | **Loading**, **error**, **empty** (no buckets), and **partial data** must be explicit in the React UI. |
+**Key patterns** (prefix `trend:`; **`rdev`** = resolved device):
 
-**Migration:** until the API and React popup ship, existing HTML popup may remain as **fallback** behind a feature flag only if needed; contract assumes ** eventual replacement**.
+| Pattern | Purpose |
+|---------|--------|
+| `trend:rdev:{resolved_device_id}:{metric_key}:5m` | Device 5m series / bucket materialization |
+| `trend:endpoint:{endpoint_id}:{metric_key}:5m` | Endpoint 5m rollup |
+| `trend:site:{site_id}:{metric_key}:5m` | Site 5m rollup (when used) |
+| `trend:window:rdev:{resolved_device_id}:{metric_key}:1h` | Hot **1h** window for device + metric |
+| `trend:window:rdev:{resolved_device_id}:{metric_key}:24h` | Hot **24h** window |
+| `trend:window:endpoint:{endpoint_id}:{metric_key}:1h` | Hot **1h** endpoint window |
+| `trend:window:endpoint:{endpoint_id}:{metric_key}:24h` | Hot **24h** endpoint window |
+| `trend:window:site:{site_id}:{metric_key}:1h` | Hot **1h** site window (when used) |
+| `trend:window:site:{site_id}:{metric_key}:24h` | Hot **24h** site window (when used) |
+
+**TTL (keep slack for clock skew, ingest lag, late samples):**
+
+| Key class | TTL |
+|-----------|-----|
+| **1h window** cache | **90 minutes** |
+| **24h window** cache | **26 hours** |
 
 ---
 
-## 10. Open items (to close in follow-up docs or tickets)
+## 9. MapLibre React popup (UI contract)
 
-1. **Std dev:** population vs sample; behavior when **n &lt; 2**.
-2. **Event time vs processing time** for bucket boundaries when ingest is delayed.
-3. **Redis key catalog** and **TTL** table per entity/window.
-4. **Exact OpenAPI** paths, authz (tenant/site/endpoint), and **rate limits** for trend-window reads.
-5. **Field metadata catalog** for integer vs float vs exception (e.g. lat/lon).
-6. **Downsampling** for 24h on dense metrics (if 288 points is too heavy for mobile).
+**Rules:**
+
+1. **One React root** per **open** popup instance.
+2. **Lazy-load** the trend UI: e.g. `const TrendPopup = React.lazy(() => import("./TrendPopup"));`
+3. **Unmount** the root **on popup close** (avoid leaks / duplicate listeners).
+4. **Do not** use **HTML string** popups for production trend detail.
+
+**`TrendPopupProps` (thin client):**
+
+```ts
+type TrendPopupProps = {
+  scope: "resolved_device" | "endpoint" | "site";
+  entityId: string;
+  title: string;
+  metricKeys: string[];
+  defaultWindow: "1h" | "24h";
+  asOf?: string;
+};
+```
+
+The popup **only** calls **`GET /api/v1/trends/window`**; it **does not** recompute rollups locally.
+
+**Cluster / endpoint marker:** feature state (or equivalent) must pass a **defined contract**, e.g.:
+
+```json
+{
+  "scope": "endpoint",
+  "entityId": "<endpoint-uuid>",
+  "metricKeys": ["speed", "temperature"]
+}
+```
+
+**Map behavior:** device marker → **`scope=resolved_device`**; cluster / endpoint marker → **`scope=endpoint`** (or **`site`** when applicable).
+
+**In-popup UX (product):** default **1h**; toggle **1h / 24h**; show **avg, min, max, stddev**; chart = **5m** bucket trend; **summary row** = window-level aggregates / latest as specified in UI spec.
+
+**Layout:** multi-column / max-width / responsive collapse per separate UI note (avoid clipped content).
 
 ---
 
-## 11. Revision history
+## 10. Storage layers
+
+| Layer | Role |
+|-------|------|
+| **Timescale (or chosen TS store)** | **Source of truth** for bucket rows; backfill and recomputation. |
+| **Redis** | **Fast runtime** layer for window/series reads; TTLs in §8. |
+| **Postgres** | Metadata / policy only unless buckets are explicitly mirrored. |
+
+---
+
+## 11. Implementation order (suggested)
+
+1. **`formatMetricValue` + field metadata** wiring (shared formatter).
+2. **Bucket schema / migrations** (durable store).
+3. **Worker** — 5m aggregation pipeline (device → endpoint → site → durable → Redis).
+4. **Redis helpers** — keys + TTL + invalidation rules.
+5. **`GET /api/v1/trends/window`** — authz, validation, series assembly.
+6. **MapLibre** — replace HTML popup with **React root** + lazy **`TrendPopup`**.
+7. **Tests** — e.g. truck **speed** 1h / 24h; extend to other metrics via metadata.
+
+---
+
+## 12. Open items
+
+1. **Std dev:** finalize **population vs sample** variance in schema; document formula next to `sumsq`.
+2. **Event time vs processing time** for bucket boundaries under ingest delay.
+3. **OpenAPI** — paths, errors, rate limits, `includePartial` for historical mode.
+4. **Field metadata catalog** — per-metric `type`, `decimals`, geo exceptions.
+5. **Downsampling** for 24h on constrained clients (optional future `?maxPoints=`).
+
+---
+
+## 13. Final engineering direction (summary)
+
+Implement as:
+
+- **Metadata-driven** numeric formatting (`formatMetricValue` + `fieldMeta`).
+- **5-minute immutable buckets** at **`resolved_device`**, **`endpoint`**, and **`site`**.
+- **Full bucket stats** in API by default; optional **`stats=`** projection later.
+- **`avg` denormalized**; **`n`, `sum`, `sumsq`, `min`, `max`** authoritative.
+- **Partial bucket included** for live views by default.
+- **Redis window cache** with **90m / 26h** TTL slack.
+- **Single authorized** **`GET /api/v1/trends/window`** with **`entityId`** + **`scope`**.
+- **React lazy-loaded** MapLibre popup; **canonical naming** to avoid identity / cache / UI drift.
+
+---
+
+## 14. Revision history
 
 | Date | Change |
 |------|--------|
-| 2026-04-29 | Initial draft from product/architecture discussion (map popup React migration, 5m buckets, device + endpoint rollups, Redis + TS + workers, display rules). |
+| 2026-04-29 | Initial draft (HTML → React popup, buckets, Redis, workers, display rules). |
+| 2026-04-29 | **v1.1** — `entityId` / `scope` API; `rdev` Redis keys; full default stats; `avg` denormalized; partial bucket default; TTL rationale; authz alignment; `TrendPopupProps` + MapLibre rules; cluster feature-state; implementation order; site rollup keys. |

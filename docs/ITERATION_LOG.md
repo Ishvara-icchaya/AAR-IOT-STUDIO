@@ -5,6 +5,13 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — MAP_POPUP_TREND_WINDOWS_CONTRACT v1.1 (engineering-ready)
+
+- **Docs:** Updated `docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md` to **v1.1** — canonical **`entityId`** + **`scope`** (`resolved_device` \| `endpoint` \| `site`), **`GET /api/v1/trends/window`** query shape, **full default bucket stats** (`avg` denormalized; authoritative `n`/`sum`/`sumsq`/`min`/`max`), **partial bucket included** for live reads, **Redis key table** (`trend:rdev:…`, `trend:window:…`, site variants), **TTL slack** (1h window → 90m, 24h → 26h), **authz** aligned with dashboard runtime, **`TrendPopupProps`** + **MapLibre** rules (one root, lazy, unmount, no HTML strings), **cluster feature-state** JSON contract, implementation order.
+- **Intent:** Lock contract so implementation avoids identity, cache, and UI drift; OpenAPI and code still to follow.
+
+---
+
 ## 2026-04-29 — Doc contract: map popup trends & trend windows
 
 - **Docs:** Added `docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md` — draft architecture contract for **5m buckets**, **device + endpoint rollups**, **1h/24h moving windows**, **Redis + durable TS + workers**, **numeric display rules** (integers vs floats), **React + lazy map popup**, and illustrative **trend-window API** shape.
