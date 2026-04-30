@@ -25,7 +25,6 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     log.debug("lifespan: startup")
     from app.core.pipeline_log import emit as pipeline_emit
-    from app.core.dashboard2_demo_seed import ensure_dashboard2_demo_dashboard
     from app.core.seed import ensure_bootstrap_admin
     from app.db.session import SessionLocal
 
@@ -47,7 +46,6 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         ensure_bootstrap_admin(db)
-        ensure_dashboard2_demo_dashboard(db)
     except Exception:
         log.exception("Bootstrap seed failed")
         db.rollback()
