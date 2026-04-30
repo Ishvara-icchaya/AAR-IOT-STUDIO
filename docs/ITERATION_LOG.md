@@ -5,6 +5,15 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Trends window API + React map popup (contract slice 1)
+
+- **API:** `GET /api/v1/trends/window` (`scope`, `entityId`, `site_id`, `metrics`, `window`, `bucket=5m`, optional `as_of`) — site auth aligned with map runtime; reads Redis keys per `docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md` (`trend:window:…`); `app/services/trend_redis_contract.py`, `trends_window_service.py`, `app/api/v1/trends.py`, router mount.
+- **Map detail:** `trend_context` on `latest_device_state` / `device_state` detail; LDS markers include `resolved_device_id` + `endpoint_id` (`map_runtime_service`, `dashboard_live`).
+- **Frontend:** `formatMetricValue` + `types/trends.ts`, `getTrendsWindow`, lazy `TrendPopup`, `MapMarkerPopupRoot` + `mountMapMarkerPopup` (one `createRoot` per popup, unmount on close); `MapWidget` no longer uses HTML string popups for marker detail.
+- **Tests:** `services/api/tests/test_trends_window.py` (OpenAPI path + bucket normalization). **Follow-ups:** rollup worker writing `trend:window:*` JSON; Timescale bucket store; optional `includePartial`; cluster popup `TrendPopup` wiring.
+
+---
+
 ## 2026-04-29 — MAP_POPUP_TREND_WINDOWS_CONTRACT v1.1 (engineering-ready)
 
 - **Docs:** Updated `docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md` to **v1.1** — canonical **`entityId`** + **`scope`** (`resolved_device` \| `endpoint` \| `site`), **`GET /api/v1/trends/window`** query shape, **full default bucket stats** (`avg` denormalized; authoritative `n`/`sum`/`sumsq`/`min`/`max`), **partial bucket included** for live reads, **Redis key table** (`trend:rdev:…`, `trend:window:…`, site variants), **TTL slack** (1h window → 90m, 24h → 26h), **authz** aligned with dashboard runtime, **`TrendPopupProps`** + **MapLibre** rules (one root, lazy, unmount, no HTML strings), **cluster feature-state** JSON contract, implementation order.

@@ -3752,6 +3752,55 @@ a:hover {
   border-top: 1px solid color-mix(in oklab, var(--color-border) 50%, transparent);
 }
 
+.dash-map-popup__section--trend {
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
+}
+
+.dash-map-popup__trend-toggle {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.dash-map-popup__trend-toggle button {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 92%, transparent);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.dash-map-popup__trend-toggle button.is-active {
+  border-color: color-mix(in oklab, var(--color-accent) 55%, var(--color-border));
+  color: var(--color-text);
+  background: color-mix(in oklab, var(--color-accent) 12%, var(--color-surface));
+}
+
+.dash-map-popup__trend-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.dash-map-popup__trend-metric-name {
+  font-weight: 600;
+  font-size: 0.78rem;
+  margin-bottom: 0.25rem;
+}
+
+.dash-map-popup__table--compact th {
+  width: 38%;
+  font-size: 0.72rem;
+}
+
+.dash-map-popup__table--compact td {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .dash-map-popup--bare .dash-map-popup__head {
   border-bottom: none;
 }

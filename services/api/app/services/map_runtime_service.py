@@ -417,6 +417,17 @@ def map_marker_detail(
         "health_message": merged.get("health_message"),
     }
 
+    trend_context: dict[str, Any] | None = None
+    if st_lower in ("latest_device_state", "device_state"):
+        lds = db.get(LatestDeviceState, source_id)
+        if lds:
+            trend_context = {
+                "scope": "resolved_device",
+                "entityId": str(lds.resolved_device_id),
+                "endpointId": str(lds.endpoint_id),
+                "metricKeys": list(k_latest.keys())[:24],
+            }
+
     return {
         "source_type": st_lower,
         "source_id": str(source_id),
@@ -428,6 +439,7 @@ def map_marker_detail(
         "kpi_history_timescale": {"1h": ts_1h, "24h": ts_24h},
         "trend": (state or {}).get("trend"),
         "redis_state": state,
+        "trend_context": trend_context,
     }
 
 

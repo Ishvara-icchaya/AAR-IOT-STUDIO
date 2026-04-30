@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter
 
-from app.api.v1 import admin_llm_config, admin_ports
+from app.api.v1 import admin_llm_config, admin_ports, trends
 from app.api.v1 import (
     administration,
     ai,
@@ -59,3 +59,6 @@ _MOUNT = (
 for router, prefix, tag in _MOUNT:
     api_router.include_router(router, prefix=prefix, tags=[tag])
     log.debug("api v1 mounted tag=%s prefix=%s", tag, prefix)
+
+api_router.include_router(trends.router, prefix="/trends", tags=["trends"])
+log.debug("api v1 mounted tag=trends prefix=/trends")

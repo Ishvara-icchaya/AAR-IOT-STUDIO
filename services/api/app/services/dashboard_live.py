@@ -818,6 +818,8 @@ def build_map_marker_for_source(
         return {
             "source_type": "latest_device_state",
             "source_id": str(row.id),
+            "resolved_device_id": str(row.resolved_device_id),
+            "endpoint_id": str(row.endpoint_id),
             "display_name": title,
             "device_name": device_name,
             "site_name": site_name,

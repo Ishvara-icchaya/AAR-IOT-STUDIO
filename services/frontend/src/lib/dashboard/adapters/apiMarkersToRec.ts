@@ -15,6 +15,8 @@ export type MarkerRec = {
   updated_at?: string;
   source_type?: string;
   source_id?: string;
+  resolved_device_id?: string;
+  endpoint_id?: string;
 };
 
 export function apiMarkersToMarkerRecs(markers: Record<string, unknown>[]): MarkerRec[] {
@@ -37,6 +39,9 @@ export function apiMarkersToMarkerRecs(markers: Record<string, unknown>[]): Mark
       updated_at: typeof raw.updated_at === "string" ? raw.updated_at : undefined,
       source_type: typeof raw.source_type === "string" ? raw.source_type : undefined,
       source_id: typeof raw.source_id === "string" ? raw.source_id : undefined,
+      resolved_device_id:
+        typeof raw.resolved_device_id === "string" ? raw.resolved_device_id : undefined,
+      endpoint_id: typeof raw.endpoint_id === "string" ? raw.endpoint_id : undefined,
     });
   }
   return out;

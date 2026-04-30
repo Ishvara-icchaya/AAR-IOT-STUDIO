@@ -6,7 +6,7 @@ import { DashboardWidgetFrame } from "@/components/dashboard/DashboardWidgetFram
 import { useDashboardLiveRuntime } from "@/components/dashboard/DashboardLiveContext";
 import { resolveWidgetPresentation } from "@/lib/widgetPresentation";
 import { OFFLINE_FALLBACK_MAP_STYLE } from "@/lib/dashboardMapStyle";
-import { getEnterpriseSiteObjectCounts, getMapObjectDetail, postMapMarkersQuery } from "@/api/dashboard";
+import { getEnterpriseSiteObjectCounts, postMapMarkersQuery } from "@/api/dashboard";
 import { attachDeckSiteMapOverlay, type DeckSiteMapHandle } from "@/components/dashboard/map/deckOverlaySiteMap";
 import {
   adaptMapChrome,
@@ -19,6 +19,7 @@ import {
 import type { MarkerRec } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { apiMarkersToMarkerRecs } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { markersToViewModels, type MapPointVM, type MapProfile } from "@/lib/dashboard/mapViewModel";
+import { openDashboardMapMarkerPopup } from "@/components/dashboard/map/mountMapMarkerPopup";
 
 function computeClusterEffective(list: MarkerRec[], controls: MapControlsVM): boolean {
   const n = list.length;
@@ -51,38 +52,25 @@ function openMapPopupForVm(
   const sid = vm.source_id;
   const displayName = vm.label || "Object";
 
-  const popup = new maplibregl.Popup({
-    offset: 18,
-    maxWidth: "380px",
-    className: "dash-map-popup-shell",
-    closeButton: true,
-    closeOnClick: false,
-  })
-    .setLngLat(lngLat)
-    .addTo(map);
-  popup.setHTML(popupContentMinimal(displayName));
-
   if (!siteId || !st || !sid) {
-    popup.setHTML(popupContentNoDetail(displayName, "No detail link (missing site or source)."));
+    openDashboardMapMarkerPopup(map, {
+      lngLat,
+      title: displayName,
+      siteId: siteId ?? "",
+      sourceType: String(st ?? ""),
+      sourceId: String(sid ?? ""),
+      blockedMessage: "No detail link (missing site or source).",
+    });
     return;
   }
 
-  void (async () => {
-    try {
-      const r = await getMapObjectDetail({
-        siteId,
-        sourceType: String(st),
-        sourceId: String(sid),
-      });
-      if (r?.detail && typeof r.detail === "object") {
-        popup.setHTML(popupContentFromDetail(displayName, r.detail as Record<string, unknown>));
-      } else {
-        popup.setHTML(popupContentMinimal(displayName));
-      }
-    } catch {
-      popup.setHTML(popupContentMinimal(displayName));
-    }
-  })();
+  openDashboardMapMarkerPopup(map, {
+    lngLat,
+    title: displayName,
+    siteId,
+    sourceType: String(st),
+    sourceId: String(sid),
+  });
 }
 
 function applyViewport(
@@ -544,105 +532,3 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   );
 }
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function healthBadgeClass(status: string | undefined): string {
-  const s = (status ?? "").trim().toLowerCase();
-  if (s === "green") return "dash-map-popup__badge dash-map-popup__badge--green";
-  if (s === "yellow") return "dash-map-popup__badge dash-map-popup__badge--yellow";
-  if (s === "red") return "dash-map-popup__badge dash-map-popup__badge--red";
-  if (s === "offline") return "dash-map-popup__badge dash-map-popup__badge--offline";
-  return "dash-map-popup__badge dash-map-popup__badge--neutral";
-}
-
-function kvTable(rows: Array<[string, string]>): string {
-  if (rows.length === 0) return "";
-  const body = rows
-    .map(([k, v]) => `<tr><th scope="row">${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`)
-    .join("");
-  return `<table class="dash-map-popup__table"><tbody>${body}</tbody></table>`;
-}
-
-function popupContentMinimal(title: string): string {
-  return `<div class="dash-map-popup">
-  <div class="dash-map-popup__loading">
-    <div class="dash-map-popup__head">
-      <span class="dash-map-popup__title">${escapeHtml(title)}</span>
-    </div>
-    <p class="dash-map-popup__hint">Loading asset details…</p>
-  </div>
-</div>`;
-}
-
-function popupContentNoDetail(title: string, message: string): string {
-  return `<div class="dash-map-popup dash-map-popup--bare">
-  <div class="dash-map-popup__head">
-    <span class="dash-map-popup__title">${escapeHtml(title)}</span>
-  </div>
-  <p class="dash-map-popup__msg">${escapeHtml(message)}</p>
-</div>`;
-}
-
-function popupContentFromDetail(title: string, detail: Record<string, unknown>): string {
-  const h = (detail.health as Record<string, unknown> | undefined) || {};
-  const kl = (detail.kpi_latest as Record<string, unknown> | undefined) || {};
-  const df = (detail.display_fields as Record<string, unknown> | undefined) || {};
-  const win = (detail.kpi_windows_redis as Record<string, unknown> | undefined) || {};
-  const hs = h.health_status as string | undefined;
-  const badge = hs ? `<span class="${healthBadgeClass(hs)}">${escapeHtml(hs)}</span>` : "";
-  const parts: string[] = [];
-  parts.push('<div class="dash-map-popup">');
-  parts.push('<div class="dash-map-popup__head">');
-  parts.push(`<span class="dash-map-popup__title">${escapeHtml(title)}</span>`);
-  if (badge) parts.push(badge);
-  parts.push("</div>");
-  const hm = h.health_message as string | undefined;
-  if (hm) parts.push(`<p class="dash-map-popup__msg">${escapeHtml(hm)}</p>`);
-
-  const displayRows: Array<[string, string]> = Object.entries(df)
-    .slice(0, 12)
-    .map(([k, v]) => [k, String(v ?? "—")]);
-  if (displayRows.length) {
-    parts.push('<div class="dash-map-popup__section">');
-    parts.push('<div class="dash-map-popup__section-title">Display</div>');
-    parts.push(kvTable(displayRows));
-    parts.push("</div>");
-  }
-
-  const kpiRows: Array<[string, string]> = Object.entries(kl)
-    .slice(0, 12)
-    .map(([k, v]) => [k, String(v ?? "—")]);
-  if (kpiRows.length) {
-    parts.push('<div class="dash-map-popup__section">');
-    parts.push('<div class="dash-map-popup__section-title">KPI (latest)</div>');
-    parts.push(kvTable(kpiRows));
-    parts.push("</div>");
-  }
-
-  const w1h = win["1h"] as Record<string, unknown> | undefined;
-  const w24 = win["24h"] as Record<string, unknown> | undefined;
-  if (w1h && Object.keys(w1h).length) {
-    const rows: Array<[string, string]> = Object.entries(w1h)
-      .slice(0, 6)
-      .map(([k, arr]) => [k, JSON.stringify(arr).slice(0, 140)]);
-    parts.push('<div class="dash-map-popup__section dash-map-popup__section--compact">');
-    parts.push('<div class="dash-map-popup__section-title">Redis · 1h</div>');
-    parts.push(kvTable(rows));
-    parts.push("</div>");
-  }
-  if (w24 && Object.keys(w24).length) {
-    const rows: Array<[string, string]> = Object.entries(w24)
-      .slice(0, 6)
-      .map(([k, arr]) => [k, JSON.stringify(arr).slice(0, 140)]);
-    parts.push('<div class="dash-map-popup__section dash-map-popup__section--compact">');
-    parts.push('<div class="dash-map-popup__section-title">Redis · 24h</div>');
-    parts.push(kvTable(rows));
-    parts.push("</div>");
-  }
-
-  parts.push('<p class="dash-map-popup__footer">Runtime detail</p>');
-  parts.push("</div>");
-  return parts.join("");
-}
