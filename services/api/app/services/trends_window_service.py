@@ -135,9 +135,22 @@ def build_trends_window_response(
     as_of = _parse_as_of(as_of_raw)
     as_of_iso = as_of.isoformat().replace("+00:00", "Z")
 
+    from app.services.trend_metrics_policy import filter_metric_keys_for_site
+
     clean_metrics = [m.strip() for m in metrics if m.strip()][:MAX_METRICS]
+    clean_metrics = filter_metric_keys_for_site(db, site_id=site_id, keys=clean_metrics)
     entity_s = str(entity_id)
     series: dict[str, list[TrendBucketPoint]] = {}
+
+    if not clean_metrics:
+        return TrendsWindowResponse(
+            scope=scope_l,  # type: ignore[arg-type]
+            entity_id=entity_s,
+            window=window,  # type: ignore[arg-type]
+            bucket="5m",
+            as_of=as_of_iso,
+            series={},
+        )
 
     r = redis_client()
     try:

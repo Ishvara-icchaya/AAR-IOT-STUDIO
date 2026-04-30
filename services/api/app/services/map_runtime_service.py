@@ -396,26 +396,33 @@ def map_marker_detail(
             mk = kj.get("metrics") if isinstance(kj.get("metrics"), dict) else {}
             keys = list(mk.keys())[:24]
 
+    from app.services.trend_metrics_policy import filter_metric_keys_for_site
+
+    keys = filter_metric_keys_for_site(db, site_id=site_id, keys=keys)[:24]
+
     for k in keys:
         k_latest[str(k)] = _get_path(merged, str(k))
 
     if st_lower in ("data_object", "result_object"):
-        ts_1h = query_map_kpi_recent(
-            customer_id=customer_id,
-            object_kind=st_lower,
-            object_id=source_id,
-            hours=1.0,
-            kpi_keys=keys or None,
-            row_limit=120,
-        )
-        ts_24h = query_map_kpi_recent(
-            customer_id=customer_id,
-            object_kind=st_lower,
-            object_id=source_id,
-            hours=24.0,
-            kpi_keys=keys or None,
-            row_limit=240,
-        )
+        if not keys:
+            ts_1h, ts_24h = [], []
+        else:
+            ts_1h = query_map_kpi_recent(
+                customer_id=customer_id,
+                object_kind=st_lower,
+                object_id=source_id,
+                hours=1.0,
+                kpi_keys=keys,
+                row_limit=120,
+            )
+            ts_24h = query_map_kpi_recent(
+                customer_id=customer_id,
+                object_kind=st_lower,
+                object_id=source_id,
+                hours=24.0,
+                kpi_keys=keys,
+                row_limit=240,
+            )
     else:
         ts_1h, ts_24h = [], []
 

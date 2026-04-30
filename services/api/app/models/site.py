@@ -27,6 +27,12 @@ class Site(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    trend_metric_allowlist: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        default=None,
+        comment="Comma-separated KPI keys allowed for trends; NULL inherits TREND_METRIC_ALLOWLIST.",
+    )
 
     customer: Mapped["Customer"] = relationship(back_populates="sites")
     devices: Mapped[list["Device"]] = relationship(back_populates="site")

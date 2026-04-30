@@ -1,4 +1,4 @@
-# Map popup & trend windows — architecture contract (v1.5)
+# Map popup & trend windows — architecture contract (v1.6)
 
 This document is the **engineering-ready contract** for map marker detail UX, **metadata-driven** numeric formatting, **5-minute trend buckets** (resolved device, endpoint, and site), **moving windows** (1h / 24h), **Redis hot cache**, **durable storage**, **workers**, and the **React MapLibre popup**. OpenAPI remains the normative API spec once implemented.
 
@@ -120,6 +120,8 @@ scrubbed telemetry sample
 **Implemented (workers):** `worker-map-aggregator` consumes **`latest_device_state.updated`**, maintains **`trend:{rdev|endpoint|site}:…:5m`** bucket arrays (fields **`n`, `sum`, `sumsq`, `min`, `max`, `avg`, `stddev`, `is_partial`**, `bucket_start`, `bucket_size_sec`), slices **`trend:window:*:1h|24h`** from those series, and **rebuilds endpoint and site** windows by **aggregating** all member rdev / endpoint buckets for the same 5m slot (not a single-device mirror). TTLs: **5m series → 26h**, **1h window → 90m**, **24h window → 26h** (§8).
 
 **Durability (Timescale, v1.4):** Hypertable **`trend_metric_bucket`** (`alembic_ts` revision **ts0003**) stores one UPSERTed row per **`(bucket_time, scope, entity_id, metric_key)`** for scopes **`rdev`**, **`endpoint`**, **`site`**, aligned with the same bucket stats as Redis. Workers call **`upsert_trend_metric_bucket`** after each successful LDS rollup (requires **`TIMESCALE_DATABASE_URL`**). Enables historical queries, backfill, and future **Redis rebuild from Timescale** without changing the hot-path Redis contract.
+
+**Governance (v1.6):** **`GET /api/v1/trends/window`** requested metrics and map marker **`trend_context.metricKeys`** (and map KPI history key lists) pass through **`trend_metrics_policy`**: optional per-site **`sites.trend_metric_allowlist`** overrides env **`TREND_METRIC_ALLOWLIST`**; both unset = no filter. Empty site string = **deny all** keys for that site.
 
 **Redis holds (conceptual):** materialized **5m series** slices and/or **pre-merged window** blobs for fast popup reads — exact keys in §8.
 
@@ -310,3 +312,4 @@ Implement as:
 | 2026-04-29 | **v1.3** — Worker: **5m series** keys + **true endpoint/site aggregation** from all cohort members; **sum/sumsq/stddev** on rdev merge; API normalizes **`avg`/`stddev`** from `sum`/`sumsq` when needed. |
 | 2026-04-30 | **v1.4** — Timescale **`trend_metric_bucket`** hypertable + worker UPSERT after each LDS metric rollup (Phase 3 durability). |
 | 2026-04-30 | **v1.5** — Map detail for **LDS** + **`trendScope`** query; homogeneous **Supercluster** cohort → popup with **`trend_context.scope=endpoint`**; light markers carry **`endpoint_id`** / **`resolved_device_id`**. |
+| 2026-04-30 | **v1.6** — **Phase 5:** metric visibility — **`TREND_METRIC_ALLOWLIST`** (global) + optional **`sites.trend_metric_allowlist`** (per-site override); **`GET /trends/window`** and map **`trend_context.metricKeys`** / KPI detail keys filtered to allowed set (empty series when none permitted). |

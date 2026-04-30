@@ -16,6 +16,11 @@ class Settings(BaseSettings):
         "postgresql+psycopg2://aar:aar_dev_change_me@localhost:5433/aar_timeseries"
     )
     redis_url: str = "redis://localhost:6379/0"
+    trend_metric_allowlist: str = Field(
+        default="",
+        validation_alias="TREND_METRIC_ALLOWLIST",
+        description="Comma/whitespace-separated metric keys allowed in GET /trends/window and map trend_context; empty = no filter (sites may override).",
+    )
     kafka_bootstrap_servers: str = "localhost:9092"
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minio"

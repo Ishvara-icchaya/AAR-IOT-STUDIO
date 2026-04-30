@@ -5,6 +5,15 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Phase 5: Trend metric visibility (global + site allowlist)
+
+- **Config:** **`TREND_METRIC_ALLOWLIST`** (`settings.trend_metric_allowlist`) — comma/whitespace-separated metric keys; empty = no global filter.
+- **DB:** Alembic **`0032_site_trend_metric_allowlist`** — nullable **`sites.trend_metric_allowlist`** text; when set (including empty string) overrides global for that site; **NULL** inherits global env.
+- **Policy:** `app/services/trend_metrics_policy.py` — **`filter_metric_keys_for_site`**, used by **`build_trends_window_response`** (returns empty **`series`** when no keys remain) and **`map_marker_detail`** (KPI keys + Timescale queries; empty list skips wide open history query).
+- **Tests:** `tests/test_trend_metrics_policy.py`.
+
+---
+
 ## 2026-04-30 — Phase 4: Map cluster endpoint trends + LDS map detail
 
 - **API:** `GET /dashboards/map-runtime/detail` accepts **`latest_device_state`** and **`device_state`** (not only data/result objects). Optional **`trendScope`** (`resolved_device` \| `endpoint` \| `site`) selects **`trend_context`** for LDS popups (endpoint cohort vs single rdev vs site rollup).
