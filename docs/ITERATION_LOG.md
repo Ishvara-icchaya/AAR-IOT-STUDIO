@@ -5,6 +5,78 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Dashboard widget runtime: API + client + layout (phase 1)
+
+- **API:** `app/core/dashboard_widget_types.py` (canonical `widgetType`, `block.type` map, sentinels); `app/schemas/dashboard_widget_runtime.py` (camelCase envelope DTOs); `GET /api/v1/dashboards/{id}/runtime-layout` via `dashboard_runtime_layout.py`; `POST /api/v1/dashboards/runtime/widgets/resolve-batch` via `dashboard_widget_resolve_batch.py` (delegates to existing `resolve_widget_data`, draft layout + `scopeHours`, `data_object` / invalid widget errors).
+- **Frontend:** `types/dashboardWidgetRuntime.ts`, `getDashboardRuntimeLayout` / `postDashboardWidgetsResolveBatch` in `api/dashboard.ts`; `dashboard-widget-contract.css` + `dashboard-widget-cell` wrapper in `DashboardResponsiveGrid.tsx`.
+- **Tests:** `tests/test_dashboard_widget_runtime.py` (OpenAPI paths + `canonical_widget_type`).
+- **Follow-ups:** Wire live/preview pages to resolve-batch instead of embedded `/live` widgets; dedicated v2 builders per widget type; trend service; full `WidgetPayloadRenderer` switch.
+
+---
+
+## 2026-04-29 — Dashboard widget contract spec (consolidated doc)
+
+- **Docs:** Added `docs/DASHBOARD_WIDGET_CONTRACT.md` — consolidated implementation contract for dashboard runtime (`runtime-layout` + `resolve-batch`), `DashboardWidgetPayload` envelope (camelCase), canonical `widgetType` / sentinel types (`invalid_widget_reference`, `unsupported`), opaque pagination cursors, backend widget builders, v2 read paths, legacy/rebind rules, layout/frame ownership, preview=live, and acceptance criteria.
+- **Intent:** Single source of truth for multi-developer work on widget data contracts and dashboard cell rendering (no parallel data paths, no frontend inference on canvas).
+
+---
+
+## 2026-04-29 — Remove Dashboard 2.0 surface (frontend + demo seed + docs)
+
+- **Frontend:** Removed `components/dashboard2/`, `pages/dashboard2/`, `lib/dashboard2/`, `types/dashboard2.ts`, `lib/featureFlags.ts`; restored `App.tsx`, `layouts/shell/navigation.ts`, `main.tsx`, `pages/dashboard/DashboardListPage.tsx` from pre–Dashboard2 baseline (`0cbf641`). Dropped `react-grid-layout` / `react-resizable` dependencies (only used by Dashboard2).
+- **API:** Removed `dashboard2_demo_seed.py` and `test_dashboard2_demo_seed.py`; removed startup call from `services/api/app/main.py`.
+- **Docs:** Deleted `docs/DASHBOARD2_REVIEW.md`, `docs/DASHBOARD2_CSS_BOUNDARIES.md`; trimmed `README.md` Dashboard 2.0 phased-rollout section; reset `services/platform-api/README.md` stub.
+- **Intent:** Undo the Dashboard2 UI, routes, nav, demo seed, and related documentation while keeping endpoint-group / legacy dashboard APIs and `api/dashboard.ts` client helpers unchanged.
+
+---
+
+## 2026-04-29 — Dashboard2 layout containment (demo): CSS + map defaults
+
+- `dashboard2.css`: grid items `box-sizing: border-box`, removed forced `min-height` on RGL; card `width: 100%`; map canvas explicit `width/height: 100%` on absolute layer.
+- `BINDING_HINT` copy: **Configure binding to preview this widget.**
+- `location_heading_map` default grid **h=9**, **minH=6** (registry + `migrateLegacyDashboardToGrid`).
+
+---
+
+## 2026-04-29 — Dashboard2 demo-safe layout, MapLibre resize, incomplete binding guard
+
+- `services/frontend/src/main.tsx`: import `react-grid-layout` and `react-resizable` base CSS.
+- `services/frontend/src/components/dashboard2/dashboard2.css`: grid shell `min-width/min-height` 0, `.react-grid-layout` / `.react-grid-item` fill rules for designer + preview + live; map/table/chart strict flex sizing; map canvas `absolute` in wrap.
+- `LocationHeadingMapWidget`: `ResizeObserver` + rAF `resize()` on container / after data changes.
+- `DashboardRuntimeDataProvider`: `isResolvedCollectionBindingReady` — skip fetch when site/endpoint/object missing; `bindingIncomplete` + friendly errors (no raw FastAPI JSON).
+- `DashboardRuntimeGrid`: empty state for incomplete binding before loading/error.
+
+Intent: stable grid handles, markers aligned to map viewport, clean demo without 422 spam.
+
+---
+
+## 2026-04-29 — Dashboard2 on by default (no env required)
+
+- `services/frontend/src/lib/featureFlags.ts`: `DASHBOARD2_ENABLED` defaults **on** unless `VITE_DASHBOARD2_ENABLED=false`.
+- `services/frontend/src/App.tsx`: `/dashboard2/*` routes always registered (no conditional mount).
+
+Intent: ship list grid icon + review hub without requiring `VITE_DASHBOARD2_ENABLED=true`.
+
+---
+
+## 2026-04-29 — Dashboard list: Dashboard2 action icon (flag-gated)
+
+- `services/frontend/src/pages/dashboard/DashboardListPage.tsx`: when `VITE_DASHBOARD2_ENABLED=true`, each row’s Actions column includes a **grid** link to `/dashboard2/:id/live` (tooltip “Dashboard 2.0 — live (grid)”).
+- `docs/DASHBOARD2_REVIEW.md`: documented how to access Dashboard2 (flag, list icon, review hub, direct URLs).
+
+Intent: match the requested entry point from **Dashboard → List** without changing legacy edit/live icons.
+
+---
+
+## 2026-04-29 — Dashboard API smoke script + review doc note
+
+- Added `scripts/smoke-dashboard-api.sh`: login → `me` → list dashboards → get one dashboard → optional resolved-device-collection sources + runtime page (env-overridable credentials and `BASE_URL`).
+- Extended `docs/DASHBOARD2_REVIEW.md` with how to run the script.
+
+Intent: repeatable host-level checks when automated `TestClient` login does not match a long-lived DB (e.g. password changed from bootstrap defaults).
+
+---
+
 ## 2026-04-29 — Phase 11: Dashboard2 review UX, widget states, map overlays, demo seed
 
 Polished the flag-gated Dashboard2 review path and runtime shell without changing legacy `/dashboard/:id/edit|live` routes (comment in `services/frontend/src/App.tsx`).
