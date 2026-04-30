@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import psycopg2
@@ -20,6 +21,108 @@ def _metadata_url() -> str:
 def _timescale_url() -> str:
     u = os.environ.get("TIMESCALE_DATABASE_URL") or ""
     return u.replace("postgresql+psycopg2://", "postgresql://")
+
+
+def upsert_trend_metric_bucket(
+    *,
+    bucket_time: datetime,
+    customer_id: str,
+    site_id: str,
+    scope: str,
+    entity_id: str,
+    metric_key: str,
+    bucket: dict[str, Any],
+) -> None:
+    """Persist one 5m rollup row to Timescale (same stats as Redis bucket). No-op if TIMESCALE_DATABASE_URL unset."""
+    url = _timescale_url()
+    if not url or not scope or scope not in ("rdev", "endpoint", "site"):
+        return
+    n_raw = bucket.get("n", 0)
+    try:
+        n = int(n_raw)
+    except (TypeError, ValueError):
+        return
+    if n <= 0:
+        return
+    bt = bucket_time.astimezone(timezone.utc)
+    sum_v = float(bucket.get("sum", 0) or 0)
+    sumsq_v = float(bucket.get("sumsq", 0) or 0)
+    min_v = bucket.get("min")
+    max_v = bucket.get("max")
+    avg_v = bucket.get("avg")
+    std_v = bucket.get("stddev")
+    is_partial = bool(bucket.get("is_partial", True))
+
+    def _fnullable(v: Any) -> float | None:
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    min_f = _fnullable(min_v)
+    max_f = _fnullable(max_v)
+    avg_f = _fnullable(avg_v)
+    std_f = _fnullable(std_v)
+    if n < 2:
+        std_f = None
+
+    sql = """
+    INSERT INTO trend_metric_bucket (
+        bucket_time, customer_id, site_id, scope, entity_id, metric_key,
+        n, sum, sumsq, min, max, avg, stddev, is_partial
+    ) VALUES (
+        %s::timestamptz, %s::uuid, %s::uuid, %s, %s::uuid, %s,
+        %s, %s, %s, %s, %s, %s, %s, %s
+    )
+    ON CONFLICT (bucket_time, scope, entity_id, metric_key)
+    DO UPDATE SET
+        customer_id = EXCLUDED.customer_id,
+        site_id = EXCLUDED.site_id,
+        n = EXCLUDED.n,
+        sum = EXCLUDED.sum,
+        sumsq = EXCLUDED.sumsq,
+        min = EXCLUDED.min,
+        max = EXCLUDED.max,
+        avg = EXCLUDED.avg,
+        stddev = EXCLUDED.stddev,
+        is_partial = EXCLUDED.is_partial,
+        updated_at = now()
+    """
+    conn = psycopg2.connect(url)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (
+                    bt,
+                    customer_id,
+                    site_id,
+                    scope,
+                    entity_id,
+                    metric_key,
+                    n,
+                    sum_v,
+                    sumsq_v,
+                    min_f,
+                    max_f,
+                    avg_f,
+                    std_f,
+                    is_partial,
+                ),
+            )
+        conn.commit()
+    except Exception:
+        log.exception(
+            "upsert trend_metric_bucket failed scope=%s entity=%s metric=%s",
+            scope,
+            entity_id,
+            metric_key,
+        )
+        conn.rollback()
+    finally:
+        conn.close()
 
 
 def fetch_data_object_row(data_object_id: str) -> dict[str, Any] | None:

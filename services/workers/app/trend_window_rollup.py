@@ -413,25 +413,31 @@ def apply_trend_rollups_from_lds_row(
     if endpoint_id not in endpoint_ids:
         endpoint_ids = list(dict.fromkeys([*endpoint_ids, endpoint_id]))
 
+    customer_id = str(row["customer_id"])
+    try:
+        from app.map_aggregator_db import upsert_trend_metric_bucket as _upsert_trend_metric_bucket
+    except Exception:
+        _upsert_trend_metric_bucket = None  # type: ignore[assignment,misc]
+
     for metric_key, raw_val in numerics.items():
         mk = str(metric_key)
         val = float(raw_val)
         try:
-            update_rdev_bucket(
+            r_b = update_rdev_bucket(
                 r,
                 resolved_device_id=rdev_id,
                 metric_key=mk,
                 value=val,
                 bucket_start=bucket_start,
             )
-            rebuild_endpoint_bucket(
+            ep_b = rebuild_endpoint_bucket(
                 r,
                 endpoint_id=endpoint_id,
                 metric_key=mk,
                 bucket_start=bucket_start,
                 resolved_device_ids=rdev_ids,
             )
-            rebuild_site_bucket(
+            site_b = rebuild_site_bucket(
                 r,
                 site_id=site_id,
                 metric_key=mk,
@@ -440,6 +446,42 @@ def apply_trend_rollups_from_lds_row(
             )
         except Exception:
             log.exception("trend rollup failed metric=%s rdev=%s", mk, rdev_id)
+            continue
+
+        if _upsert_trend_metric_bucket is not None:
+            try:
+                if r_b:
+                    _upsert_trend_metric_bucket(
+                        bucket_time=bucket_start,
+                        customer_id=customer_id,
+                        site_id=site_id,
+                        scope="rdev",
+                        entity_id=rdev_id,
+                        metric_key=mk,
+                        bucket=r_b,
+                    )
+                if ep_b:
+                    _upsert_trend_metric_bucket(
+                        bucket_time=bucket_start,
+                        customer_id=customer_id,
+                        site_id=site_id,
+                        scope="endpoint",
+                        entity_id=endpoint_id,
+                        metric_key=mk,
+                        bucket=ep_b,
+                    )
+                if site_b:
+                    _upsert_trend_metric_bucket(
+                        bucket_time=bucket_start,
+                        customer_id=customer_id,
+                        site_id=site_id,
+                        scope="site",
+                        entity_id=site_id,
+                        metric_key=mk,
+                        bucket=site_b,
+                    )
+            except Exception:
+                log.exception("trend_metric_bucket Timescale persist failed metric=%s rdev=%s", mk, rdev_id)
 
 
 # Back-compat names for tests / imports
