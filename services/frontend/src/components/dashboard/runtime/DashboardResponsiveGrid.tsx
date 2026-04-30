@@ -3,6 +3,7 @@ import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { tuneRowWeightsForViewport, type ParsedLayoutRow } from "@/lib/dashboard/dashboardLayoutEngine";
 import { useDashboardResize } from "./DashboardResizeManager";
 import { DashboardWidgetView } from "../DashboardWidgetView";
+import "../dashboard-widget-contract.css";
 
 type Props = {
   rows: ParsedLayoutRow[];
@@ -72,7 +73,11 @@ export function DashboardResponsiveGrid({
                         </div>
                       );
                     }
-                    return <DashboardWidgetView block={b} />;
+                    return (
+                      <div className="dashboard-widget-cell">
+                        <DashboardWidgetView block={b} />
+                      </div>
+                    );
                   })()
                 ) : (
                   <div className="dash-slot dash-slot--empty" />
