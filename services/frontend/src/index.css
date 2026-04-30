@@ -3364,27 +3364,66 @@ a:hover {
   overflow: hidden;
 }
 
-/* Narrower map canvas (~half prior width) for readability; fullscreen expand ignores this. */
+/* Map widget: recommended baseline — min usable height + 16:9 preview; row/column grows vertically. */
+.widget--map.dash-widget--map:not(.dash-map-widget--expanded) {
+  min-height: 320px;
+}
+
+.dash-widget--map:not(.dash-map-widget--expanded) {
+  align-self: stretch;
+}
+
+/* Single-site map: 16:9 region from cell width; never shrink below parent min-height floor. */
 .dash-widget--map:not(.dash-map-widget--expanded) .dash-map-widget__single-map-wrap {
-  width: 50%;
+  width: 100%;
   max-width: 100%;
   margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-widget--map:not(.dash-map-widget--expanded) .dash-map-widget__single-map-wrap > .dash-map-widget__map {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .dash-widget--map.dash-map-widget--enterprise:not(.dash-map-widget--expanded) .dash-map-widget__enterprise-grid {
   justify-content: flex-start;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
-/* Was ~80% map / ~20% side; map width × 0.5 → ~40% map, remainder to side. */
 .dash-widget--map.dash-map-widget--enterprise:not(.dash-map-widget--expanded) .dash-map-widget__map-col {
   flex: 0 0 40%;
   max-width: 40%;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dash-widget--map.dash-map-widget--enterprise:not(.dash-map-widget--expanded)
+  .dash-map-widget__map-col
+  > .dash-map-widget__map {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  flex: 0 0 auto;
+  min-height: 0;
 }
 
 .dash-widget--map.dash-map-widget--enterprise:not(.dash-map-widget--expanded) .dash-map-widget__side {
   flex: 1 1 0;
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
 }
 
 .dash-map-widget__head {
@@ -4061,7 +4100,8 @@ a:hover {
 
 .page-card.dash-live-page .dash-live .dash-widget-stack > .dash-widget--map {
   flex: 6 1 0 !important;
-  min-height: 0;
+  min-height: 320px;
+  min-width: 0;
 }
 
 .page-card.dash-live-page .dash-live .dash-widget-stack > .dash-widget:not(.dash-widget--map) {
@@ -4457,9 +4497,9 @@ a:hover {
   min-height: 0;
 }
 
-.dash-live .dash-widget--map {
+.dash-live .dash-widget--map:not(.dash-map-widget--expanded) {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 320px;
   display: flex;
   flex-direction: column;
 }
@@ -4481,11 +4521,12 @@ a:hover {
   min-height: 0;
 }
 
-.dash-live .dash-widget--map:not(.dash-map-widget--enterprise) .dash-map-widget__map {
+.dash-live .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded) .dash-map-widget__map {
   flex: 1 1 auto;
-  height: clamp(320px, 58dvh, 720px) !important;
-  max-height: min(720px, 72dvh);
-  min-height: 280px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded {
@@ -4498,8 +4539,11 @@ a:hover {
   width: auto;
   max-width: none;
   max-height: none;
+  min-height: 0;
   margin: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 28px 90px color-mix(in oklab, #000 38%, transparent);
 }
 
@@ -4538,9 +4582,18 @@ a:hover {
   max-height: none !important;
 }
 
-.page-card.dash-live-page .dash-live .dash-widget--map:not(.dash-map-widget--enterprise) .dash-map-widget__map {
-  height: auto !important;
-  max-height: 100% !important;
+.page-card.dash-live-page .dash-live .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded)
+  .dash-map-widget__single-map-wrap {
+  aspect-ratio: 16 / 9;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.page-card.dash-live-page .dash-live .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded)
+  .dash-map-widget__map {
+  height: 100% !important;
+  max-height: none !important;
   min-height: 0 !important;
 }
 

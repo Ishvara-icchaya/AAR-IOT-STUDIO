@@ -440,12 +440,11 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       style={
         isEnterprise
           ? {
-              height: "100%",
               minHeight: 0,
               width: "100%",
               borderRadius: "var(--radius)",
               overflow: "hidden",
-              flex: "1 1 auto",
+              flex: "0 0 auto",
             }
           : {
               width: "100%",
@@ -461,6 +460,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   const mapModifiers = [
     "dash-widget--map",
+    "widget--map",
     isEnterprise ? "dash-map-widget--enterprise" : "",
     expanded ? "dash-map-widget--expanded" : "",
   ]

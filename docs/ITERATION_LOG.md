@@ -5,6 +5,13 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Map widget: 320px floor + 16:9 aspect preview
+
+- **Frontend:** `MapWidget` adds **`widget--map`** (with existing `dash-widget--map`); map container styles — **`min-height: 320px`** on non-expanded map widget, **`aspect-ratio: 16 / 9`** on single-map wrap and enterprise map canvas; full-width single map (replacing 50% centered strip); live/page-card overrides stop forcing a clamped map height so the aspect box drives layout; **`:has`** rule on **`.dash-col--slot-data`** when the stack contains a map so the column floor is **max(slot min, 320px)** (`dashboardWidgetFrame.css`).
+- **Intent:** Map never compresses below a usable preview; grid **row/column grows vertically**; spanning extra rows remains a **layout/editor** choice.
+
+---
+
 ## 2026-04-29 — Trends window API + React map popup (contract slice 1)
 
 - **API:** `GET /api/v1/trends/window` (`scope`, `entityId`, `site_id`, `metrics`, `window`, `bucket=5m`, optional `as_of`) — site auth aligned with map runtime; reads Redis keys per `docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md` (`trend:window:…`); `app/services/trend_redis_contract.py`, `trends_window_service.py`, `app/api/v1/trends.py`, router mount.
