@@ -9,6 +9,62 @@ function screenshotCanvasBackground(): string {
   return raw;
 }
 
+const MODERN_COLOR_FN = /oklab|oklch|color-mix|lab\(|lch\(/i;
+
+/** html2canvas 1.4 cannot parse oklab/oklch/color-mix in *any* declaration value (not only gradients). */
+function sanitizeHtml2CanvasCloneColors(root: HTMLElement, clonedDoc: Document) {
+  const view = clonedDoc.defaultView ?? window;
+  const nodes: HTMLElement[] = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))];
+
+  const skipProp = (p: string) =>
+    /^(width|height|min-width|min-height|max-width|max-height|margin|padding|inset|top|right|bottom|left|flex|grid|gap|transform|translate|rotate|scale|opacity|z-index|display|position|float|clear|overflow-x|overflow-y|overflow|font-family|font-size|font-weight|font-style|line-height|letter-spacing|white-space|word-break|text-align|vertical-align|visibility|content|cursor|pointer-events|user-select|object-fit|aspect-ratio|order|justify|align|flex-basis|flex-grow|flex-shrink|unicode-bidi|direction|text-indent|text-transform|writing-mode)/i.test(
+      p,
+    );
+
+  for (const el of nodes) {
+    const cs = view.getComputedStyle(el);
+    for (let i = 0; i < cs.length; i++) {
+      const prop = cs.item(i);
+      if (skipProp(prop)) continue;
+      const val = cs.getPropertyValue(prop);
+      if (!val || !MODERN_COLOR_FN.test(val)) continue;
+
+      if (prop === "color") {
+        el.style.setProperty("color", "#e2e8f0", "important");
+      } else if (prop === "background") {
+        el.style.setProperty("background", "none", "important");
+        el.style.setProperty("background-color", el.closest(".dash-wf") ? "#1a2230" : "#121822", "important");
+      } else if (prop === "background-color") {
+        el.style.setProperty("background-color", el.closest(".dash-wf") ? "#1a2230" : "#121822", "important");
+      } else if (/^border(-top|-right|-bottom|-left)?-color$/.test(prop)) {
+        el.style.setProperty(prop, "rgba(148, 163, 184, 0.28)", "important");
+      } else if (prop === "border" || /^border-(top|right|bottom|left)$/.test(prop)) {
+        el.style.setProperty(prop, "1px solid rgba(148, 163, 184, 0.22)", "important");
+      } else if (prop === "outline-color") {
+        el.style.setProperty(prop, "rgba(148, 163, 184, 0.35)", "important");
+      } else if (prop === "outline") {
+        el.style.setProperty(prop, "none", "important");
+      } else if (prop === "text-decoration-color") {
+        el.style.setProperty(prop, "rgba(203, 213, 225, 0.85)", "important");
+      } else if (prop === "caret-color" || prop === "accent-color") {
+        el.style.setProperty(prop, "#3d9aed", "important");
+      } else if (prop === "fill" || prop === "stroke") {
+        el.style.setProperty(prop, "#94a3b8", "important");
+      } else if (prop === "stop-color" || prop === "flood-color" || prop === "lighting-color") {
+        el.style.setProperty(prop, "#94a3b8", "important");
+      } else if (prop === "column-rule-color") {
+        el.style.setProperty(prop, "rgba(148, 163, 184, 0.2)", "important");
+      } else if (/shadow$/i.test(prop)) {
+        el.style.setProperty(prop, "none", "important");
+      } else if (prop === "filter" || prop === "backdrop-filter") {
+        el.style.setProperty(prop, "none", "important");
+      } else if (prop === "-webkit-text-fill-color") {
+        el.style.setProperty(prop, "#e2e8f0", "important");
+      }
+    }
+  }
+}
+
 type Props = {
   captureRef: RefObject<HTMLElement | null>;
   fileBaseName: string;
@@ -85,6 +141,7 @@ export function DashboardLiveToolbar({
             const s = node.getAttribute("style") ?? "";
             if (/oklab|oklch|color-mix|lab\(|lch\(/i.test(s)) node.removeAttribute("style");
           });
+          sanitizeHtml2CanvasCloneColors(clonedEl, clonedDoc);
         },
       });
       let dataUrl: string;

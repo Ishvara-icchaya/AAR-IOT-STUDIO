@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Dashboard screenshot: walk clone computed styles for oklab
+
+- **Frontend:** `DashboardLiveToolbar.tsx` — after clone stylesheet + inline strip, walk capture subtree and for each `getComputedStyle` declaration whose **value** contains oklab/oklch/color-mix/lab/lch, apply `!important` rgb fallbacks (color, background, borders, shadows, SVG fill/stroke, etc.) so html2canvas `CSSParsedDeclaration` no longer hits unsupported parsers.
+
+---
+
 ## 2026-04-29 — Dashboard screenshot: strip oklab gradients in html2canvas clone
 
 - **Frontend:** `DashboardLiveToolbar.tsx` — `onclone` now tags the cloned capture root and injects rules to remove **all** `background-image` / `border-image` / masks in that subtree (html2canvas cannot parse `oklab` inside `linear-gradient` stops); strip inline `style` attributes that mention oklab/oklch/color-mix on the clone.
