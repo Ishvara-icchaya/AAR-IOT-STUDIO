@@ -47,6 +47,7 @@ from app.schemas.dashboard import (
     LatestDeviceStateSourceRow,
     ResultObjectSourceRow,
 )
+from app.schemas.dashboard_widget_runtime import DashboardRuntimeLayoutResponse
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.dependency_service import dashboard_delete_dependencies
 from app.services.dashboard_default_template import default_ops_template_layout
@@ -57,6 +58,7 @@ from app.services.dashboard_resolved_device_collection import (
     query_collection_page,
 )
 from app.services.dashboard_resolve import build_dashboard_live_response
+from app.services.dashboard_runtime_layout import build_runtime_layout_response
 from app.services.lifecycle_actions import (
     archive_dashboard,
     clear_primary_dashboard_for_all_users,
@@ -74,6 +76,25 @@ from app.api.v1 import map_runtime
 router = APIRouter()
 router.include_router(map_runtime.router, prefix="/map-runtime", tags=["dashboard-map"])
 log = logging.getLogger(__name__)
+
+
+@router.get("/{dashboard_id}/runtime-layout", response_model=DashboardRuntimeLayoutResponse)
+def get_dashboard_runtime_layout(
+    dashboard_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Canonical layout + widget definitions (no widget data). Use resolve-batch for data."""
+    d = db.get(Dashboard, dashboard_id)
+    d = _access_dashboard(db, user, d)
+    return build_runtime_layout_response(
+        dashboard_id=d.id,
+        name=d.name,
+        description=d.description,
+        status=d.status,
+        site_id=d.site_id,
+        layout=dict(d.layout or {}),
+    )
 
 
 def _access_dashboard(db: Session, user: User, d: Dashboard | None) -> Dashboard:
