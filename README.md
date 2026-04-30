@@ -60,6 +60,14 @@ From the **repo root**, `npm run build`, `npm run dev`, `npm run lint`, and `npm
 
 Workers subscribe to canonical topics (`raw.ingest`, `scrubber.input`, …); the API creates topics on startup.
 
+## Iteration log (recover from crashes)
+
+If a session or machine crashes before work is merged or summarized elsewhere, **the repo should still tell the story of what changed.**
+
+After **substantive** edits (code, migrations, config, or meaningful documentation—not one-line typos or pure Q&A), **prepend a new dated section at the top** of [`docs/ITERATION_LOG.md`](docs/ITERATION_LOG.md) (newest first). Each entry should include **date**, **what changed** (files or areas), **why / intent**, and **follow-ups** if any are open. Do not delete older sections; only add new ones at the top.
+
+That log is the durable trail so context is not lost when tooling or hosts fail mid-flight.
+
 ## Local development (without Docker for JS/Python)
 
 ```bash

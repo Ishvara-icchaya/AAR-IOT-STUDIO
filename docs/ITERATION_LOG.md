@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — README: iteration log for crash recovery
+
+- **Docs:** `README.md` — new section **Iteration log (recover from crashes)** pointing to `docs/ITERATION_LOG.md` and describing prepend-after-substantive-work discipline so work survives session or machine failures.
+
+---
+
 ## 2026-04-29 — Dashboard runtime visual layer (Grafana-style shell + cards)
 
 - **Frontend:** `dashboard-runtime.css` — scoped `.dashboard-runtime` operational background (radials + optional grid), 24px padding, 16px row gap for fit-page, beveled `.dash-wf` cards under `.dashboard-widget-cell`, preview-only hover on `--builder`. Light theme softening via `:root[data-theme="light"]`.
