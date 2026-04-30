@@ -5,6 +5,13 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Doc contract: map popup trends & trend windows
+
+- **Docs:** Added `docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md` — draft architecture contract for **5m buckets**, **device + endpoint rollups**, **1h/24h moving windows**, **Redis + durable TS + workers**, **numeric display rules** (integers vs floats), **React + lazy map popup**, and illustrative **trend-window API** shape.
+- **Intent:** Record agreed direction before implementation; follow-ups listed for std dev, event time, Redis key catalog, OpenAPI, field metadata.
+
+---
+
 ## 2026-04-29 — Dashboard screenshot: walk clone computed styles for oklab
 
 - **Frontend:** `DashboardLiveToolbar.tsx` — after clone stylesheet + inline strip, walk capture subtree and for each `getComputedStyle` declaration whose **value** contains oklab/oklch/color-mix/lab/lch, apply `!important` rgb fallbacks (color, background, borders, shadows, SVG fill/stroke, etc.) so html2canvas `CSSParsedDeclaration` no longer hits unsupported parsers.
