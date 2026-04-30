@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Dashboard live screenshot: html2canvas hardening
+
+- **Frontend:** `DashboardLiveToolbar.tsx` — safer `backgroundColor` for canvas (avoid oklch/lab from `getComputedStyle`); `foreignObjectRendering: false`, `allowTaint: false`, capped scale; `onclone` injects simplified solid backgrounds for `.dashboard-runtime` / `.dash-wf` (strip color-mix / pseudo grid); `ignoreElements` skips MapLibre canvas and controls (avoids tainted canvas / WebGL issues); separate `toDataURL` try/catch with **SecurityError** messaging; `console.error` for real failures (previous copy always blamed downloads).
+
+---
+
 ## 2026-04-29 — README: iteration log for crash recovery
 
 - **Docs:** `README.md` — new section **Iteration log (recover from crashes)** pointing to `docs/ITERATION_LOG.md` and describing prepend-after-substantive-work discipline so work survives session or machine failures.
