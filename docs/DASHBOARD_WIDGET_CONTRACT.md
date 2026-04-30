@@ -186,7 +186,7 @@ Each builder **must**:
 
 ### 7.4 Table pagination — opaque cursor (non-negotiable)
 
-- **Cursor is a fully opaque token** generated only by the backend.
+- Each **pagination cursor** is a fully opaque token generated only by the backend.
 - The frontend **must not** parse, decode, modify, or construct cursors.
 - Only the backend generates and interprets cursors on the next request.
 - Backend owns **sort order** (e.g. default: `updated_at DESC`, `scrubbed_event_id DESC`, `resolved_device_id ASC` — finalize in implementation).

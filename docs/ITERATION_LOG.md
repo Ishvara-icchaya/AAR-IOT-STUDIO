@@ -5,6 +5,13 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Stop tracking local editor-only rules in git
+
+- **Removed:** Tracked `iteration-log` rule file that lived under a local-only editor config directory; that directory is now listed in `.gitignore` so it is not re-committed.
+- **Docs:** Clarified iteration-log and dashboard contract wording (pagination tokens vs other meanings).
+
+---
+
 ## 2026-04-29 — Repo hygiene: Dashboard2 removal committed + contract doc on branch
 
 - **Chore:** Staged and committed remaining Dashboard2 deletes (frontend `dashboard2/`, `featureFlags`, `dashboard2` lib/pages/types), API `dashboard2_demo_seed` + test + `main.py` wiring, docs `DASHBOARD2_*`, README / `platform-api` README trims, frontend `package.json` / lockfile (drop `react-grid-layout`).
@@ -434,7 +441,7 @@ Added acceptance-focused API tests for endpoint-group dashboard binding in `serv
 - Layout validation checks:
   - endpoint-group binding accepted when `siteId + endpointId + objectName` present,
   - rejected when required fields are missing.
-- Cursor determinism contract checks:
+- Pagination cursor determinism contract checks:
   - encode/decode round-trip for cursor payload (`updated_at`, `scrubbed_event_id`, `resolved_device_id`).
 - Shared status vocabulary checks:
   - lifecycle buckets (`online`, `late`, `offline`, `error`),
@@ -585,7 +592,7 @@ Replaced single squash with sequential commits on `v2-endpoints-rebuild`:
 
 ## 2026-04-28 — Baseline + tracking setup
 
-**Context:** Cursor crash recovery; user asked to track changes going forward.
+**Context:** Session crash recovery; user asked to track changes going forward.
 
 **Repo / branch:** `v2-endpoints-rebuild` (per earlier `git status`); large **uncommitted** set remained (API, workers, frontend, migrations `0029`/`0030`, `tenant_operational_clear_job.py`).
 
@@ -594,6 +601,6 @@ Replaced single squash with sequential commits on `v2-endpoints-rebuild`:
 - Present: endpoint schema/model for `lifecycle_status`, `sample_payload`, `sample_ingested_at` (migration `0030`); nullable `primary_device_key_fields`; strict ingest quarantine for unbound/device-only; MQTT v2 archive path; `v2_resolution` writes v2 rows only when PK fields extract successfully; scope checks vs endpoint row.
 - Missing / partial: no workers writing `sample_payload`; lifecycle `needs_sample` / `error` unused; `active` not tied to Scrubber 2.0 publish; CoAP still calls rejected unbound ingest; Scrubber UI not wired to endpoint sample; acceptance tests not covering full flow.
 
-**This commit:** Added `docs/ITERATION_LOG.md` and `.cursor/rules/iteration-log.mdc` so agents append here after substantive edits.
+**This commit:** Added `docs/ITERATION_LOG.md` with discipline to prepend a dated section after substantive edits.
 
 ---
