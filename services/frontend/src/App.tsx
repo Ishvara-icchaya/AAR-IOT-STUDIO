@@ -30,11 +30,6 @@ import { DashboardListPage } from "./pages/dashboard/DashboardListPage";
 import { DashboardLivePage } from "./pages/dashboard/DashboardLivePage";
 import { EnterpriseDashboardPage } from "./pages/dashboard/EnterpriseDashboardPage";
 import { DashboardResolvedPage } from "./pages/dashboard/DashboardResolvedPage";
-import { Dashboard2EditPage } from "./pages/dashboard2/Dashboard2EditPage";
-import { Dashboard2LivePage } from "./pages/dashboard2/Dashboard2LivePage";
-import { Dashboard2PreviewPage } from "./pages/dashboard2/Dashboard2PreviewPage";
-import { Dashboard2ReviewPage } from "./pages/dashboard2/Dashboard2ReviewPage";
-import { DASHBOARD2_ENABLED } from "./lib/featureFlags";
 const IotOperationsDashboardPage = lazy(() =>
   import("./features/iot-dashboard/IotOperationsDashboardPage").then((m) => ({ default: m.IotOperationsDashboardPage })),
 );
@@ -120,17 +115,8 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardResolvedPage />} />
               <Route path="/dashboard/list" element={<DashboardListPage />} />
               <Route path="/dashboard/create" element={<DashboardCreatePage />} />
-              {/* Legacy dashboard builder & live (unchanged); Dashboard2 uses /dashboard2/... when flag enabled. */}
               <Route path="/dashboard/:dashboardId/edit" element={<DashboardBuilderPage />} />
               <Route path="/dashboard/:dashboardId/live" element={<DashboardLivePage />} />
-              {DASHBOARD2_ENABLED ? (
-                <>
-                  <Route path="/dashboard2/review" element={<Dashboard2ReviewPage />} />
-                  <Route path="/dashboard2/:dashboardId/edit" element={<Dashboard2EditPage />} />
-                  <Route path="/dashboard2/:dashboardId/live" element={<Dashboard2LivePage />} />
-                  <Route path="/dashboard2/:dashboardId/preview" element={<Dashboard2PreviewPage />} />
-                </>
-              ) : null}
               <Route path="/enterprise-dashboard" element={<EnterpriseDashboardPage />} />
               <Route path="/alerts" element={<AlertsNotificationsPage />} />
               <Route path="/alerts/:alertId" element={<AlertDetailPage />} />

@@ -1,5 +1,4 @@
 /** Operational main nav + administration routes (spec: Navigation and Page Shell). */
-import { DASHBOARD2_ENABLED } from "@/lib/featureFlags";
 
 export type NavChild = { to: string; label: string; end?: boolean };
 
@@ -65,7 +64,6 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/dashboard/list", label: "Dashboards" },
       { to: "/dashboard/create", label: "Create Dashboard" },
-      ...(DASHBOARD2_ENABLED ? [{ to: "/dashboard2/review", label: "Dashboard2 Review" }] : []),
     ],
   },
   {
@@ -112,10 +110,7 @@ export function activeMainSectionId(pathname: string): string | null {
     if (pathMatchesFlatLink(pathname, link)) return link.id;
   }
   for (const g of MAIN_NAV_GROUPS) {
-    if (
-      g.id === "dashboard" &&
-      (pathname === "/dashboard" || pathname.startsWith("/dashboard/") || pathname.startsWith("/dashboard2/"))
-    )
+    if (g.id === "dashboard" && (pathname === "/dashboard" || pathname.startsWith("/dashboard/")))
       return "dashboard";
     if (g.id === "published" && pathname.startsWith("/published-services")) return "published";
     if (g.items.some((c) => pathMatchesChild(pathname, c))) return g.id;
@@ -140,7 +135,6 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/devices/ingest") return "Manage Endpoints";
   if (pathname === "/enterprise-ai") return "Enterprise AI";
   if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
-  if (pathname === "/dashboard2/review") return "Dashboard2 Review";
   if (pathname === "/administration/users") return "Users";
   if (pathname === "/administration/sites") return "Sites";
   if (pathname === "/administration/ports") return "Configure Ports";
@@ -157,9 +151,6 @@ export function titleFromPath(pathname: string): string {
   }
   if (pathname.startsWith("/dashboard/") && pathname.endsWith("/edit")) return "Edit dashboard";
   if (pathname.startsWith("/dashboard/") && pathname.endsWith("/live")) return "Live dashboard";
-  if (pathname.startsWith("/dashboard2/") && pathname.endsWith("/edit")) return "Dashboard2 Edit";
-  if (pathname.startsWith("/dashboard2/") && pathname.endsWith("/live")) return "Dashboard2 Live";
-  if (pathname.startsWith("/dashboard2/") && pathname.endsWith("/preview")) return "Dashboard2 Preview";
   if (pathname.startsWith("/workflow/") && pathname.includes("/edit")) return "Edit workflow";
   if (pathname.startsWith("/workflow/") && pathname.includes("/test")) return "Test workflow";
   if (pathname.startsWith("/workflow/") && pathname.includes("/live")) return "Live workflow";
