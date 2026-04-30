@@ -47,7 +47,11 @@ from app.schemas.dashboard import (
     LatestDeviceStateSourceRow,
     ResultObjectSourceRow,
 )
-from app.schemas.dashboard_widget_runtime import DashboardRuntimeLayoutResponse
+from app.schemas.dashboard_widget_runtime import (
+    DashboardRuntimeLayoutResponse,
+    DashboardWidgetsResolveBatchRequest,
+    DashboardWidgetsResolveBatchResponse,
+)
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.dependency_service import dashboard_delete_dependencies
 from app.services.dashboard_default_template import default_ops_template_layout
@@ -59,6 +63,7 @@ from app.services.dashboard_resolved_device_collection import (
 )
 from app.services.dashboard_resolve import build_dashboard_live_response
 from app.services.dashboard_runtime_layout import build_runtime_layout_response
+from app.services.dashboard_widget_resolve_batch import resolve_dashboard_widgets_batch
 from app.services.lifecycle_actions import (
     archive_dashboard,
     clear_primary_dashboard_for_all_users,
@@ -95,6 +100,21 @@ def get_dashboard_runtime_layout(
         site_id=d.site_id,
         layout=dict(d.layout or {}),
     )
+
+
+@router.post(
+    "/runtime/widgets/resolve-batch",
+    response_model=DashboardWidgetsResolveBatchResponse,
+)
+def post_dashboard_widgets_resolve_batch(
+    body: DashboardWidgetsResolveBatchRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Canonical widget data path: backend-prepared payloads (camelCase envelope per widget)."""
+    d = db.get(Dashboard, body.dashboard_id)
+    d = _access_dashboard(db, user, d)
+    return resolve_dashboard_widgets_batch(db, user, body)
 
 
 def _access_dashboard(db: Session, user: User, d: Dashboard | None) -> Dashboard:
