@@ -311,6 +311,7 @@ export async function getMapObjectDetail(params: {
   sourceId: string;
   displayFieldPaths?: string[];
   kpiKeys?: string[];
+  trendScope?: "resolved_device" | "endpoint" | "site";
 }) {
   const qs = new URLSearchParams();
   qs.set("site_id", params.siteId);
@@ -319,6 +320,7 @@ export async function getMapObjectDetail(params: {
   if (params.kpiKeys?.length) params.kpiKeys.forEach((k) => qs.append("kpiKeys", k));
   if (params.displayFieldPaths?.length)
     params.displayFieldPaths.forEach((k) => qs.append("displayFieldPaths", k));
+  if (params.trendScope) qs.set("trendScope", params.trendScope);
   return apiFetch<{ detail: Record<string, unknown> }>(`/dashboards/map-runtime/detail?${qs.toString()}`, {
     cache: "no-store",
   });

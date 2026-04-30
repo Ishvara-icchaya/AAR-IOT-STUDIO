@@ -360,7 +360,37 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               return typeof site === "string" ? site : undefined;
             });
           },
-          onClusterPick: (_clusterId, lngLat, expansionZoom) => {
+          onClusterPick: (clusterId, lngLat, expansionZoom) => {
+            const deck = deckHandleRef.current;
+            const siteRaw = latestBlockRef.current.data?.site_id;
+            const siteStr = typeof siteRaw === "string" ? siteRaw : undefined;
+            const leaves = deck?.getClusterLeaves(clusterId) ?? [];
+            const epSet = new Set(
+              leaves.map((l) => l.endpoint_id).filter((x): x is string => Boolean(x)),
+            );
+            const stSet = new Set(
+              leaves.map((l) => l.source_type).filter((x): x is string => Boolean(x)),
+            );
+            const homogenousLds =
+              leaves.length > 0 &&
+              epSet.size === 1 &&
+              stSet.size === 1 &&
+              [...stSet][0] === "latest_device_state";
+            if (homogenousLds && siteStr) {
+              const rep = leaves[0]!;
+              const sid = rep.source_id;
+              if (sid) {
+                openDashboardMapMarkerPopup(map, {
+                  lngLat,
+                  title: `${rep.label} (${leaves.length})`,
+                  siteId: siteStr,
+                  sourceType: "latest_device_state",
+                  sourceId: sid,
+                  trendScope: "endpoint",
+                });
+                return;
+              }
+            }
             map.easeTo({
               center: lngLat,
               zoom: Math.max(expansionZoom, map.getZoom() + 0.5),

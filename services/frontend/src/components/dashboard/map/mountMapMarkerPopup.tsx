@@ -11,6 +11,8 @@ export function openDashboardMapMarkerPopup(
     sourceType: string;
     sourceId: string;
     blockedMessage?: string;
+    /** Map detail API: trend_context scope for LDS (resolved_device | endpoint | site). */
+    trendScope?: "resolved_device" | "endpoint" | "site";
   },
 ): maplibregl.Popup {
   const host = document.createElement("div");
@@ -45,6 +47,7 @@ export function openDashboardMapMarkerPopup(
       sourceId={opts.sourceId}
       title={opts.title}
       blockedMessage={opts.blockedMessage}
+      trendScope={opts.trendScope}
     />,
   );
 

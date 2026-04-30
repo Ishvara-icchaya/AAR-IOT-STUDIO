@@ -258,11 +258,21 @@ def map_object_detail(
     source_id: uuid.UUID = Query(...),
     display_field_paths: list[str] | None = Query(None, alias="displayFieldPaths"),
     kpi_keys: list[str] | None = Query(None, alias="kpiKeys"),
+    trend_scope: str | None = Query(
+        None,
+        alias="trendScope",
+        description="For latest_device_state: trend_context scope (resolved_device|endpoint|site). Default resolved_device.",
+        pattern="^(resolved_device|endpoint|site)$",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if source_type not in ("data_object", "result_object"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "source_type must be data_object or result_object")
+    stn = source_type.strip().lower()
+    if stn not in ("data_object", "result_object", "latest_device_state", "device_state"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "source_type must be data_object, result_object, latest_device_state, or device_state",
+        )
     allowed = allowed_site_ids_for_user(db, user)
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
@@ -277,6 +287,7 @@ def map_object_detail(
         source_id=source_id,
         display_field_paths=display_field_paths,
         kpi_keys=kpi_keys,
+        trend_scope=trend_scope,
     )
     if not detail:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Object not found")

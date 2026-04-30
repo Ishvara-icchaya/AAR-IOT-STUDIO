@@ -11,6 +11,8 @@ type Props = {
   title: string;
   /** When set, skip fetch and show this message only */
   blockedMessage?: string;
+  /** Passed to map detail API for LDS trend_context (cluster → endpoint). */
+  trendScope?: "resolved_device" | "endpoint" | "site";
 };
 
 function healthBadgeClass(status: string | undefined): string {
@@ -23,7 +25,7 @@ function healthBadgeClass(status: string | undefined): string {
 }
 
 export function MapMarkerPopupRoot(props: Props) {
-  const { siteId, sourceType, sourceId, title, blockedMessage } = props;
+  const { siteId, sourceType, sourceId, title, blockedMessage, trendScope } = props;
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(!blockedMessage);
@@ -35,7 +37,7 @@ export function MapMarkerPopupRoot(props: Props) {
     setErr(null);
     void (async () => {
       try {
-        const r = await getMapObjectDetail({ siteId, sourceType, sourceId });
+        const r = await getMapObjectDetail({ siteId, sourceType, sourceId, trendScope });
         if (!cancelled) {
           setDetail((r?.detail as Record<string, unknown>) ?? null);
           setLoading(false);
@@ -51,7 +53,7 @@ export function MapMarkerPopupRoot(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [siteId, sourceType, sourceId, blockedMessage]);
+  }, [siteId, sourceType, sourceId, blockedMessage, trendScope]);
 
   if (blockedMessage) {
     return (

@@ -5,6 +5,14 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Phase 4: Map cluster endpoint trends + LDS map detail
+
+- **API:** `GET /dashboards/map-runtime/detail` accepts **`latest_device_state`** and **`device_state`** (not only data/result objects). Optional **`trendScope`** (`resolved_device` \| `endpoint` \| `site`) selects **`trend_context`** for LDS popups (endpoint cohort vs single rdev vs site rollup).
+- **Map runtime:** `map_marker_to_light` includes **`endpoint_id`** / **`resolved_device_id`** so cluster logic can detect homogeneous LDS cohorts.
+- **Frontend:** `MapPointVM` / **`MarkerLike`** carry endpoint ids; **`deckOverlaySiteMap`** exposes **`getClusterLeaves`**; **`MapWidget`** opens marker popup with **`trendScope=endpoint`** when a cluster’s leaves share one **`latest_device_state`** endpoint; otherwise keeps zoom-to-expand. **`getMapObjectDetail`** / **`MapMarkerPopupRoot`** / **`mountMapMarkerPopup`** pass **`trendScope`** through.
+
+---
+
 ## 2026-04-30 — Phase 3: `trend_metric_bucket` Timescale durability
 
 - **Timescale:** New hypertable **`trend_metric_bucket`** (`services/api/alembic_ts/versions/0003_trend_metric_bucket.py`, revision **ts0003**) — **`bucket_time`**, **`customer_id`**, **`site_id`**, **`scope`** (`rdev` \| `endpoint` \| `site`), **`entity_id`**, **`metric_key`**, stats **`n`/`sum`/`sumsq`/`min`/`max`/`avg`/`stddev`/`is_partial`**, **`updated_at`**; composite PK for **`ON CONFLICT` UPSERT**; indexes for customer/site and scope/entity/metric time-range queries.

@@ -1,4 +1,4 @@
-# Map popup & trend windows — architecture contract (v1.4)
+# Map popup & trend windows — architecture contract (v1.5)
 
 This document is the **engineering-ready contract** for map marker detail UX, **metadata-driven** numeric formatting, **5-minute trend buckets** (resolved device, endpoint, and site), **moving windows** (1h / 24h), **Redis hot cache**, **durable storage**, **workers**, and the **React MapLibre popup**. OpenAPI remains the normative API spec once implemented.
 
@@ -309,3 +309,4 @@ Implement as:
 | 2026-04-29 | **v1.2** — Backlog table (metric visibility, bindings, allowlist, cluster popup, cohort/site rollup, Timescale); worker populates `trend:window:rdev|endpoint` from LDS; popup empty-state copy. |
 | 2026-04-29 | **v1.3** — Worker: **5m series** keys + **true endpoint/site aggregation** from all cohort members; **sum/sumsq/stddev** on rdev merge; API normalizes **`avg`/`stddev`** from `sum`/`sumsq` when needed. |
 | 2026-04-30 | **v1.4** — Timescale **`trend_metric_bucket`** hypertable + worker UPSERT after each LDS metric rollup (Phase 3 durability). |
+| 2026-04-30 | **v1.5** — Map detail for **LDS** + **`trendScope`** query; homogeneous **Supercluster** cohort → popup with **`trend_context.scope=endpoint`**; light markers carry **`endpoint_id`** / **`resolved_device_id`**. |

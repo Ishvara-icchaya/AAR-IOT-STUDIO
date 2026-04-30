@@ -116,6 +116,12 @@ def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
         out["source_type"] = st
     if sid is not None:
         out["source_id"] = sid
+    eid = marker.get("endpoint_id")
+    if eid is not None:
+        out["endpoint_id"] = str(eid)
+    rd = marker.get("resolved_device_id")
+    if rd is not None:
+        out["resolved_device_id"] = str(rd)
     return out
 
 
@@ -318,6 +324,7 @@ def map_marker_detail(
     source_id: uuid.UUID,
     display_field_paths: list[str] | None,
     kpi_keys: list[str] | None,
+    trend_scope: str | None = None,
 ) -> dict[str, Any] | None:
     """Full detail for popup: display fields, health, KPI latest, Redis windows, Timescale samples."""
     r = redis_client()
@@ -421,12 +428,30 @@ def map_marker_detail(
     if st_lower in ("latest_device_state", "device_state"):
         lds = db.get(LatestDeviceState, source_id)
         if lds:
-            trend_context = {
-                "scope": "resolved_device",
-                "entityId": str(lds.resolved_device_id),
-                "endpointId": str(lds.endpoint_id),
-                "metricKeys": list(k_latest.keys())[:24],
-            }
+            ts = (trend_scope or "resolved_device").strip().lower()
+            if ts not in ("resolved_device", "endpoint", "site"):
+                ts = "resolved_device"
+            if ts == "endpoint":
+                trend_context = {
+                    "scope": "endpoint",
+                    "entityId": str(lds.endpoint_id),
+                    "endpointId": str(lds.endpoint_id),
+                    "metricKeys": list(k_latest.keys())[:24],
+                }
+            elif ts == "site":
+                trend_context = {
+                    "scope": "site",
+                    "entityId": str(site_id),
+                    "endpointId": str(lds.endpoint_id),
+                    "metricKeys": list(k_latest.keys())[:24],
+                }
+            else:
+                trend_context = {
+                    "scope": "resolved_device",
+                    "entityId": str(lds.resolved_device_id),
+                    "endpointId": str(lds.endpoint_id),
+                    "metricKeys": list(k_latest.keys())[:24],
+                }
 
     return {
         "source_type": st_lower,

@@ -11,6 +11,9 @@ export type MapPointVM = {
   health_status: string;
   source_type?: string;
   source_id?: string;
+  /** LDS markers: used for homogeneous cluster → endpoint trend popup */
+  endpoint_id?: string;
+  resolved_device_id?: string;
   updated_at?: string;
   /** Fleet / live map */
   heading_deg?: number | null;
@@ -35,6 +38,8 @@ export type MarkerLike = {
   health_status?: string;
   source_type?: string;
   source_id?: string;
+  endpoint_id?: string;
+  resolved_device_id?: string;
   updated_at?: string;
   heading_deg?: number;
   speed_ms?: number;
@@ -50,6 +55,8 @@ export function toMapPointVM(m: MarkerLike, fallbackId: string): MapPointVM {
     health_status: String(m.health_status ?? "").toLowerCase(),
     source_type: m.source_type,
     source_id: m.source_id,
+    endpoint_id: typeof m.endpoint_id === "string" ? m.endpoint_id : undefined,
+    resolved_device_id: typeof m.resolved_device_id === "string" ? m.resolved_device_id : undefined,
     updated_at: m.updated_at,
     heading_deg:
       typeof m.heading_deg === "number" && Number.isFinite(m.heading_deg) ? m.heading_deg : null,

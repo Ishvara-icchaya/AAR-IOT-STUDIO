@@ -33,6 +33,8 @@ function buildClusterData(index: Supercluster, map: MaplibreMap): PointFeat[] {
 export type DeckSiteMapHandle = {
   updatePoints: (points: MapPointVM[], useCluster: boolean) => void;
   getClusterExpansionZoom: (clusterId: number) => number;
+  /** Supercluster leaves for a cluster id (empty if not in cluster mode). */
+  getClusterLeaves: (clusterId: number) => MapPointVM[];
   dispose: () => void;
 };
 
@@ -156,6 +158,17 @@ export function attachDeckSiteMapOverlay(
   return {
     updatePoints,
     getClusterExpansionZoom: (clusterId: number) => index?.getClusterExpansionZoom(clusterId) ?? map.getZoom() + 2,
+    getClusterLeaves: (clusterId: number): MapPointVM[] => {
+      if (!index) return [];
+      try {
+        const feats = index.getLeaves(clusterId, Infinity) as PointFeat[];
+        return feats
+          .map((f) => f.properties?.vm as MapPointVM | undefined)
+          .filter((vm): vm is MapPointVM => Boolean(vm));
+      } catch {
+        return [];
+      }
+    },
     dispose: () => {
       map.off("moveend", onMove);
       map.off("zoomend", onMove);
