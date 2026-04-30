@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Dashboard screenshot: strip oklab gradients in html2canvas clone
+
+- **Frontend:** `DashboardLiveToolbar.tsx` — `onclone` now tags the cloned capture root and injects rules to remove **all** `background-image` / `border-image` / masks in that subtree (html2canvas cannot parse `oklab` inside `linear-gradient` stops); strip inline `style` attributes that mention oklab/oklch/color-mix on the clone.
+
+---
+
 ## 2026-04-29 — Dashboard live screenshot: html2canvas hardening
 
 - **Frontend:** `DashboardLiveToolbar.tsx` — safer `backgroundColor` for canvas (avoid oklch/lab from `getComputedStyle`); `foreignObjectRendering: false`, `allowTaint: false`, capped scale; `onclone` injects simplified solid backgrounds for `.dashboard-runtime` / `.dash-wf` (strip color-mix / pseudo grid); `ignoreElements` skips MapLibre canvas and controls (avoids tainted canvas / WebGL issues); separate `toDataURL` try/catch with **SecurityError** messaging; `console.error` for real failures (previous copy always blamed downloads).

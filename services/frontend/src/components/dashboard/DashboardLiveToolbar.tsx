@@ -48,23 +48,43 @@ export function DashboardLiveToolbar({
           node instanceof HTMLElement &&
           (node.classList.contains("maplibregl-canvas") ||
             node.classList.contains("maplibregl-control-container")),
-        onclone(clonedDoc) {
+        onclone(clonedDoc, clonedEl) {
+          /* html2canvas 1.4 cannot parse oklab()/color-mix() inside gradients anywhere in the subtree. */
+          const rid = `dash-screenshot-${Math.random().toString(36).slice(2, 11)}`;
+          clonedEl.setAttribute("data-dash-screenshot-root", rid);
           const style = clonedDoc.createElement("style");
           style.setAttribute("data-dashboard-screenshot", "1");
-          /* Simplify runtime chrome so html2canvas does not choke on color-mix / layered backgrounds / pseudo grid. */
+          const root = `[data-dash-screenshot-root="${rid}"]`;
           style.textContent = `
-            .dashboard-runtime::before { content: none !important; display: none !important; }
-            .dashboard-runtime {
-              background: #121822 !important;
+            ${root}, ${root} *, ${root} *::before, ${root} *::after {
               background-image: none !important;
+              -webkit-mask-image: none !important;
+              mask-image: none !important;
+              border-image: none !important;
+              filter: none !important;
+              backdrop-filter: none !important;
+            }
+            ${root} .dashboard-runtime::before {
+              content: none !important;
+              display: none !important;
+            }
+            ${root} .dashboard-runtime {
+              background-color: #121822 !important;
+              background: #121822 !important;
               box-shadow: none !important;
             }
-            .dashboard-runtime .dashboard-widget-cell .dash-wf {
+            ${root} .dashboard-widget-cell .dash-wf {
+              background-color: #1a2230 !important;
               background: #1a2230 !important;
-              background-image: none !important;
+              box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
             }
           `;
           clonedDoc.head.appendChild(style);
+          clonedEl.querySelectorAll("[style]").forEach((node) => {
+            if (!(node instanceof HTMLElement)) return;
+            const s = node.getAttribute("style") ?? "";
+            if (/oklab|oklch|color-mix|lab\(|lch\(/i.test(s)) node.removeAttribute("style");
+          });
         },
       });
       let dataUrl: string;
