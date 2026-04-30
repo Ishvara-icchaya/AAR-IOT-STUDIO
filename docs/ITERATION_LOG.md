@@ -5,6 +5,14 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Repo hygiene: Dashboard2 removal committed + contract doc on branch
+
+- **Chore:** Staged and committed remaining Dashboard2 deletes (frontend `dashboard2/`, `featureFlags`, `dashboard2` lib/pages/types), API `dashboard2_demo_seed` + test + `main.py` wiring, docs `DASHBOARD2_*`, README / `platform-api` README trims, frontend `package.json` / lockfile (drop `react-grid-layout`).
+- **Added:** `docs/DASHBOARD_WIDGET_CONTRACT.md`, `scripts/smoke-dashboard-api.sh` (were untracked).
+- **Intent:** Clean working tree on `v2-endpoints-rebuild` for push/upload.
+
+---
+
 ## 2026-04-29 — Dashboard widget runtime: API + client + layout (phase 1)
 
 - **API:** `app/core/dashboard_widget_types.py` (canonical `widgetType`, `block.type` map, sentinels); `app/schemas/dashboard_widget_runtime.py` (camelCase envelope DTOs); `GET /api/v1/dashboards/{id}/runtime-layout` via `dashboard_runtime_layout.py`; `POST /api/v1/dashboards/runtime/widgets/resolve-batch` via `dashboard_widget_resolve_batch.py` (delegates to existing `resolve_widget_data`, draft layout + `scopeHours`, `data_object` / invalid widget errors).
