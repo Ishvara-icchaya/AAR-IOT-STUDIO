@@ -58,6 +58,9 @@ export default function TrendPopup(props: TrendPopupProps & { siteId: string }) 
     return <p className="dash-map-popup__hint">No metrics configured for trends.</p>;
   }
 
+  const allEmpty =
+    data != null && keys.every((k) => (data.series[k] ?? []).length === 0);
+
   return (
     <div className="dash-map-popup__section dash-map-popup__section--trend">
       <div className="dash-map-popup__section-title">Trends</div>
@@ -79,7 +82,12 @@ export default function TrendPopup(props: TrendPopupProps & { siteId: string }) 
       </div>
       {loading ? <p className="dash-map-popup__hint">Loading trend…</p> : null}
       {err ? <p className="dash-map-popup__msg">{err}</p> : null}
-      {!loading && !err && data ? (
+      {!loading && !err && data && allEmpty ? (
+        <p className="dash-map-popup__hint" role="status">
+          No trend data available yet.
+        </p>
+      ) : null}
+      {!loading && !err && data && !allEmpty ? (
         <div className="dash-map-popup__trend-metrics">
           {keys.map((mk) => (
             <TrendMetricBlock key={mk} metricKey={mk} points={data.series[mk] ?? []} />
@@ -95,7 +103,7 @@ function TrendMetricBlock({ metricKey, points }: { metricKey: string; points: Tr
     return (
       <div className="dash-map-popup__trend-metric">
         <div className="dash-map-popup__trend-metric-name">{metricKey}</div>
-        <p className="dash-map-popup__hint">No buckets yet (rollup pipeline).</p>
+        <p className="dash-map-popup__hint">No trend data available yet.</p>
       </div>
     );
   }

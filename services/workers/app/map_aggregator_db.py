@@ -55,6 +55,32 @@ def fetch_data_object_row(data_object_id: str) -> dict[str, Any] | None:
         conn.close()
 
 
+def fetch_latest_device_state_row(latest_device_state_id: str) -> dict[str, Any] | None:
+    """Latest device state row for trend rollup (resolved_device + KPI payloads)."""
+    sql = """
+    SELECT id, customer_id, site_id, endpoint_id, resolved_device_id, kpi_json, display_json
+    FROM latest_device_state WHERE id = %s::uuid
+    """
+    conn = psycopg2.connect(_metadata_url())
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (latest_device_state_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": str(row[0]),
+                "customer_id": str(row[1]),
+                "site_id": str(row[2]),
+                "endpoint_id": str(row[3]),
+                "resolved_device_id": str(row[4]),
+                "kpi_json": row[5] if isinstance(row[5], dict) else {},
+                "display_json": row[6] if isinstance(row[6], dict) else {},
+            }
+    finally:
+        conn.close()
+
+
 def fetch_result_object_row(result_object_id: str) -> dict[str, Any] | None:
     sql = """
     SELECT id, customer_id, site_id, result_object_name, payload_json, health_status, created_at,

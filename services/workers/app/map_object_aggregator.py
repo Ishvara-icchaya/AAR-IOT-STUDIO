@@ -15,10 +15,12 @@ from app.logging_setup import configure_logging
 from app.map_aggregator_db import (
     fetch_data_object_row,
     fetch_device_name,
+    fetch_latest_device_state_row,
     fetch_result_object_row,
     fetch_site_name,
     insert_map_kpi_history,
 )
+from app.trend_window_rollup import apply_trend_windows_for_lds, extract_numerics_from_lds_row
 from app.map_eligibility import map_eligible_data_object, map_eligible_result_object
 from app.pipeline import emit
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
@@ -53,6 +55,10 @@ def _topic_do() -> str:
 
 def _topic_ro() -> str:
     return os.environ.get("KAFKA_RESULT_OBJECT_CREATED_TOPIC", "result_object.created")
+
+
+def _topic_lds() -> str:
+    return os.environ.get("KAFKA_LATEST_DEVICE_STATE_TOPIC", "latest_device_state.updated")
 
 
 def _get_path(obj: Any, path: str) -> Any:
@@ -435,18 +441,39 @@ def _process_result_object(r: Any, data: dict[str, Any]) -> None:
         )
 
 
+def _process_latest_device_state_trends(r: Any, data: dict[str, Any]) -> None:
+    """Populate trend:window:rdev:* and trend:window:endpoint:* from LDS KPIs (see trend_window_rollup)."""
+    lds_id = str(data.get("latest_device_state_id") or "")
+    if not lds_id:
+        return
+    row = fetch_latest_device_state_row(lds_id)
+    if not row:
+        return
+    rd = str(row.get("resolved_device_id") or "")
+    ep = str(row.get("endpoint_id") or "")
+    if not rd or not ep:
+        return
+    numerics = extract_numerics_from_lds_row(row)
+    if not numerics:
+        return
+    apply_trend_windows_for_lds(r, resolved_device_id=rd, endpoint_id=ep, numerics=numerics)
+
+
 def _handle(r: Any, data: dict[str, Any]) -> None:
     kind = str(data.get("kind") or "")
     if kind == "data_object_created":
         _process_data_object(r, data)
     elif kind == "result_object_created":
         _process_result_object(r, data)
+    elif kind == "latest_device_state_updated":
+        _process_latest_device_state_trends(r, data)
 
 
 def main() -> None:
     consumer = KafkaConsumer(
         _topic_do(),
         _topic_ro(),
+        _topic_lds(),
         bootstrap_servers=bootstrap_servers(),
         group_id="worker-map-aggregator",
         auto_offset_reset="earliest",
@@ -458,7 +485,7 @@ def main() -> None:
         component="worker-map-aggregator",
         action="subscriber_started",
         status="ok",
-        topics=[_topic_do(), _topic_ro()],
+        topics=[_topic_do(), _topic_ro(), _topic_lds()],
         group_id="worker-map-aggregator",
     )
     start_worker_heartbeat("worker-map-aggregator")

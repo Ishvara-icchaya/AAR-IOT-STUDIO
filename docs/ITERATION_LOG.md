@@ -5,6 +5,15 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-29 — Trend Redis worker (LDS) + popup empty state + contract backlog
+
+- **Workers:** `trend_window_rollup.py` — upserts **5m-floor** buckets into **`trend:window:rdev:{id}:{metric}:1h|24h`**, mirrors JSON to **`trend:window:endpoint:…`** (interim; cohort merge later); TTL **5400s** / **93600s**. **`map_object_aggregator`** now consumes **`latest_device_state.updated`** (`KAFKA_LATEST_DEVICE_STATE_TOPIC`) and loads LDS via **`fetch_latest_device_state_row`** (`map_aggregator_db.py`).
+- **Frontend:** `TrendPopup` — when all requested metrics return empty series, show **“No trend data available yet.”** (not an error); per-metric empty uses same copy.
+- **Docs:** `MAP_POPUP_TREND_WINDOWS_CONTRACT.md` **v1.2** — §12 product/security backlog (metric visibility, bindings, allowlist, cluster popup, cohort/site rollup, Timescale); §6 worker note; revision history.
+- **Tests:** `services/workers/tests/test_trend_window_rollup.py` (floor, upsert, trim).
+
+---
+
 ## 2026-04-29 — Map widget: 320px floor + 16:9 aspect preview
 
 - **Frontend:** `MapWidget` adds **`widget--map`** (with existing `dash-widget--map`); map container styles — **`min-height: 320px`** on non-expanded map widget, **`aspect-ratio: 16 / 9`** on single-map wrap and enterprise map canvas; full-width single map (replacing 50% centered strip); live/page-card overrides stop forcing a clamped map height so the aspect box drives layout; **`:has`** rule on **`.dash-col--slot-data`** when the stack contains a map so the column floor is **max(slot min, 320px)** (`dashboardWidgetFrame.css`).
