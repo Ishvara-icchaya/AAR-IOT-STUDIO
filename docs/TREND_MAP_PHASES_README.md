@@ -13,7 +13,7 @@ This README tracks the **map popup + Redis/ Timescale trend pipeline** described
 
 ## Remaining (suggested order)
 
-1. **Map object trends (data_object / result_object)** — **`trend_context`** + UI that uses **Timescale** `kpi_history_timescale` already returned on map detail (these kinds have no Redis `trend:window:*` series). *Replaces “Phase 7” in the original internal backlog naming.*
+1. ~~**Map object trends (data_object / result_object)**~~ — **`trend_context`** with **`mode: map_object_timescale`** + lazy **`MapObjectKpiTrendPopup`** reads **`kpi_history_timescale`** from map detail (no Redis `trend:window:*` for these kinds).
 2. **Endpoint cohort hygiene** — stale or empty endpoint window buckets when member rdevs have no sample for a slot; optional Redis/Timescale reconcile or TTL strategy.
 3. **Site rollup product policy** — when to default **`scope=site`** in UI vs endpoint vs device; align with ops dashboards.
 4. **Dashboard-embedded map** — optional **widget binding** so trend keys shown on the map match the widget’s configured metric set (see [`DASHBOARD_WIDGET_CONTRACT.md`](DASHBOARD_WIDGET_CONTRACT.md)).

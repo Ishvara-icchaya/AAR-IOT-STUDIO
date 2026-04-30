@@ -3,6 +3,7 @@ import { getMapObjectDetail } from "@/api/dashboard";
 import type { TrendScope, TrendPopupProps } from "@/types/trends";
 
 const TrendPopup = lazy(() => import("./TrendPopup"));
+const MapObjectKpiTrendPopup = lazy(() => import("./MapObjectKpiTrendPopup"));
 
 type Props = {
   siteId: string;
@@ -114,6 +115,14 @@ export function MapMarkerPopupRoot(props: Props) {
     return { ...p, siteId };
   })();
 
+  const objectTimescaleTrendKeys: string[] | null = (() => {
+    if (!tc || tc.mode !== "map_object_timescale") return null;
+    const mks = Array.isArray(tc.metricKeys)
+      ? tc.metricKeys.filter((x): x is string => typeof x === "string")
+      : [];
+    return mks.length ? mks : null;
+  })();
+
   return (
     <div className="dash-map-popup">
       <div className="dash-map-popup__head">
@@ -165,6 +174,14 @@ export function MapMarkerPopupRoot(props: Props) {
           fallback={<p className="dash-map-popup__hint">Loading trends…</p>}
         >
           <TrendPopup {...trendProps} />
+        </Suspense>
+      ) : null}
+
+      {objectTimescaleTrendKeys && detail ? (
+        <Suspense
+          fallback={<p className="dash-map-popup__hint">Loading KPI history…</p>}
+        >
+          <MapObjectKpiTrendPopup detail={detail} metricKeys={objectTimescaleTrendKeys} />
         </Suspense>
       ) : null}
 

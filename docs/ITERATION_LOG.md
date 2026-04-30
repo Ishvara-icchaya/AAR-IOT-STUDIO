@@ -5,6 +5,15 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Map object Timescale trends + phases README
+
+- **Docs:** [`docs/TREND_MAP_PHASES_README.md`](docs/TREND_MAP_PHASES_README.md) + root **README** link — completed vs remaining trend/map work.
+- **API:** `map_marker_detail` sets **`trend_context`** for **`data_object`** / **`result_object`** as **`mode: map_object_timescale`** + **`sourceType`**, **`sourceId`**, **`metricKeys`** (aligned with allowlist-filtered KPI keys).
+- **Frontend:** Lazy **`MapObjectKpiTrendPopup`** — 1h/24h toggle over **`kpi_history_timescale`**; **`MapMarkerPopupRoot`** renders it when **`trend_context.mode`** is set (alongside Redis **`TrendPopup`** for LDS when applicable).
+- **Docs:** `MAP_POPUP_TREND_WINDOWS_CONTRACT.md` **v1.7**; phases README marks map-object trend item done.
+
+---
+
 ## 2026-04-30 — Phase 5: Trend metric visibility (global + site allowlist)
 
 - **Config:** **`TREND_METRIC_ALLOWLIST`** (`settings.trend_metric_allowlist`) — comma/whitespace-separated metric keys; empty = no global filter.

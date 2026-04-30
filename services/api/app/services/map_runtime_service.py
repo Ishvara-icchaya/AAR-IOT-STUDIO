@@ -459,6 +459,13 @@ def map_marker_detail(
                     "endpointId": str(lds.endpoint_id),
                     "metricKeys": list(k_latest.keys())[:24],
                 }
+    elif st_lower in ("data_object", "result_object"):
+        trend_context = {
+            "mode": "map_object_timescale",
+            "sourceType": st_lower,
+            "sourceId": str(source_id),
+            "metricKeys": list(k_latest.keys())[:24],
+        }
 
     return {
         "source_type": st_lower,

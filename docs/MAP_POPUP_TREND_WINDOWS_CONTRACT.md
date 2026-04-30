@@ -1,4 +1,4 @@
-# Map popup & trend windows — architecture contract (v1.6)
+# Map popup & trend windows — architecture contract (v1.7)
 
 This document is the **engineering-ready contract** for map marker detail UX, **metadata-driven** numeric formatting, **5-minute trend buckets** (resolved device, endpoint, and site), **moving windows** (1h / 24h), **Redis hot cache**, **durable storage**, **workers**, and the **React MapLibre popup**. OpenAPI remains the normative API spec once implemented.
 
@@ -313,3 +313,6 @@ Implement as:
 | 2026-04-30 | **v1.4** — Timescale **`trend_metric_bucket`** hypertable + worker UPSERT after each LDS metric rollup (Phase 3 durability). |
 | 2026-04-30 | **v1.5** — Map detail for **LDS** + **`trendScope`** query; homogeneous **Supercluster** cohort → popup with **`trend_context.scope=endpoint`**; light markers carry **`endpoint_id`** / **`resolved_device_id`**. |
 | 2026-04-30 | **v1.6** — **Phase 5:** metric visibility — **`TREND_METRIC_ALLOWLIST`** (global) + optional **`sites.trend_metric_allowlist`** (per-site override); **`GET /trends/window`** and map **`trend_context.metricKeys`** / KPI detail keys filtered to allowed set (empty series when none permitted). |
+| 2026-04-30 | **v1.7** — **`trend_context`** for **`data_object`** / **`result_object`** (`mode: map_object_timescale`); React **`MapObjectKpiTrendPopup`** uses detail **`kpi_history_timescale`** (Timescale samples). |
+
+**Map object trends (v1.7):** For **`data_object`** / **`result_object`**, **`trend_context`** is `{ mode, sourceType, sourceId, metricKeys }` (no **`scope`/`entityId`** — those are for Redis **`GET /trends/window`** only). The popup renders **Timescale sample history** from the same detail payload, not 5m Redis buckets.
