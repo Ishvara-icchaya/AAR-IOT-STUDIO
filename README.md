@@ -49,7 +49,7 @@ docker compose --profile llm up -d ollama
 
 ## Trend & map rollout (phases)
 
-Implementation status for **map popups**, **Redis trend windows**, and **Timescale durability** is summarized in **[`docs/TREND_MAP_PHASES_README.md`](docs/TREND_MAP_PHASES_README.md)** (with pointers to [`docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md`](docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md)).
+Implementation status for **map popups**, **Redis trend windows**, and **Timescale durability** is summarized in **[`docs/TREND_MAP_PHASES_README.md`](docs/TREND_MAP_PHASES_README.md)** (with pointers to [`docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md`](docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md)). **Operators:** CLI, env, and map widget binding fields are in **[`docs/TREND_MAP_OPERATIONS.md`](docs/TREND_MAP_OPERATIONS.md)**.
 
 ## Monorepo layout
 

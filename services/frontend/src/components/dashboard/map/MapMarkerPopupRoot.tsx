@@ -14,6 +14,8 @@ type Props = {
   blockedMessage?: string;
   /** Passed to map detail API for LDS trend_context (cluster → endpoint). */
   trendScope?: "resolved_device" | "endpoint" | "site";
+  /** Align detail KPI keys with dashboard map widget ``kpi_fields`` binding. */
+  kpiKeys?: string[];
 };
 
 function healthBadgeClass(status: string | undefined): string {
@@ -26,7 +28,7 @@ function healthBadgeClass(status: string | undefined): string {
 }
 
 export function MapMarkerPopupRoot(props: Props) {
-  const { siteId, sourceType, sourceId, title, blockedMessage, trendScope } = props;
+  const { siteId, sourceType, sourceId, title, blockedMessage, trendScope, kpiKeys } = props;
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(!blockedMessage);
@@ -38,7 +40,7 @@ export function MapMarkerPopupRoot(props: Props) {
     setErr(null);
     void (async () => {
       try {
-        const r = await getMapObjectDetail({ siteId, sourceType, sourceId, trendScope });
+        const r = await getMapObjectDetail({ siteId, sourceType, sourceId, trendScope, kpiKeys });
         if (!cancelled) {
           setDetail((r?.detail as Record<string, unknown>) ?? null);
           setLoading(false);
@@ -54,7 +56,7 @@ export function MapMarkerPopupRoot(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [siteId, sourceType, sourceId, blockedMessage, trendScope]);
+  }, [siteId, sourceType, sourceId, blockedMessage, trendScope, kpiKeys]);
 
   if (blockedMessage) {
     return (

@@ -170,6 +170,22 @@ def merge_bucket_stats(
     return target
 
 
+def remove_bucket_for_time(buckets: list[dict[str, Any]], bucket_start: datetime) -> list[dict[str, Any]]:
+    """Drop the bucket aligned to bucket_start (stale cohort slot cleanup)."""
+    t0 = floor_to_5m(bucket_start)
+    out: list[dict[str, Any]] = []
+    for b in buckets:
+        raw = b.get("bucket_start") or b.get("ts")
+        if not raw:
+            out.append(b)
+            continue
+        t = _parse_ts_iso(str(raw))
+        if t is not None and floor_to_5m(t) == t0:
+            continue
+        out.append(b)
+    return out
+
+
 def upsert_bucket_list(buckets: list[dict[str, Any]], bucket: dict[str, Any], bucket_start: datetime) -> list[dict[str, Any]]:
     t0 = floor_to_5m(bucket_start)
     replaced = False
@@ -282,11 +298,21 @@ def rebuild_endpoint_bucket(
             continue
         endpoint_bucket = merge_bucket_stats(endpoint_bucket, rdev_b, bucket_start)
 
-    if endpoint_bucket is None:
-        return None
-
     ep_key = _series_key_endpoint(endpoint_id, metric_key)
     ep_buckets = load_bucket_array(r, ep_key)
+
+    if endpoint_bucket is None:
+        pruned = remove_bucket_for_time(ep_buckets, bucket_start)
+        if len(pruned) != len(ep_buckets):
+            ep_buckets = sort_and_trim_26h(pruned)
+            try:
+                r.set(ep_key, json_dumps(ep_buckets))
+                r.expire(ep_key, TTL_SERIES_5M)
+                write_window_keys(r, "endpoint", endpoint_id, metric_key, ep_buckets)
+            except Exception:
+                log.exception("rebuild_endpoint_bucket prune stale failed key=%s", ep_key)
+        return None
+
     ep_buckets = upsert_bucket_list(ep_buckets, endpoint_bucket, bucket_start)
     ep_buckets = sort_and_trim_26h(ep_buckets)
     try:
@@ -316,11 +342,21 @@ def rebuild_site_bucket(
             continue
         site_bucket = merge_bucket_stats(site_bucket, ep_b, bucket_start)
 
-    if site_bucket is None:
-        return None
-
     sk = _series_key_site(site_id, metric_key)
     site_buckets = load_bucket_array(r, sk)
+
+    if site_bucket is None:
+        pruned = remove_bucket_for_time(site_buckets, bucket_start)
+        if len(pruned) != len(site_buckets):
+            site_buckets = sort_and_trim_26h(pruned)
+            try:
+                r.set(sk, json_dumps(site_buckets))
+                r.expire(sk, TTL_SERIES_5M)
+                write_window_keys(r, "site", site_id, metric_key, site_buckets)
+            except Exception:
+                log.exception("rebuild_site_bucket prune stale failed key=%s", sk)
+        return None
+
     site_buckets = upsert_bucket_list(site_buckets, site_bucket, bucket_start)
     site_buckets = sort_and_trim_26h(site_buckets)
     try:

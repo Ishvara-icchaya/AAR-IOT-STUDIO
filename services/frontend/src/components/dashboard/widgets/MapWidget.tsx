@@ -45,6 +45,7 @@ function openMapPopupForVm(
   map: maplibregl.Map,
   vm: MapPointVM,
   getSiteId: () => string | undefined,
+  extra?: { kpiKeys?: string[]; trendScope?: "resolved_device" | "endpoint" | "site" },
 ) {
   const lngLat: maplibregl.LngLatLike = [vm.longitude, vm.latitude];
   const siteId = getSiteId();
@@ -70,6 +71,8 @@ function openMapPopupForVm(
     siteId,
     sourceType: String(st),
     sourceId: String(sid),
+    kpiKeys: extra?.kpiKeys,
+    trendScope: extra?.trendScope,
   });
 }
 
@@ -355,10 +358,21 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         deckHandleRef.current = attachDeckSiteMapOverlay(map, {
           profile,
           onPointPick: (vm) => {
-            openMapPopupForVm(map, vm, () => {
-              const site = latestBlockRef.current.data?.site_id;
-              return typeof site === "string" ? site : undefined;
-            });
+            const ch = adaptMapChrome(latestBlockRef.current);
+            const kpiKeys = ch.kpiFields?.length ? ch.kpiFields : undefined;
+            const trendScope =
+              vm.source_type === "latest_device_state" && ch.mapDefaultTrendScope
+                ? ch.mapDefaultTrendScope
+                : undefined;
+            openMapPopupForVm(
+              map,
+              vm,
+              () => {
+                const site = latestBlockRef.current.data?.site_id;
+                return typeof site === "string" ? site : undefined;
+              },
+              { kpiKeys, trendScope },
+            );
           },
           onClusterPick: (clusterId, lngLat, expansionZoom) => {
             const deck = deckHandleRef.current;
@@ -380,6 +394,8 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               const rep = leaves[0]!;
               const sid = rep.source_id;
               if (sid) {
+                const ch = adaptMapChrome(latestBlockRef.current);
+                const kpiKeys = ch.kpiFields?.length ? ch.kpiFields : undefined;
                 openDashboardMapMarkerPopup(map, {
                   lngLat,
                   title: `${rep.label} (${leaves.length})`,
@@ -387,6 +403,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
                   sourceType: "latest_device_state",
                   sourceId: sid,
                   trendScope: "endpoint",
+                  kpiKeys,
                 });
                 return;
               }

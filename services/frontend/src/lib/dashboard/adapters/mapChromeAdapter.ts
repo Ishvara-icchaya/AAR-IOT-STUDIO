@@ -41,6 +41,8 @@ export type MapChromeVM = {
   warning: string | null;
   sourceMissing: boolean;
   mapProfile: "site" | "fleet";
+  /** When set, LDS map detail uses this ``trendScope`` unless overridden (e.g. cluster → endpoint). */
+  mapDefaultTrendScope: "resolved_device" | "endpoint" | "site" | null;
 };
 
 function readControls(d: Record<string, unknown>): MapControlsVM {
@@ -137,6 +139,15 @@ export function adaptMapChrome(block: DashboardLiveWidgetDTO): MapChromeVM {
   const mapProfile: "site" | "fleet" =
     block.type === "fleet_map" || mp === "fleet" ? "fleet" : "site";
 
+  const rawScope = d.map_default_trend_scope ?? d.mapDefaultTrendScope;
+  let mapDefaultTrendScope: "resolved_device" | "endpoint" | "site" | null = null;
+  if (typeof rawScope === "string") {
+    const s = rawScope.trim().toLowerCase();
+    if (s === "resolved_device" || s === "endpoint" || s === "site") {
+      mapDefaultTrendScope = s;
+    }
+  }
+
   return {
     siteId,
     latitudeField: latf,
@@ -157,6 +168,7 @@ export function adaptMapChrome(block: DashboardLiveWidgetDTO): MapChromeVM {
     warning: typeof d.warning === "string" ? d.warning : null,
     sourceMissing: d.source_missing === true,
     mapProfile,
+    mapDefaultTrendScope,
   };
 }
 
@@ -167,6 +179,7 @@ export function mapChromeFetchKey(chrome: MapChromeVM): string {
     lat: chrome.latitudeField,
     lon: chrome.longitudeField,
     kpi: chrome.kpiFields,
+    trendDef: chrome.mapDefaultTrendScope,
     ex: chrome.excludedSourceIds,
     dev: chrome.deviceIds,
     titleField: chrome.titleField,

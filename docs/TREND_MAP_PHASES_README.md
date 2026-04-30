@@ -2,6 +2,8 @@
 
 This README tracks the **map popup + Redis/ Timescale trend pipeline** described in [`MAP_POPUP_TREND_WINDOWS_CONTRACT.md`](MAP_POPUP_TREND_WINDOWS_CONTRACT.md). It is the high-level companion to that contract (API shapes and keys stay normative there).
 
+**Operations** (CLI, env, widget fields): see [`TREND_MAP_OPERATIONS.md`](TREND_MAP_OPERATIONS.md).
+
 ## Done (baseline through Phase 5)
 
 | Phase | Summary |
@@ -11,14 +13,22 @@ This README tracks the **map popup + Redis/ Timescale trend pipeline** described
 | **4** | **`GET …/map-runtime/detail`** supports **LDS** types; **`trendScope`** drives **`trend_context`**; light markers expose **`endpoint_id`**; homogeneous **Supercluster** cohort opens popup with **endpoint**-scoped Redis trends. |
 | **5** | Metric governance: **`TREND_METRIC_ALLOWLIST`** (env) + optional **`sites.trend_metric_allowlist`** (Alembic **0032**); filters **`GET /api/v1/trends/window`** and map detail KPI / **`trend_context.metricKeys`**. |
 
-## Remaining (suggested order)
+## Done (backlog follow-ups)
 
-1. ~~**Map object trends (data_object / result_object)**~~ — **`trend_context`** with **`mode: map_object_timescale`** + lazy **`MapObjectKpiTrendPopup`** reads **`kpi_history_timescale`** from map detail (no Redis `trend:window:*` for these kinds).
-2. **Endpoint cohort hygiene** — stale or empty endpoint window buckets when member rdevs have no sample for a slot; optional Redis/Timescale reconcile or TTL strategy.
-3. **Site rollup product policy** — when to default **`scope=site`** in UI vs endpoint vs device; align with ops dashboards.
-4. **Dashboard-embedded map** — optional **widget binding** so trend keys shown on the map match the widget’s configured metric set (see [`DASHBOARD_WIDGET_CONTRACT.md`](DASHBOARD_WIDGET_CONTRACT.md)).
-5. **Operational tooling** — job or admin path to **rebuild Redis** trend windows from **`trend_metric_bucket`** after cache loss.
-6. **Contract polish** — OpenAPI for trends/map detail, optional **`maxPoints`** / downsampling for 24h, shared **field metadata** catalog for `formatMetricValue` (see contract §13).
+| Item | Summary |
+|------|---------|
+| **Map object trends** | **`trend_context.mode = map_object_timescale`** + **`MapObjectKpiTrendPopup`** (Timescale samples from detail). |
+| **Endpoint cohort hygiene** | **Prune** stale **5m** slots on endpoint/site Redis series when rebuild finds **no** contributing member bucket. |
+| **Site rollup default (widget)** | **`map_default_trend_scope`** / **`mapDefaultTrendScope`** on map widget **`data`** → detail **`trendScope`** for single **LDS** marker popups. |
+| **Dashboard map ↔ metrics** | Popup passes widget **`kpi_fields`** as **`kpiKeys`** on map detail (and cluster popup). |
+| **Redis rebuild** | CLI **`python -m app.commands.rebuild_trend_redis_cache`** + **`trend_redis_rebuild`** service. |
+| **Downsampling** | **`GET /api/v1/trends/window?maxPoints=`** (1–500) uniform sample per metric series. |
+
+## Remaining (lower priority)
+
+1. **OpenAPI / field metadata catalog** — fuller schemas, **`formatMetricValue`** catalog (contract §13).
+2. **Site rollup UX** — product defaults beyond the widget-level **`map_default_trend_scope`** (e.g. global operator preference).
+3. **Dashboard resolve-batch** — full widget contract in [`DASHBOARD_WIDGET_CONTRACT.md`](DASHBOARD_WIDGET_CONTRACT.md) (separate track).
 
 ## Migrations & env (quick reference)
 
@@ -31,4 +41,5 @@ This README tracks the **map popup + Redis/ Timescale trend pipeline** described
 ## Related docs
 
 - [`MAP_POPUP_TREND_WINDOWS_CONTRACT.md`](MAP_POPUP_TREND_WINDOWS_CONTRACT.md) — v1.x revision history and backlog table §12.
+- [`TREND_MAP_OPERATIONS.md`](TREND_MAP_OPERATIONS.md) — CLI, env, widget binding fields.
 - [`DASHBOARD_WIDGET_CONTRACT.md`](DASHBOARD_WIDGET_CONTRACT.md) — dashboard **`resolve-batch`** / layout workstream (separate from map popup trends).

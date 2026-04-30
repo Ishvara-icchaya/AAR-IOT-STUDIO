@@ -10,6 +10,7 @@ from app.trend_window_rollup import (
     merge_bucket_stats,
     merge_value_into_bucket,
     new_bucket,
+    remove_bucket_for_time,
     sort_and_trim_26h,
 )
 
@@ -48,6 +49,15 @@ class TestTrendWindowRollup(unittest.TestCase):
         out = sort_and_trim_26h([old, recent])
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0]["n"], recent["n"])
+
+    def test_remove_bucket_for_time(self) -> None:
+        t0 = floor_to_5m(datetime(2026, 4, 30, 12, 0, tzinfo=timezone.utc))
+        t1 = floor_to_5m(datetime(2026, 4, 30, 12, 5, tzinfo=timezone.utc))
+        a = new_bucket(t0, 1.0)
+        b = new_bucket(t1, 2.0)
+        out = remove_bucket_for_time([a, b], t0)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["n"], b["n"])
 
 
 if __name__ == "__main__":

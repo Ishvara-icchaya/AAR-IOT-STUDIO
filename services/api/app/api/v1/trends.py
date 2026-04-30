@@ -30,6 +30,13 @@ def get_trends_window(
     window: str = Query("1h", pattern="^(1h|24h)$"),
     bucket: str = Query("5m", pattern="^5m$"),
     as_of: str | None = Query(None, description="Optional ISO timestamp (frozen/debug)"),
+    max_points: int | None = Query(
+        None,
+        alias="maxPoints",
+        ge=1,
+        le=500,
+        description="Optional cap on bucket points returned per metric (uniform downsampling).",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -56,6 +63,7 @@ def get_trends_window(
             window=window,
             bucket=bucket,
             as_of_raw=as_of,
+            max_points=max_points,
         )
     except PermissionError as e:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(e)) from e

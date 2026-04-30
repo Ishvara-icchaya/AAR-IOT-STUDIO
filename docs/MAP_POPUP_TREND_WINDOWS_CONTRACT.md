@@ -1,4 +1,4 @@
-# Map popup & trend windows — architecture contract (v1.7)
+# Map popup & trend windows — architecture contract (v1.8)
 
 This document is the **engineering-ready contract** for map marker detail UX, **metadata-driven** numeric formatting, **5-minute trend buckets** (resolved device, endpoint, and site), **moving windows** (1h / 24h), **Redis hot cache**, **durable storage**, **workers**, and the **React MapLibre popup**. OpenAPI remains the normative API spec once implemented.
 
@@ -269,8 +269,8 @@ Review queue (prioritize after Redis worker + UI polish):
 | 2 | **Dashboard widget binding permissions** — align trend keys with widget-bound metric sets where applicable. |
 | 3 | **Site-level metric allowlist** — optional cap list per site/customer. |
 | 4 | **Cluster / endpoint map popup** — pass feature state `{ scope: "endpoint", entityId, metricKeys }` and reuse the same React popup shell as resolved_device. |
-| 5 | **Endpoint cohort edge cases** — e.g. stale endpoint windows if all rdevs lack a bucket for a slot (no delete pass yet). |
-| 6 | **Site rollup** — Redis `trend:site:*` is written by worker; **policy** / UX for `scope=site` may still evolve. |
+| 5 | **Endpoint cohort edge cases** — worker **prunes** a **5m** slot on endpoint/site Redis series when no member contributes (**stale cohort hygiene**). |
+| 6 | **Site rollup** — Redis `trend:site:*` is written by worker; **policy** / UX: map widget **`map_default_trend_scope`** sets initial **`trendScope`** on single-marker **LDS** detail; broader dashboard defaults remain open. |
 | 7 | **Durable Timescale bucket table** — source of truth + backfill; Redis remains hot cache. |
 
 Current slice: **site + entity ownership** auth on `GET /trends/window` is acceptable until the policy layer above lands.
@@ -283,7 +283,7 @@ Current slice: **site + entity ownership** auth on `GET /trends/window` is accep
 2. **Event time vs processing time** for bucket boundaries under ingest delay.
 3. **OpenAPI** — paths, errors, rate limits, `includePartial` for historical mode.
 4. **Field metadata catalog** — per-metric `type`, `decimals`, geo exceptions.
-5. **Downsampling** for 24h on constrained clients (optional future `?maxPoints=`).
+5. **Downsampling** — **`GET /api/v1/trends/window`** supports **`maxPoints`** (1–500) per metric series (uniform sample).
 
 ---
 
@@ -314,5 +314,6 @@ Implement as:
 | 2026-04-30 | **v1.5** — Map detail for **LDS** + **`trendScope`** query; homogeneous **Supercluster** cohort → popup with **`trend_context.scope=endpoint`**; light markers carry **`endpoint_id`** / **`resolved_device_id`**. |
 | 2026-04-30 | **v1.6** — **Phase 5:** metric visibility — **`TREND_METRIC_ALLOWLIST`** (global) + optional **`sites.trend_metric_allowlist`** (per-site override); **`GET /trends/window`** and map **`trend_context.metricKeys`** / KPI detail keys filtered to allowed set (empty series when none permitted). |
 | 2026-04-30 | **v1.7** — **`trend_context`** for **`data_object`** / **`result_object`** (`mode: map_object_timescale`); React **`MapObjectKpiTrendPopup`** uses detail **`kpi_history_timescale`** (Timescale samples). |
+| 2026-04-30 | **v1.8** — Stale **5m** slot **prune** on endpoint/site rollups; **`maxPoints`** on **`GET /trends/window`**; Redis rebuild CLI from Timescale; map detail passes widget **`kpi_fields`** as **`kpiKeys`**; **`TREND_MAP_OPERATIONS.md`**; §12/§13 backlog updates. |
 
 **Map object trends (v1.7):** For **`data_object`** / **`result_object`**, **`trend_context`** is `{ mode, sourceType, sourceId, metricKeys }` (no **`scope`/`entityId`** — those are for Redis **`GET /trends/window`** only). The popup renders **Timescale sample history** from the same detail payload, not 5m Redis buckets.

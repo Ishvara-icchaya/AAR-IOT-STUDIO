@@ -13,6 +13,8 @@ export function openDashboardMapMarkerPopup(
     blockedMessage?: string;
     /** Map detail API: trend_context scope for LDS (resolved_device | endpoint | site). */
     trendScope?: "resolved_device" | "endpoint" | "site";
+    /** When set, passed as repeated kpiKeys query params so detail KPIs match the map widget binding. */
+    kpiKeys?: string[];
   },
 ): maplibregl.Popup {
   const host = document.createElement("div");
@@ -48,6 +50,7 @@ export function openDashboardMapMarkerPopup(
       title={opts.title}
       blockedMessage={opts.blockedMessage}
       trendScope={opts.trendScope}
+      kpiKeys={opts.kpiKeys}
     />,
   );
 

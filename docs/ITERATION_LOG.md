@@ -5,6 +5,17 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Trend hygiene, maxPoints, Redis rebuild CLI, map KPI/scope
+
+- **Workers:** **`remove_bucket_for_time`**; **`rebuild_endpoint_bucket`** / **`rebuild_site_bucket`** **prune** a **5m** slot when no cohort member contributes (stale Redis hygiene).
+- **API:** Public **`downsample_trend_series`** (cap **500**); **`GET /api/v1/trends/window?maxPoints=`**; **`build_trends_window_response(..., max_points)`**.
+- **API:** **`trend_redis_rebuild`** + CLI **`python -m app.commands.rebuild_trend_redis_cache`** (Timescale → Redis **5m** keys + window keys); cursor column names via **`d[0]`** for psycopg2 compatibility.
+- **Frontend:** Map chrome adapter **`mapDefaultTrendScope`**; **`openMapPopupForVm`** / point-pick passes **`kpiKeys`** + default scope into map detail.
+- **Tests:** `test_trends_window` downsampling; `test_trend_window_rollup` **`remove_bucket_for_time`**.
+- **Docs:** **`TREND_MAP_OPERATIONS.md`**; **`TREND_MAP_PHASES_README.md`** backlog refresh; **`MAP_POPUP_TREND_WINDOWS_CONTRACT.md` v1.8**; root **README** link to operations doc.
+
+---
+
 ## 2026-04-30 — Map object Timescale trends + phases README
 
 - **Docs:** [`docs/TREND_MAP_PHASES_README.md`](docs/TREND_MAP_PHASES_README.md) + root **README** link — completed vs remaining trend/map work.

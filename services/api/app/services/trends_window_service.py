@@ -19,6 +19,22 @@ from app.services.trend_redis_contract import (
 )
 
 MAX_METRICS = 24
+MAX_POINTS_CAP = 500
+
+
+def downsample_trend_series(points: list[TrendBucketPoint], max_points: int) -> list[TrendBucketPoint]:
+    """Uniform index sampling along time order (contract §13 maxPoints)."""
+    if max_points <= 0 or len(points) <= max_points:
+        return points
+    n = len(points)
+    if max_points == 1:
+        return [points[-1]]
+    out: list[TrendBucketPoint] = []
+    denom = max_points - 1
+    for i in range(max_points):
+        idx = min(n - 1, int(round(i * (n - 1) / denom)))
+        out.append(points[idx])
+    return out
 
 
 def _parse_as_of(raw: str | None) -> datetime:
@@ -115,6 +131,7 @@ def build_trends_window_response(
     window: str,
     bucket: str,
     as_of_raw: str | None,
+    max_points: int | None = None,
 ) -> TrendsWindowResponse:
     if bucket != "5m":
         raise ValueError("only bucket=5m is supported")
@@ -166,6 +183,8 @@ def build_trends_window_response(
                     pt = _normalize_bucket(item)
                     if pt:
                         out.append(pt)
+                if max_points is not None and max_points > 0:
+                    out = downsample_trend_series(out, min(max_points, MAX_POINTS_CAP))
                 series[mk] = out
     finally:
         if r is not None:

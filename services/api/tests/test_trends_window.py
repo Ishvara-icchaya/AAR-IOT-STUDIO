@@ -5,7 +5,8 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.trends_window_service import _normalize_bucket
+from app.schemas.trends import TrendBucketPoint
+from app.services.trends_window_service import _normalize_bucket, downsample_trend_series
 
 
 def test_openapi_includes_trends_window() -> None:
@@ -26,3 +27,14 @@ def test_normalize_bucket_accepts_ts_alias_t() -> None:
 
 def test_normalize_bucket_rejects_missing_timestamp() -> None:
     assert _normalize_bucket({"n": 1}) is None
+
+
+def test_downsample_trend_series_caps_length() -> None:
+    pts = [
+        TrendBucketPoint(ts=f"2026-04-30T00:{i:02d}:00Z", avg=float(i), min=0, max=1, stddev=None, n=1, is_partial=False)
+        for i in range(10)
+    ]
+    out = downsample_trend_series(pts, 3)
+    assert len(out) == 3
+    assert out[0].ts == pts[0].ts
+    assert out[-1].ts == pts[-1].ts
