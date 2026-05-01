@@ -7,7 +7,11 @@ import { useDashboardLiveRuntime } from "@/components/dashboard/DashboardLiveCon
 import { resolveWidgetPresentation } from "@/lib/widgetPresentation";
 import { OFFLINE_FALLBACK_MAP_STYLE } from "@/lib/dashboardMapStyle";
 import { getEnterpriseSiteObjectCounts, postMapMarkersQuery } from "@/api/dashboard";
-import { attachDeckSiteMapOverlay, type DeckSiteMapHandle } from "@/components/dashboard/map/deckOverlaySiteMap";
+import {
+  attachDeckSiteMapOverlay,
+  type DeckSiteMapHandle,
+  type IntelOverlayState,
+} from "@/components/dashboard/map/deckOverlaySiteMap";
 import {
   adaptMapChrome,
   buildMarkersQueryBody,
@@ -40,6 +44,25 @@ function dataSyncKey(list: MarkerRec[], controls: MapControlsVM): string {
   const cluster = computeClusterEffective(list, controls) ? "1" : "0";
   const mc = JSON.stringify(controls);
   return `${markersFingerprint(list)}|${cluster}|${mc}`;
+}
+
+/** Pick the most common endpoint_id on markers for intelligence API filtering. */
+function dominantEndpointId(markers: MarkerRec[]): string | null {
+  const counts = new Map<string, number>();
+  for (const m of markers) {
+    const e = m.endpoint_id;
+    if (!e) continue;
+    counts.set(e, (counts.get(e) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let max = 0;
+  counts.forEach((n, id) => {
+    if (n > max) {
+      max = n;
+      best = id;
+    }
+  });
+  return best;
 }
 
 function openMapPopupForVm(
@@ -237,6 +260,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   const d = block.data ?? {};
   const [styleNotice, setStyleNotice] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [intelOverlay, setIntelOverlay] = useState<IntelOverlayState | null>(null);
 
   const chrome = adaptMapChrome(block);
   const fetchKey = mapChromeFetchKey(chrome);
@@ -443,6 +467,14 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   }, [expanded]);
 
   useEffect(() => {
+    deckHandleRef.current?.setIntelligenceOverlay?.(intelOverlay);
+  }, [intelOverlay, syncKey]);
+
+  useEffect(() => {
+    if (!expanded) setIntelOverlay(null);
+  }, [expanded]);
+
+  useEffect(() => {
     if (!expanded) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -480,6 +512,8 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         : null;
 
   const isEnterprise = enterpriseMode === true;
+  const intelEndpointId = dominantEndpointId(markerList);
+  const intelSiteId = chrome.siteId ?? "";
 
   const mapEl = (
     <div
@@ -576,9 +610,12 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               </div>
             </div>
             <MapIntelligencePanel
-              siteId={chrome.siteId}
+              siteId={intelSiteId}
               blockTitle={block.title?.trim() || "Map"}
-              markerCount={markerList.length}
+              kpiKeys={chrome.kpiFields ?? []}
+              endpointId={intelEndpointId}
+              expanded={expanded}
+              onIntelOverlay={setIntelOverlay}
             />
           </div>
         ) : isEnterprise ? (

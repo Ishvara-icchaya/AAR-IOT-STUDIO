@@ -3608,7 +3608,164 @@ a:hover {
   color: var(--color-text);
   width: 100%;
   box-sizing: border-box;
-  opacity: 0.65;
+}
+
+.dash-map-intel__mode-row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.dash-map-intel__mode-btn {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.3rem 0.4rem;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 92%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.dash-map-intel__mode-btn--on {
+  border-color: color-mix(in oklab, var(--color-accent, #6366f1) 55%, transparent);
+  background: color-mix(in oklab, var(--color-accent, #6366f1) 18%, transparent);
+}
+
+.dash-map-intel__device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(28dvh, 14rem);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dash-map-intel__device-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.45rem;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--color-border) 75%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 96%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.dash-map-intel__device-row--sel {
+  border-color: color-mix(in oklab, var(--color-accent, #6366f1) 50%, transparent);
+  background: color-mix(in oklab, var(--color-accent, #6366f1) 12%, transparent);
+}
+
+.dash-map-intel__device-name {
+  flex: 1 1 100%;
+  font-weight: 600;
+}
+
+.dash-map-intel__device-meta {
+  flex: 1 1 100%;
+  font-size: 0.7rem;
+  color: color-mix(in oklab, var(--color-text) 68%, transparent);
+}
+
+.dash-map-intel__pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.dash-map-intel__pill--active {
+  background: color-mix(in oklab, #22c55e 22%, transparent);
+  color: #166534;
+}
+
+.dash-map-intel__pill--stale {
+  background: color-mix(in oklab, #f59e0b 28%, transparent);
+  color: #92400e;
+}
+
+.dash-map-intel__pill--offline {
+  background: color-mix(in oklab, #64748b 28%, transparent);
+  color: #334155;
+}
+
+.dash-map-intel__pill--unknown {
+  background: color-mix(in oklab, var(--color-border) 55%, transparent);
+  color: color-mix(in oklab, var(--color-text) 75%, transparent);
+}
+
+.dash-map-intel__path-actions {
+  margin-top: 0.45rem;
+}
+
+.dash-map-intel__btn {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.55rem;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 94%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.dash-map-intel__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dash-map-intel__err {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: #dc2626;
+}
+
+.dash-map-intel__pre {
+  margin: 0.25rem 0 0;
+  padding: 0.45rem;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  max-height: 12rem;
+  overflow: auto;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 98%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dash-map-intel__chk {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  margin: 0.15rem 0;
+  cursor: pointer;
+}
+
+.dash-map-intel__kpi-inline {
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.dash-map-intel__mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
 }
 
 @media (max-width: 720px) {

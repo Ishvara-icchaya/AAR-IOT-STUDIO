@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,8 +13,11 @@ from sqlalchemy.orm import Session
 from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
 from app.api.deps import get_current_user
 from app.db.session import get_db
+from app.models.endpoint import Endpoint
+from app.models.resolved_device import ResolvedDevice
 from app.models.user import User
 from app.services.dashboard_live import _map_markers_site, build_map_marker_for_source
+from app.services.map_intelligence_service import build_device_path, build_expanded_intelligence
 from app.services.map_runtime_service import (
     compute_map_init_from_markers,
     internal_aggregator_visibility,
@@ -292,6 +296,79 @@ def map_object_detail(
     if not detail:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Object not found")
     return MapDetailResponse(detail=detail)
+
+
+@router.get("/intelligence/expanded")
+def map_intelligence_expanded(
+    site_id: uuid.UUID = Query(...),
+    endpoint_id: uuid.UUID | None = Query(None),
+    mode: str = Query("runtime", pattern="^(runtime|historical)$"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
+    kpi_keys: list[str] | None = Query(None, alias="kpiKeys"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Endpoint/site device roster with mobility + server-side freshness (Phases 2–3)."""
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    if endpoint_id is not None:
+        ep = db.get(Endpoint, endpoint_id)
+        if not ep or ep.site_id != site_id or ep.customer_id != user.customer_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    keys = list(kpi_keys or [])
+    body = build_expanded_intelligence(
+        db,
+        customer_id=user.customer_id,
+        site_id=site_id,
+        endpoint_id=endpoint_id,
+        mode=mode,
+        page=page,
+        limit=limit,
+        kpi_keys=keys,
+    )
+    if endpoint_id is not None and body.get("endpoint") is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    return body
+
+
+@router.get("/intelligence/path")
+def map_intelligence_path(
+    site_id: uuid.UUID = Query(...),
+    entity_id: uuid.UUID = Query(..., alias="entityId"),
+    scope: str = Query("resolved_device", pattern="^resolved_device$"),
+    from_ts: datetime | None = Query(None, alias="from"),
+    to_ts: datetime | None = Query(None, alias="to"),
+    expected_frequency_sec: int = Query(15, ge=5, le=3600),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Historical footprint from scrubbed_events (Phase 4–5: polyline, gaps, stale segments)."""
+    if scope != "resolved_device":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only scope=resolved_device is supported")
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    rd = db.get(ResolvedDevice, entity_id)
+    if not rd or rd.site_id != site_id or rd.customer_id != user.customer_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Resolved device not found")
+    path = build_device_path(
+        db,
+        customer_id=user.customer_id,
+        site_id=site_id,
+        resolved_device_id=entity_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        expected_frequency_sec=expected_frequency_sec,
+    )
+    return path
 
 
 @router.get("/internal/aggregator", include_in_schema=False)

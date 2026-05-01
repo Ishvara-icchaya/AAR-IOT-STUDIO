@@ -5,6 +5,16 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Expanded map intelligence Phases 2–5 (API + UI)
+
+- **API:** `GET /dashboards/map-runtime/intelligence/expanded` (devices, mobility, server-side freshness, aggregates, `trend_context`) and `GET .../intelligence/path` (scrubbed_events polyline, gaps, stale segments).
+- **Service:** `map_intelligence_service.py` — freshness thresholds (3× / 10× expected interval), optional `auth_config` / `display_json.map_intelligence` overrides.
+- **Markers:** LDS light markers include `heading_deg`, `mobility_type`, `expected_frequency_sec`; deck draws heading ticks for **fleet** or **dynamic** mobility.
+- **Frontend:** Intelligence panel — runtime/historical toggle, searchable device list, detail fetch, 24h footprint + gap overlay, optional endpoint/device trend toggles (1h window).
+- **Tests:** `tests/test_map_intelligence.py` (freshness).
+
+---
+
 ## 2026-04-30 — Trend hygiene, maxPoints, Redis rebuild CLI, map KPI/scope
 
 - **Workers:** **`remove_bucket_for_time`**; **`rebuild_endpoint_bucket`** / **`rebuild_site_bucket`** **prune** a **5m** slot when no cohort member contributes (stale Redis hygiene).

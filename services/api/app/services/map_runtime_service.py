@@ -122,6 +122,14 @@ def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
     rd = marker.get("resolved_device_id")
     if rd is not None:
         out["resolved_device_id"] = str(rd)
+    if marker.get("heading_deg") is not None:
+        out["heading_deg"] = marker.get("heading_deg")
+    if marker.get("mobility_type") is not None:
+        out["mobility_type"] = marker.get("mobility_type")
+    if marker.get("has_heading") is not None:
+        out["has_heading"] = marker.get("has_heading")
+    if marker.get("expected_frequency_sec") is not None:
+        out["expected_frequency_sec"] = marker.get("expected_frequency_sec")
     return out
 
 

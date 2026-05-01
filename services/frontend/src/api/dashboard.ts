@@ -325,3 +325,45 @@ export async function getMapObjectDetail(params: {
     cache: "no-store",
   });
 }
+
+/** Expanded map intelligence (devices, freshness, aggregates, trend_context). */
+export async function getMapIntelligenceExpanded(params: {
+  siteId: string;
+  endpointId?: string | null;
+  mode?: "runtime" | "historical";
+  page?: number;
+  limit?: number;
+  kpiKeys?: string[];
+}) {
+  const qs = new URLSearchParams();
+  qs.set("site_id", params.siteId);
+  if (params.endpointId) qs.set("endpoint_id", params.endpointId);
+  qs.set("mode", params.mode ?? "runtime");
+  qs.set("page", String(params.page ?? 1));
+  qs.set("limit", String(params.limit ?? 25));
+  (params.kpiKeys ?? []).forEach((k) => qs.append("kpiKeys", k));
+  return apiFetch<Record<string, unknown>>(`/dashboards/map-runtime/intelligence/expanded?${qs.toString()}`, {
+    cache: "no-store",
+  });
+}
+
+/** Historical polyline from scrubbed_events (footprint + gap markers). */
+export async function getMapIntelligencePath(params: {
+  siteId: string;
+  entityId: string;
+  from?: string;
+  to?: string;
+  expectedFrequencySec?: number;
+}) {
+  const qs = new URLSearchParams();
+  qs.set("site_id", params.siteId);
+  qs.set("entityId", params.entityId);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.expectedFrequencySec != null) {
+    qs.set("expected_frequency_sec", String(params.expectedFrequencySec));
+  }
+  return apiFetch<Record<string, unknown>>(`/dashboards/map-runtime/intelligence/path?${qs.toString()}`, {
+    cache: "no-store",
+  });
+}

@@ -18,6 +18,8 @@ export type MapPointVM = {
   /** Fleet / live map */
   heading_deg?: number | null;
   speed?: number | null;
+  /** From map intelligence / LDS marker payload */
+  mobility_type?: string | null;
 };
 
 export type MapProfile = "site" | "fleet";
@@ -44,6 +46,7 @@ export type MarkerLike = {
   heading_deg?: number;
   speed_ms?: number;
   speed?: number;
+  mobility_type?: string;
 };
 
 export function toMapPointVM(m: MarkerLike, fallbackId: string): MapPointVM {
@@ -66,6 +69,10 @@ export function toMapPointVM(m: MarkerLike, fallbackId: string): MapPointVM {
         : typeof m.speed === "number"
           ? m.speed
           : null,
+    mobility_type:
+      typeof m.mobility_type === "string" && m.mobility_type.trim()
+        ? m.mobility_type.trim().toLowerCase()
+        : null,
   };
 }
 

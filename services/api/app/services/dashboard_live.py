@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.data_object import DataObject
 from app.models.device import Device
+from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
 from app.models.site import Site
@@ -29,6 +30,12 @@ from app.services.map_runtime_service import (
     markers_with_redis_first,
 )
 from app.services.dashboard_resolved_device_collection import decode_cursor, query_collection_page
+from app.services.map_intelligence_service import (
+    extract_heading_deg,
+    infer_mobility,
+    read_display_mobility,
+    read_endpoint_intelligence_defaults,
+)
 
 
 def _bget(b: dict[str, Any], snake: str, camel: str) -> Any:
@@ -815,6 +822,11 @@ def build_map_marker_for_source(
             if tv is not None:
                 title = str(tv)
         hmsg = payload.get("health_message")
+        loc_json = row.location_json if isinstance(row.location_json, dict) else {}
+        hdeg = extract_heading_deg(loc_json)
+        ep_row = db.get(Endpoint, row.endpoint_id)
+        exp_sec, ep_mob = read_endpoint_intelligence_defaults(ep_row) if ep_row else (15, None)
+        mob, has_h = infer_mobility(ep_mob, read_display_mobility(disp), hdeg, str(row.object_name or ""))
         return {
             "source_type": "latest_device_state",
             "source_id": str(row.id),
@@ -830,6 +842,10 @@ def build_map_marker_for_source(
             "health_message": str(hmsg) if hmsg else None,
             "blink_mode": blink,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "heading_deg": hdeg,
+            "mobility_type": mob,
+            "has_heading": has_h,
+            "expected_frequency_sec": exp_sec,
         }
 
     if st == "result_object":
