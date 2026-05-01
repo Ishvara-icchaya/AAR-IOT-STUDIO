@@ -314,6 +314,16 @@ _FUNCTION_BASED_BUILTIN_NAMES: frozenset[str] = frozenset(
 )
 
 
+def _function_based_random_float(*bounds: Any) -> float:
+    """``random_float()`` → ``[0, 1)``; ``random_float(lo, hi)`` → uniform in ``[lo, hi]`` (inclusive of endpoints per ``random.uniform``)."""
+    n = len(bounds)
+    if n == 0:
+        return float(random.random())
+    if n == 2:
+        return float(random.uniform(float(bounds[0]), float(bounds[1])))
+    raise TypeError(f"random_float() takes 0 or 2 positional arguments ({n} given)")
+
+
 def _function_based_globals_dict() -> dict[str, Any]:
     """Restricted ``__builtins__`` plus date/string helpers (no imports in user code)."""
     bltin: dict[str, Any] = {}
@@ -372,7 +382,7 @@ def _exec_function_based(payload: dict[str, Any], spec: Any) -> None:
         "median": statistics.median,
         "stdev": statistics.stdev,
         "randint": random.randint,
-        "random_float": random.random,
+        "random_float": _function_based_random_float,
     }
     globals_dict = _function_based_globals_dict()
     globals_dict.update(helpers)

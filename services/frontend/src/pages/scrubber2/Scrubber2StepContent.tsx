@@ -384,9 +384,8 @@ export function Scrubber2StepContent({
                     Helpers: <code>sqrt</code>, <code>log</code>
                   </li>
                   <li>
-                    Random: stdlib module <code>random</code> (e.g. <code>random.randint(1, 10)</code>,{" "}
-                    <code>random.random()</code>, <code>random.choice(seq)</code>) plus shortcuts <code>randint(a, b)</code>{" "}
-                    and <code>random_float()</code> (same as <code>random.random()</code>)
+                    Random: <code>randint(a, b)</code> (inclusive integers), <code>random_float()</code> (uniform float in{" "}
+                    <code>[0, 1)</code>), <code>random_float(lo, hi)</code> (uniform float between bounds).
                   </li>
                 </ul>
               )}
@@ -404,7 +403,7 @@ export function Scrubber2StepContent({
                     <code>join</code>
                   </li>
                   <li>
-                    Module <code>re</code> (e.g. <code>{'re.sub(r"\\s+", " ", text)'}</code>)
+                    Regex: injected <code>re</code> (no <code>import</code>); use the editor template for match/find/sub patterns.
                   </li>
                 </ul>
               )}

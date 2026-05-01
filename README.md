@@ -121,7 +121,7 @@ Runtime collection ordering/cursor are deterministic:
   - **UI:** `DeviceManagePage` / `DeviceRegisterPage` and `deviceEndpoints` client API aligned with endpoint JSON and previews.
   - **Docs:** operational detail in [`docs/MANAGE_DEVICES_AND_INGEST_PIPELINES.md`](docs/MANAGE_DEVICES_AND_INGEST_PIPELINES.md).
 - **Scrubber derived (function-based) sandbox & UX:**
-  - Server-side `scrubber_engine` (API + workers) exposes a controlled surface: `random` (stdlib), `re`, `datetime` types, safe builtins, and helpers including **`randint`**, **`random_float`**, math/stat/string/date utilities.
+  - Server-side `scrubber_engine` (API + workers) exposes a controlled surface: safe builtins, direct-call helpers (**`randint`**, **`random_float`**), **`datetime`** / **`date`** / **`timedelta`** / **`timezone`**, injected **`re`**, and math/stat/string/date utilities.
   - **Scrubber v2:** tabbed “Allowed helpers (server)” beside derived transform (Math includes random); preview treats non-empty derived code as enabled for mapping only when saving still respects the checkbox.
   - **Legacy Scrubber Studio** and **pipeline help modal** copy updated for the same globals and examples.
 - **Endpoint Group dashboard source (default):**

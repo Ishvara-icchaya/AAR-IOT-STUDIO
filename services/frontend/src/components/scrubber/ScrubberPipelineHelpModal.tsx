@@ -168,11 +168,11 @@ function TabPanelFunctionBased() {
         body={`def transform(payload):\n    return {\n        "temp_rounded": round(float(payload.get("readings_temp_c", 0)), 1),\n        "gumbo": randint(1, 100),  # call it — randint alone is a function, not a scalar\n    }`}
       />
       <p style={{ color: "var(--color-text-muted)" }}>
-        <code>import</code> is blocked. Globals include the <code>random</code> module (<code>random.randint(…)</code>),{" "}
-        <code>datetime</code>, <code>date</code>, <code>timedelta</code>, <code>timezone</code>, the <code>re</code>{" "}
-        module, <code>randint(a, b)</code>, <code>random_float()</code>, and
-        string/date/math helpers (see the editor template). Return values must be scalars — not functions or nested
-        collections.
+        <code>import</code> is blocked. Use direct helpers such as <code>randint(a, b)</code>, <code>random_float()</code>{" "}
+        (uniform in <code>[0, 1)</code>), <code>random_float(lo, hi)</code> (uniform between bounds), plus{" "}
+        <code>datetime</code> / <code>date</code> / <code>timedelta</code> / <code>timezone</code>, injected <code>re</code>{" "}
+        for regex, and the string/date/math builtins listed in the editor template. Return values must be scalars — not
+        functions or nested collections.
       </p>
     </div>
   );

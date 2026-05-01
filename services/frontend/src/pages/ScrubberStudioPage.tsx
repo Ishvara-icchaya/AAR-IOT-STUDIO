@@ -2421,10 +2421,11 @@ function renderStepEditor(
         <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
           Define <code>transform(payload)</code> and return a dict of scalar top-level fields only.{" "}
           <code>import</code> is blocked; <code>if</code>/<code>for</code>/<code>while</code>, <code>range</code>,{" "}
-          <code>datetime</code>, <code>re</code>, and common builtins are available on the server.
-          Helpers available: string (`lower`, `upper`, `strip`, `replace`, `split`, `join`), date (`now_iso`,
-          `parse_iso`, `to_epoch`, `format_date`), math/stat (`abs`, `round`, `min`, `max`, `sum`, `pow`, `sqrt`,
-          `log`, `mean`, `median`, `stdev`), random (`random` module, `randint(a, b)`, `random_float()`).
+          <code>datetime</code> / <code>date</code> / <code>timedelta</code> / <code>timezone</code>, injected <code>re</code>, and
+          common builtins are available on the server.
+          Helpers: string (`lower`, `upper`, `strip`, `replace`, `split`, `join`), date (`now_iso`, `parse_iso`,
+          `to_epoch`, `format_date`), math/stat (`abs`, `round`, `min`, `max`, `sum`, `pow`, `sqrt`, `log`, `mean`,
+          `median`, `stdev`), random (`randint(a, b)`, `random_float()`, `random_float(lo, hi)`).
         </div>
         <label style={miniLbl}>
           Timeout (ms)
