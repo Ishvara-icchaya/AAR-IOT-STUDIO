@@ -20,6 +20,7 @@ import type { MarkerRec } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { apiMarkersToMarkerRecs } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { markersToViewModels, type MapPointVM, type MapProfile } from "@/lib/dashboard/mapViewModel";
 import { openDashboardMapMarkerPopup } from "@/components/dashboard/map/mountMapMarkerPopup";
+import { MapIntelligencePanel } from "@/components/dashboard/map/MapIntelligencePanel";
 
 function computeClusterEffective(list: MarkerRec[], controls: MapControlsVM): boolean {
   const n = list.length;
@@ -520,8 +521,9 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       className="dash-map-widget__expand-btn"
       onClick={() => setExpanded((x) => !x)}
       aria-expanded={expanded}
+      title={expanded ? "Close expanded intelligence view" : "Open expanded map intelligence (split layout)"}
     >
-      {expanded ? "Exit fullscreen" : "Expand map"}
+      {expanded ? "Close view" : "Intelligence view"}
     </button>
   );
 
@@ -548,7 +550,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
             ? {
                 role: "dialog",
                 "aria-modal": true,
-                "aria-label": block.title,
+                "aria-label": `Expanded map intelligence — ${block.title}`,
               }
             : undefined
         }
@@ -566,7 +568,20 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
             {chrome.warning}
           </p>
         ) : null}
-        {isEnterprise ? (
+        {expanded ? (
+          <div className="dash-map-widget__expanded-split">
+            <div className="dash-map-widget__expanded-map-col">
+              <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--expanded-intel">
+                {mapEl}
+              </div>
+            </div>
+            <MapIntelligencePanel
+              siteId={chrome.siteId}
+              blockTitle={block.title?.trim() || "Map"}
+              markerCount={markerList.length}
+            />
+          </div>
+        ) : isEnterprise ? (
           <div className="dash-map-widget__enterprise-grid">
             <div className="dash-map-widget__map-col">{mapEl}</div>
             <EnterpriseSiteCountsPanel />
