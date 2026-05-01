@@ -9,6 +9,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+    /** Avoid two React copies (invalid hook call / `useMemo` of null) when deps pull nested react. */
+    dedupe: ["react", "react-dom", "scheduler"],
   },
   build: {
     rollupOptions: {
@@ -46,6 +48,17 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: true,
+    ...(process.env.VITE_HMR_CLIENT_HOST || process.env.VITE_HMR_CLIENT_PORT
+      ? {
+          hmr: {
+            ...(process.env.VITE_HMR_CLIENT_HOST
+              ? { host: process.env.VITE_HMR_CLIENT_HOST, clientHost: process.env.VITE_HMR_CLIENT_HOST }
+              : {}),
+            ...(process.env.VITE_HMR_CLIENT_PORT ? { clientPort: Number(process.env.VITE_HMR_CLIENT_PORT) } : {}),
+          },
+        }
+      : {}),
+    /** API must be reachable here or `/api/*` proxy returns 502; browser still talks to Vite on :5173. */
     proxy: {
       "/api": {
         target: devProxyTarget,
