@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Expanded map intelligence contract doc
+
+- **Docs:** [`docs/EXPANDED_MAP_INTELLIGENCE.md`](EXPANDED_MAP_INTELLIGENCE.md) — formal API URLs, params, `auth_config` / `display_json` keys, freshness & mobility rules, response shapes, frontend behavior, limits, backlog.
+
+---
+
 ## 2026-04-30 — Expanded map intelligence Phases 2–5 (API + UI)
 
 - **API:** `GET /dashboards/map-runtime/intelligence/expanded` (devices, mobility, server-side freshness, aggregates, `trend_context`) and `GET .../intelligence/path` (scrubbed_events polyline, gaps, stale segments).
