@@ -1,4 +1,8 @@
-"""MQTT ingest subscription plan from device_endpoints (per-broker grouping) + optional MQTT_TOPICS env.
+"""MQTT ingest subscription plan from v2 `endpoints` + unlinked Manage Devices `device_endpoints` + MQTT_TOPICS env.
+
+- **Linked** MQTT v2 rows (`device_endpoint_id` set): broker/topic from merged `auth_config` + device `config`.
+- **Unlinked** active MQTT device rows: broker/topic from `device_endpoints.config` only (no v2 picker required).
+  Rows linked to an enabled v2 MQTT endpoint are excluded here so each logical subscription appears once.
 
 Phase 1 model: **one MQTT client connection per distinct broker profile** (host, port, TLS, auth,
 optional explicit client_id). Subscriptions on that connection are the union of all active
@@ -57,6 +61,8 @@ class ConnectionKey:
 class SubscriptionSource:
     endpoint_id: str
     endpoint_name: str
+    # v2 → endpoints.id; device_endpoint → device_endpoints.id (ingest via device binding).
+    source_kind: str = "v2"
 
 
 @dataclass
@@ -184,8 +190,37 @@ def _resolve_mqtt_client_id(base: str, key: ConnectionKey) -> str:
     return f"{safe_base}-{h}"
 
 
+def _json_dict(v: Any) -> dict[str, Any] | None:
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, str) and v.strip():
+        try:
+            o = json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            return None
+        return o if isinstance(o, dict) else None
+    return None
+
+
+def _effective_mqtt_cfg_for_ingest(
+    auth_config: Any,
+    device_protocol: Any,
+    device_config: Any,
+) -> dict[str, Any]:
+    """Prefer linked Manage Devices `device_endpoints.config` over stale `endpoints.auth_config`.
+
+    The bridge historically read only `auth_config`; the UI saves MQTT JSON on `device_endpoints`.
+    API sync can lag or be skipped if `device_endpoint_id` was unset — this keeps subscriptions aligned.
+    """
+    base = dict(auth_config) if isinstance(auth_config, dict) else {}
+    de_cfg = _json_dict(device_config)
+    if (str(device_protocol or "").strip().lower() != "mqtt") or not de_cfg:
+        return base
+    return {**base, **de_cfg}
+
+
 def _fetch_endpoint_rows() -> list[tuple[str, str, str, dict[str, Any]]]:
-    """Returns list of (endpoint_id, endpoint_name, topic, auth_config)."""
+    """Returns list of (endpoint_id, endpoint_name, topic, effective_config_for_broker_and_topic)."""
     out: list[tuple[str, str, str, dict[str, Any]]] = []
     try:
         conn = psycopg2.connect(_db_url())
@@ -196,15 +231,61 @@ def _fetch_endpoint_rows() -> list[tuple[str, str, str, dict[str, Any]]]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT e.id::text, e.endpoint_name, e.auth_config
+                SELECT e.id::text,
+                       e.endpoint_name,
+                       e.auth_config,
+                       de.protocol AS device_protocol,
+                       de.config AS device_config
                 FROM endpoints e
-                WHERE e.protocol = 'mqtt'
+                LEFT JOIN device_endpoints de ON de.id = e.device_endpoint_id
+                WHERE lower(e.protocol) = 'mqtt'
                   AND e.enabled = true
                 """
             )
-            for eid, ename, cfg in cur.fetchall():
-                if isinstance(cfg, dict):
-                    out.append((eid, str(ename or ""), str(cfg.get("topic") or "").strip(), cfg))
+            for eid, ename, auth_cfg, de_proto, de_cfg in cur.fetchall():
+                cfg = _effective_mqtt_cfg_for_ingest(auth_cfg, de_proto, de_cfg)
+                topic = str(cfg.get("topic") or "").strip()
+                if topic:
+                    out.append((eid, str(ename or ""), topic, cfg))
+    finally:
+        conn.close()
+    return out
+
+
+def _fetch_unlinked_device_mqtt_rows() -> list[tuple[str, str, str, dict[str, Any]]]:
+    """Manage Devices MQTT rows not covered by a linked enabled v2 MQTT endpoint (same shape as _fetch_endpoint_rows)."""
+    out: list[tuple[str, str, str, dict[str, Any]]] = []
+    try:
+        conn = psycopg2.connect(_db_url())
+    except Exception:
+        log.warning("mqtt_bridge DB unavailable for device mqtt plan", exc_info=True)
+        return out
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT de.id::text,
+                       COALESCE(NULLIF(TRIM(d.name), ''), de.id::text) AS device_label,
+                       de.config
+                FROM device_endpoints de
+                INNER JOIN devices d ON d.id = de.device_id
+                WHERE lower(trim(de.protocol)) = 'mqtt'
+                  AND de.is_active = true
+                  AND d.is_active = true
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM endpoints e
+                      WHERE e.device_endpoint_id = de.id
+                        AND e.enabled = true
+                        AND lower(trim(e.protocol)) = 'mqtt'
+                  )
+                """
+            )
+            for de_id, label, raw_cfg in cur.fetchall():
+                cfg = _json_dict(raw_cfg) or {}
+                topic = str(cfg.get("topic") or "").strip()
+                if topic:
+                    out.append((str(de_id), str(label or ""), topic, cfg))
     finally:
         conn.close()
     return out
@@ -256,7 +337,38 @@ def build_ingest_plan() -> IngestPlan:
             )
             continue
         qos = _qos_int(cfg.get("qos", 0))
-        src = SubscriptionSource(endpoint_id=eid, endpoint_name=ename)
+        src = SubscriptionSource(endpoint_id=eid, endpoint_name=ename, source_kind="v2")
+        if key not in buckets:
+            buckets[key] = {}
+        subs = buckets[key]
+        if ts not in subs:
+            subs[ts] = MergedTopicSubscription(topic=ts, qos=qos, sources=[src])
+        else:
+            mt = subs[ts]
+            mt.qos = max(mt.qos, qos)
+            mt.sources.append(src)
+
+    for de_id, dlabel, topic, cfg in _fetch_unlinked_device_mqtt_rows():
+        key = connection_key_from_saved_config(cfg)
+        ts = _str_clean(topic)
+        if not key:
+            log.warning(
+                "mqtt_bridge skipping device mqtt device_endpoint_id=%s: missing broker_host",
+                de_id,
+            )
+            continue
+        if not ts:
+            log.warning(
+                "mqtt_bridge skipping device mqtt device_endpoint_id=%s: empty topic",
+                de_id,
+            )
+            continue
+        qos = _qos_int(cfg.get("qos", 0))
+        src = SubscriptionSource(
+            endpoint_id=de_id,
+            endpoint_name=dlabel or "device",
+            source_kind="device_endpoint",
+        )
         if key not in buckets:
             buckets[key] = {}
         subs = buckets[key]
@@ -280,8 +392,8 @@ def build_ingest_plan() -> IngestPlan:
                 buckets[ek] = {}
             env_src = SubscriptionSource(
                 endpoint_id="env:MQTT_TOPICS",
-                device_id="-",
-                device_name="(MQTT_TOPICS)",
+                endpoint_name="(MQTT_TOPICS)",
+                source_kind="v2",
             )
             for part in raw_topics.split(","):
                 p = part.strip()

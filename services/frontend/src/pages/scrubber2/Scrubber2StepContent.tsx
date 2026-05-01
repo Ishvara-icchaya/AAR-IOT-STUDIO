@@ -1,9 +1,12 @@
+import { useState } from "react";
 import type { Scrubber2FieldMeta } from "@/lib/scrubber2Fields";
 import { getByPath } from "@/lib/scrubber2Fields";
 import { Scrubber2FieldPicker } from "./Scrubber2FieldPicker";
 import { SCRUBBER2_SEMANTIC_ROLES, type Scrubber2Model } from "@/types/scrubber2Model";
 import { apiFetch } from "@/api/client";
 import { buildScrubberStudioMappingForPreview } from "@/lib/scrubber2ToStudioDraft";
+
+type DerivedHelpTabId = "math" | "stat" | "string" | "date" | "loop" | "example";
 
 function isObjectRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -46,6 +49,8 @@ export function Scrubber2StepContent({
   rawId,
   onRequestPreview,
 }: Props) {
+  const [derivedHelpTab, setDerivedHelpTab] = useState<DerivedHelpTabId>("math");
+
   if (stepIndex === 0) {
     return (
       <>
@@ -299,19 +304,158 @@ export function Scrubber2StepContent({
   }
 
   if (stepIndex === 3) {
+    const tabBtn = (id: DerivedHelpTabId, label: string) => (
+      <button
+        key={id}
+        type="button"
+        className="scrubber2-btn scrubber2-btn--ghost"
+        onClick={() => setDerivedHelpTab(id)}
+        aria-selected={derivedHelpTab === id}
+        style={{
+          fontSize: "0.72rem",
+          padding: "0.2rem 0.5rem",
+          fontWeight: derivedHelpTab === id ? 600 : 400,
+          opacity: derivedHelpTab === id ? 1 : 0.75,
+          borderBottom: derivedHelpTab === id ? "2px solid var(--color-accent, #4da3ff)" : "2px solid transparent",
+          borderRadius: 0,
+        }}
+      >
+        {label}
+      </button>
+    );
+
     return (
       <>
-        <p className="scrubber2-muted">
-          Safe Python-style block: define <code>transform(payload)</code> returning a dict of scalar fields. No imports.
+        <p className="scrubber2-muted" style={{ marginTop: 0 }}>
+          Define <code>def transform(payload):</code> and return a flat dict of <strong>scalar</strong> values only. No{" "}
+          <code>import</code>. Stick to the helpers in the panel — preview may run with non-empty code even when
+          disabled; saving still uses the checkbox.
         </p>
-        <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={model.derived.enabled}
-            onChange={(e) => setModel((m) => ({ ...m, derived: { ...m.derived, enabled: e.target.checked } }))}
-          />
-          Enable derived transform
-        </label>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.75rem 1rem",
+            alignItems: "flex-start",
+            marginBottom: "0.5rem",
+          }}
+        >
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", flex: "0 0 auto" }}>
+            <input
+              type="checkbox"
+              checked={model.derived.enabled}
+              onChange={(e) => setModel((m) => ({ ...m, derived: { ...m.derived, enabled: e.target.checked } }))}
+            />
+            Enable derived transform
+          </label>
+          <div
+            style={{
+              flex: "1 1 260px",
+              minWidth: 220,
+              border: "1px solid var(--color-border, rgba(255,255,255,0.12))",
+              borderRadius: 8,
+              padding: "0.5rem 0.65rem",
+              background: "var(--color-surface-raised, rgba(0,0,0,0.15))",
+            }}
+          >
+            <div style={{ fontSize: "0.68rem", fontWeight: 600, marginBottom: 6, letterSpacing: "0.02em" }}>
+              Allowed helpers (server)
+            </div>
+            <div role="tablist" style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
+              {tabBtn("math", "Math")}
+              {tabBtn("stat", "Stat")}
+              {tabBtn("string", "String")}
+              {tabBtn("date", "Date")}
+              {tabBtn("loop", "Loops")}
+              {tabBtn("example", "Example")}
+            </div>
+            <div
+              role="tabpanel"
+              className="scrubber2-muted"
+              style={{ fontSize: "0.72rem", lineHeight: 1.5, marginTop: 8 }}
+            >
+              {derivedHelpTab === "math" && (
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <li>
+                    Built-ins: <code>abs</code>, <code>round</code>, <code>min</code>, <code>max</code>, <code>sum</code>,{" "}
+                    <code>pow</code>, <code>int</code>, <code>float</code>, <code>str</code>, <code>bool</code>, <code>len</code>
+                  </li>
+                  <li>
+                    Helpers: <code>sqrt</code>, <code>log</code>
+                  </li>
+                  <li>
+                    Random: stdlib module <code>random</code> (e.g. <code>random.randint(1, 10)</code>,{" "}
+                    <code>random.random()</code>, <code>random.choice(seq)</code>) plus shortcuts <code>randint(a, b)</code>{" "}
+                    and <code>random_float()</code> (same as <code>random.random()</code>)
+                  </li>
+                </ul>
+              )}
+              {derivedHelpTab === "stat" && (
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <li>
+                    <code>mean</code>, <code>median</code>, <code>stdev</code> (sequences of numbers)
+                  </li>
+                </ul>
+              )}
+              {derivedHelpTab === "string" && (
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <li>
+                    <code>lower</code>, <code>upper</code>, <code>strip</code>, <code>replace</code>, <code>split</code>,{" "}
+                    <code>join</code>
+                  </li>
+                  <li>
+                    Module <code>re</code> (e.g. <code>{'re.sub(r"\\s+", " ", text)'}</code>)
+                  </li>
+                </ul>
+              )}
+              {derivedHelpTab === "date" && (
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <li>
+                    Types: <code>datetime</code>, <code>date</code>, <code>time</code>, <code>timedelta</code>,{" "}
+                    <code>timezone</code>
+                  </li>
+                  <li>
+                    Helpers: <code>now_iso</code>, <code>parse_iso</code>, <code>to_epoch</code>, <code>format_date</code>
+                  </li>
+                </ul>
+              )}
+              {derivedHelpTab === "loop" && (
+                <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                  <li>
+                    Normal Python: <code>if</code> / <code>elif</code> / <code>else</code>, <code>for</code>, <code>while</code>,{" "}
+                    comprehensions
+                  </li>
+                  <li>
+                    Iteration helpers: <code>range</code>, <code>enumerate</code>, <code>zip</code>, <code>sorted</code>,{" "}
+                    <code>reversed</code>, <code>map</code>, <code>filter</code>
+                  </li>
+                </ul>
+              )}
+              {derivedHelpTab === "example" && (
+                <pre
+                  style={{
+                    margin: 0,
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "0.68rem",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {`def transform(payload):
+    n = int(payload.get("count", 0))
+    total = 0
+    for i in range(n):
+        total += i
+    return {
+        "total": total,
+        "label": upper(strip(str(payload.get("id", "")))),
+        "roll": randint(1, 6),
+    }`}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
         <textarea
           className="scrubber2-input"
           style={{ width: "100%", minHeight: 160, fontFamily: "ui-monospace, monospace", fontSize: "0.78rem" }}
@@ -329,9 +473,10 @@ export function Scrubber2StepContent({
               if (!rawId) return;
               try {
                 const mapping = buildScrubberStudioMappingForPreview(
-                  { ...model, derived: { ...model.derived, enabled: true } },
+                  model,
                   { objectName: "preview", version: "0", parseAs: "auto" },
                   samplePayload ?? {},
+                  { enableDerivedWhenCodePresent: true },
                 );
                 await apiFetch("/scrubber/preview", {
                   method: "POST",

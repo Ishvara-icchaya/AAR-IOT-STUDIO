@@ -1,6 +1,6 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrushCleaning, ClipboardCheck, Loader2, Save, X } from "lucide-react";
+import { ClipboardCheck, Loader2, Save, X } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import type { DeviceRead } from "@/api/devices";
@@ -163,6 +163,20 @@ function protocolLabel(p: string) {
   return n.toUpperCase();
 }
 
+/** Stable fingerprint of the draft used to gate Save after a successful Validate (all protocols). */
+function computeDraftValidationKey(
+  p: IngestProtocol,
+  pollingSeconds: number,
+  config: Record<string, unknown>,
+): string | null {
+  try {
+    const normalized = normalizeConfigJsonForCompare(jsonCloneForShape(config));
+    return stableStringifyConfig({ protocol: p, polling: pollingSeconds, config: normalized });
+  } catch {
+    return null;
+  }
+}
+
 export function DeviceManagePage() {
   const [devices, setDevices] = useState<DeviceRead[]>([]);
   const [sitesById, setSitesById] = useState<Record<string, string>>({});
@@ -194,8 +208,11 @@ export function DeviceManagePage() {
   const [savedEndpoint, setSavedEndpoint] = useState<DeviceEndpointRead | null>(null);
   const [validating, setValidating] = useState(false);
   const [endpointConfigTab, setEndpointConfigTab] = useState<EndpointConfigTab>("connection");
+  /** Set when Validate returns ok/warning for the exact draft fingerprint; cleared on edit or failed validate. */
+  const [validatedDraftKey, setValidatedDraftKey] = useState<string | null>(null);
 
   const loadEndpointFields = useCallback(async (deviceId: string) => {
+    setValidatedDraftKey(null);
     try {
       const pack = await fetchDeviceEndpoint(deviceId);
       if (!pack) {
@@ -292,10 +309,6 @@ export function DeviceManagePage() {
   const previewRefreshMs =
     editingDevice && (pollRealtime || savedEndpoint?.polling_interval_seconds === 0) ? 2000 : 5000;
 
-  /** Scrubber entry unlocks after archived ingest (endpoint) or a successful raw preview load for this session. */
-  const scrubberUnlocked =
-    !!savedEndpoint?.first_payload_at || (!!payloadMeta && payloadHydrated);
-
   const runPayloadFetch = useCallback(async (deviceId: string, mode: "initial" | "silent" | "manual") => {
     const showBlocking = mode !== "silent";
     if (showBlocking) setPayloadBlocking(true);
@@ -366,25 +379,6 @@ export function DeviceManagePage() {
     navigate("/devices/register#registered-devices-table");
   }
 
-  async function runValidation() {
-    if (!editingDevice) return;
-    const deviceId = editingDevice.id;
-    setValidating(true);
-    setErr(null);
-    try {
-      const res = await validateDeviceEndpoint(deviceId);
-      if (res) {
-        setObservability(res.observability);
-        setSavedEndpoint(res.endpoint);
-      }
-      await runPayloadFetch(deviceId, "manual");
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Validation failed");
-    } finally {
-      setValidating(false);
-    }
-  }
-
   const builtConfigForCompare = useMemo(
     () => buildConfigFromFields(protocol, httpF, mqttF, coapF, wsF),
     [protocol, httpF, mqttF, coapF, wsF],
@@ -431,14 +425,7 @@ export function DeviceManagePage() {
     }
   }, [savedEndpoint, protocol, pollingSecondsForSave, builtConfigForCompare, canonicalSavedConfig]);
 
-  /** After first save, API requires a successful validation before persisting again; warning = connectivity OK, no payload yet; ok = operational. */
-  const validationAllowsSave = useMemo(() => {
-    if (!savedEndpoint) return true;
-    const v = savedEndpoint.validation_status;
-    return v === "warning" || v === "ok";
-  }, [savedEndpoint]);
-
-  /** Draft vs saved: same key topology as the editors emit (saved JSON is compared after canonical round-trip). */
+  /** Draft vs saved: same key topology (for UI hint when shape diverges from last save). */
   const configStructureMatches = useMemo(() => {
     if (!savedEndpoint || savedEndpoint.protocol !== protocol) return true;
     try {
@@ -452,8 +439,18 @@ export function DeviceManagePage() {
     }
   }, [savedEndpoint, protocol, builtConfigForCompare, canonicalSavedConfig]);
 
+  const draftValidationKey = useMemo(
+    () => computeDraftValidationKey(protocol, pollingSecondsForSave, builtConfigForCompare),
+    [protocol, pollingSecondsForSave, builtConfigForCompare],
+  );
+
+  const validationCoversCurrentDraft =
+    validatedDraftKey !== null &&
+    draftValidationKey !== null &&
+    validatedDraftKey === draftValidationKey;
+
   const canSaveConfiguration =
-    !submitting && hasUnsavedChanges && validationAllowsSave && configStructureMatches;
+    !submitting && hasUnsavedChanges && validationCoversCurrentDraft;
 
   const deviceFromQuery = useMemo(
     () => (deviceIdFromQuery ? devices.find((d) => d.id === deviceIdFromQuery) : undefined),
@@ -461,22 +458,6 @@ export function DeviceManagePage() {
   );
 
   function validateEndpoint(): string | null {
-    if (savedEndpoint && savedEndpoint.protocol === protocol) {
-      try {
-        const a =
-          canonicalSavedConfig ??
-          normalizeConfigJsonForCompare(jsonCloneForShape(savedEndpoint.config ?? {}));
-        const b = normalizeConfigJsonForCompare(jsonCloneForShape(builtConfigForCompare));
-        if (configStructureSignature(a) !== configStructureSignature(b)) {
-          return (
-            "Configuration structure must stay identical to what was saved — only values may change. " +
-            "Undo added or removed keys (including inside JSON fields such as headers), then save again to avoid corrupting the endpoint."
-          );
-        }
-      } catch {
-        return "Could not verify configuration shape; fix invalid JSON or nested values.";
-      }
-    }
     if (protocol === "http") {
       if (httpF.restMode === "polling") {
         if (!httpF.pollingUrl.trim() && !httpF.host.trim()) {
@@ -502,6 +483,41 @@ export function DeviceManagePage() {
     return null;
   }
 
+  async function runValidation() {
+    if (!editingDevice) return;
+    const deviceId = editingDevice.id;
+    const keyAtClick = computeDraftValidationKey(protocol, pollingSecondsForSave, builtConfigForCompare);
+    setValidating(true);
+    setErr(null);
+    try {
+      const res = await validateDeviceEndpoint(deviceId, {
+        protocol,
+        config: builtConfigForCompare,
+        polling_interval_seconds: pollingSecondsForSave,
+      });
+      if (!res) {
+        setValidatedDraftKey(null);
+        setErr("Validation returned no response.");
+        return;
+      }
+      if (res.validation_status === "failed") {
+        setValidatedDraftKey(null);
+      } else if (keyAtClick) {
+        setValidatedDraftKey(keyAtClick);
+      } else {
+        setValidatedDraftKey(null);
+      }
+      if (res.observability) setObservability(res.observability);
+      if (res.endpoint) setSavedEndpoint(res.endpoint);
+      await runPayloadFetch(deviceId, "manual");
+    } catch (e) {
+      setValidatedDraftKey(null);
+      setErr(e instanceof Error ? e.message : "Validation failed");
+    } finally {
+      setValidating(false);
+    }
+  }
+
   async function saveEndpoint(e: FormEvent) {
     e.preventDefault();
     if (!editingDevice) return;
@@ -511,7 +527,9 @@ export function DeviceManagePage() {
       return;
     }
     if (!canSaveConfiguration) {
-      setErr("Validate first; save is enabled when validation is warning or ok (not failed).");
+      setErr(
+        "Run Validate on this draft first — Save is enabled only after validation succeeds (status ok or warning) for the current settings.",
+      );
       return;
     }
     setSubmitting(true);
@@ -584,9 +602,9 @@ export function DeviceManagePage() {
                     className="dm-btn dm-btn--outline"
                     disabled={validating || submitting}
                     title={
-                      savedEndpoint
-                        ? "Validate: checks broker/URL connectivity, payload receipt in Postgres, refreshes bridge observability, and reloads latest archived raw + preview."
-                        : "Validate: requires a saved endpoint first — use Save, then Validate (or try now to see the server message)."
+                      "Run validation on the connection settings shown here (including before first save). " +
+                      "All protocols: connectivity and receipt checks. MQTT also does a live subscribe on your topic. " +
+                      "Save stays disabled until validation returns ok or warning for this exact draft."
                     }
                     onClick={() => void runValidation()}
                   >
@@ -597,38 +615,17 @@ export function DeviceManagePage() {
                     )}
                     {validating ? "Validating…" : "Validate"}
                   </button>
-                  {scrubberUnlocked ? (
-                    <Link
-                      to="/scrubber/raw-select"
-                      className="dm-btn dm-btn--outline"
-                      style={{ textDecoration: "none" }}
-                      title="Open Raw sample — pick archived raw, then Scrubber Studio"
-                    >
-                      <BrushCleaning size={16} strokeWidth={2} aria-hidden />
-                      Scrubber
-                    </Link>
-                  ) : (
-                    <button
-                      type="button"
-                      className="dm-btn dm-btn--outline"
-                      disabled
-                      title="Scrubber unlocks after the first archived payload is available (or once raw preview loads)."
-                    >
-                      <BrushCleaning size={16} strokeWidth={2} aria-hidden />
-                      Scrubber
-                    </button>
-                  )}
                   <button
                     type="submit"
                     form="device-endpoint-form"
                     className="dm-btn dm-btn--outline"
                     disabled={!canSaveConfiguration || submitting}
                     title={
-                      !configStructureMatches && savedEndpoint && savedEndpoint.protocol === protocol
-                        ? "Save blocked: configuration layout (keys / nested shape) must match the saved configuration — only values may change."
-                        : canSaveConfiguration
-                          ? "Save configuration — persist protocol, polling, and connection settings."
-                          : "Save is available when there are changes, structure matches the saved layout, and validation is warning or ok (not failed)."
+                      !hasUnsavedChanges
+                        ? "No changes to save."
+                        : !validationCoversCurrentDraft
+                          ? "Run Validate on this draft (ok or warning) before saving."
+                          : "Save configuration — persist protocol, polling, and connection settings."
                     }
                   >
                     {submitting ? (
@@ -674,15 +671,10 @@ export function DeviceManagePage() {
                     <>
                   {savedEndpoint && savedEndpoint.protocol === protocol && !configStructureMatches ? (
                     <div style={{ marginBottom: "0.5rem" }}>
-                      <PageStatus variant="warning" icon>
-                        Configuration structure must match what was saved. Only field values may change — revert added or
-                        removed keys (including in JSON text areas) before saving to avoid corrupting the endpoint.
-                        {protocol === "mqtt" ? (
-                          <span style={{ display: "block", marginTop: "0.35rem", fontSize: "0.78rem", opacity: 0.95 }}>
-                            MQTT message payloads (e.g. fleet telemetry) are not stored in endpoint configuration — only
-                            broker, topic, and related fields are.
-                          </span>
-                        ) : null}
+                      <PageStatus variant="info" icon>
+                        The layout of this configuration differs from what was last saved (keys / nested shape). Run{" "}
+                        <strong>Validate</strong> on this draft, then <strong>Save</strong> — structural changes are
+                        allowed once validation passes (ok or warning).
                       </PageStatus>
                     </div>
                   ) : null}
@@ -691,7 +683,21 @@ export function DeviceManagePage() {
                   <AppField size="sm" label="Protocol">
                     <AppSelect
                       value={protocol}
-                      onChange={(e) => setProtocol(e.target.value as IngestProtocol)}
+                      onChange={(e) => {
+                        const np = e.target.value as IngestProtocol;
+                        if (np === "mqtt" && protocol !== "mqtt") {
+                          if (savedEndpoint?.protocol === "mqtt") {
+                            const parsed = parseConfigToFields(
+                              "mqtt",
+                              (savedEndpoint.config as Record<string, unknown>) ?? {},
+                            );
+                            setMqttF(parsed.mqtt);
+                          } else {
+                            setMqttF(defaultFieldsForProtocol("mqtt") as MqttFields);
+                          }
+                        }
+                        setProtocol(np);
+                      }}
                       size="sm"
                       required
                     >
@@ -911,7 +917,7 @@ export function DeviceManagePage() {
                         value={mqttF.topic}
                         onChange={(e) => setMqttF({ ...mqttF, topic: e.target.value })}
                         size="sm"
-                        placeholder="e.g. factory/# or factory/telemetry"
+                        placeholder="Required — your MQTT topic or wildcard (+, #); no default"
                       />
                     </AppField>
                     <p className="app-grid__help-span-full">
@@ -1100,9 +1106,10 @@ export function DeviceManagePage() {
                   </AppGrid>
                 )}
 
-                {!canSaveConfiguration && hasUnsavedChanges && savedEndpoint ? (
+                {!canSaveConfiguration && hasUnsavedChanges ? (
                   <p style={{ ...muted, fontSize: "0.72rem", margin: "0.35rem 0 0" }}>
-                    Validate to enable save (status must be <strong>warning</strong> or <strong>ok</strong>, not failed).
+                    Run <strong>Validate</strong> on this draft — Save is enabled when validation returns{" "}
+                    <strong>ok</strong> or <strong>warning</strong> for these exact settings (all protocols).
                   </p>
                 ) : null}
                 {!hasUnsavedChanges && savedEndpoint ? (

@@ -189,12 +189,21 @@ export function buildScrubberStudioMappingForPreview(
   model: Scrubber2Model,
   ctx: { objectName: string; version: string; parseAs?: "auto" | "json" | "text"; selectPath?: string },
   samplePayload: Record<string, unknown>,
+  options?: { enableDerivedWhenCodePresent?: boolean },
 ): Record<string, unknown> {
+  let previewModel = model;
+  if (
+    options?.enableDerivedWhenCodePresent &&
+    model.derived.code.trim().length > 0 &&
+    !model.derived.enabled
+  ) {
+    previewModel = { ...model, derived: { ...model.derived, enabled: true } };
+  }
   return {
     scrubberStudio: {
       published: false,
       version: ctx.version,
-      draft: buildStudioDraftFromV2(model, ctx, samplePayload),
+      draft: buildStudioDraftFromV2(previewModel, ctx, samplePayload),
     },
   };
 }

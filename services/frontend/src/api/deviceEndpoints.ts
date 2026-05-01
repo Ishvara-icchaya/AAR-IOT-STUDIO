@@ -39,9 +39,9 @@ export type DeviceEndpointGetResponse = {
 export type DeviceEndpointValidateResponse = {
   validation_status: string;
   validation_detail: string;
-  last_verified_at: string;
+  last_verified_at: string | null;
   observability: DeviceEndpointObservability;
-  endpoint: DeviceEndpointRead;
+  endpoint: DeviceEndpointRead | null;
 };
 
 export function fetchDeviceEndpoint(deviceId: string) {
@@ -50,9 +50,23 @@ export function fetchDeviceEndpoint(deviceId: string) {
   );
 }
 
-export function validateDeviceEndpoint(deviceId: string) {
+export function validateDeviceEndpoint(
+  deviceId: string,
+  opts?: {
+    protocol?: string;
+    config?: Record<string, unknown>;
+    polling_interval_seconds?: number;
+  },
+) {
   return apiFetch<DeviceEndpointValidateResponse>("/device-endpoints/validate", {
     method: "POST",
-    json: { device_id: deviceId },
+    json: {
+      device_id: deviceId,
+      ...(opts?.protocol != null ? { protocol: opts.protocol } : {}),
+      ...(opts?.config != null ? { config: opts.config } : {}),
+      ...(opts?.polling_interval_seconds != null
+        ? { polling_interval_seconds: opts.polling_interval_seconds }
+        : {}),
+    },
   });
 }

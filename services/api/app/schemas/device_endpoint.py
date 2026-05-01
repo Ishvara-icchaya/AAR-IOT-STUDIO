@@ -77,11 +77,16 @@ class DeviceEndpointGetResponse(BaseModel):
 
 class DeviceEndpointValidateRequest(BaseModel):
     device_id: uuid.UUID
+    """When set, validation uses these values instead of the saved row (editor draft)."""
+
+    protocol: str | None = None
+    config: dict[str, Any] | None = None
+    polling_interval_seconds: int | None = Field(None, ge=0, le=86400)
 
 
 class DeviceEndpointValidateResponse(BaseModel):
     validation_status: str
     validation_detail: str
-    last_verified_at: datetime
+    last_verified_at: datetime | None = None
     observability: DeviceEndpointObservability
-    endpoint: DeviceEndpointRead
+    endpoint: DeviceEndpointRead | None = None

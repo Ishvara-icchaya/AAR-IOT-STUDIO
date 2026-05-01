@@ -6,11 +6,13 @@ Kept in sync with services/workers/app/scrubber_engine.py (duplicate module).
 from __future__ import annotations
 
 import ast
+import builtins
 import concurrent.futures
 import copy
 import datetime as dt
 import json
 import math
+import random
 import re
 import statistics
 from dataclasses import dataclass, field
@@ -269,6 +271,70 @@ def _run_with_timeout(fn: Any, timeout_ms: int) -> Any:
             raise TimeoutError("functionBased timed out") from e
 
 
+_FUNCTION_BASED_BUILTIN_NAMES: frozenset[str] = frozenset(
+    {
+        "abs",
+        "all",
+        "any",
+        "bin",
+        "bool",
+        "chr",
+        "dict",
+        "divmod",
+        "enumerate",
+        "filter",
+        "float",
+        "format",
+        "frozenset",
+        "hasattr",
+        "hash",
+        "hex",
+        "int",
+        "isinstance",
+        "issubclass",
+        "iter",
+        "len",
+        "list",
+        "map",
+        "max",
+        "min",
+        "next",
+        "oct",
+        "ord",
+        "pow",
+        "range",
+        "repr",
+        "reversed",
+        "round",
+        "set",
+        "slice",
+        "sorted",
+        "str",
+        "sum",
+        "tuple",
+        "zip",
+    }
+)
+
+
+def _function_based_globals_dict() -> dict[str, Any]:
+    """Restricted ``__builtins__`` plus date/string helpers (no imports in user code)."""
+    bltin: dict[str, Any] = {}
+    for name in _FUNCTION_BASED_BUILTIN_NAMES:
+        if hasattr(builtins, name):
+            bltin[name] = getattr(builtins, name)
+    return {
+        "__builtins__": bltin,
+        "datetime": dt.datetime,
+        "date": dt.date,
+        "time": dt.time,
+        "timedelta": dt.timedelta,
+        "timezone": dt.timezone,
+        "re": re,
+        "random": random,
+    }
+
+
 def _exec_function_based(payload: dict[str, Any], spec: Any) -> None:
     if not isinstance(spec, dict):
         return
@@ -308,9 +374,10 @@ def _exec_function_based(payload: dict[str, Any], spec: Any) -> None:
         "mean": statistics.mean,
         "median": statistics.median,
         "stdev": statistics.stdev,
+        "randint": random.randint,
+        "random_float": random.random,
     }
-    safe_builtins = {"len": len, "int": int, "float": float, "str": str, "bool": bool}
-    globals_dict: dict[str, Any] = {"__builtins__": safe_builtins}
+    globals_dict = _function_based_globals_dict()
     globals_dict.update(helpers)
     locals_dict: dict[str, Any] = {}
 

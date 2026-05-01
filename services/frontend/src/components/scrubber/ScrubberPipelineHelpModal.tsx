@@ -159,13 +159,21 @@ function TabPanelFunctionBased() {
         <code>payload</code> is the dict <strong>after</strong> drop, flatten, attributes, and derived fields — use{" "}
         <code>{'payload.get("readings_temp_c")'}</code> on flat data, or{" "}
         <code>{'payload.get("readings", {}).get("temp_c")'}</code>{" "}
-        if still nested.
+        if still nested. Normal Python control flow is allowed (<code>if</code>/<code>for</code>/<code>while</code>,{" "}
+        comprehensions) alongside common builtins (<code>range</code>, <code>enumerate</code>, <code>zip</code>,{" "}
+        <code>sorted</code>, etc.).
       </p>
       <JsonBlock
         title="Example transform (flat keys)"
-        body={`def transform(payload):\n    return {\n        "temp_rounded": round(float(payload.get("readings_temp_c", 0)), 1),\n    }`}
+        body={`def transform(payload):\n    return {\n        "temp_rounded": round(float(payload.get("readings_temp_c", 0)), 1),\n        "gumbo": randint(1, 100),  # call it — randint alone is a function, not a scalar\n    }`}
       />
-      <p style={{ color: "var(--color-text-muted)" }}>Imports are blocked; string/date/math helpers are provided (see template in the editor).</p>
+      <p style={{ color: "var(--color-text-muted)" }}>
+        <code>import</code> is blocked. Globals include the <code>random</code> module (<code>random.randint(…)</code>),{" "}
+        <code>datetime</code>, <code>date</code>, <code>timedelta</code>, <code>timezone</code>, the <code>re</code>{" "}
+        module, <code>randint(a, b)</code>, <code>random_float()</code>, and
+        string/date/math helpers (see the editor template). Return values must be scalars — not functions or nested
+        collections.
+      </p>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
   Download,
   FileJson2,
   Pencil,
+  RefreshCw,
   Search,
   Settings2,
 } from "lucide-react";
@@ -351,7 +352,7 @@ export function DeviceRegisterPage() {
 
   useEffect(() => {
     void loadDevices(appliedQ);
-  }, [appliedQ, loadDevices]);
+  }, [appliedQ, loadDevices, location.pathname, location.hash]);
 
   const timeScopedItems = useMemo(() => {
     return items.filter((d) => matchesTimeScope(d, timeScope));
@@ -633,12 +634,22 @@ export function DeviceRegisterPage() {
               <button
                 type="button"
                 className="dm-btn dm-btn--outline"
+                disabled={tableLoading}
+                title="Click to query the server and refresh this table (status, activation, connectivity, last data)."
+                onClick={() => void loadDevices(appliedQ)}
+              >
+                <RefreshCw size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                {tableLoading ? "Loading…" : "Refresh list"}
+              </button>
+              <button
+                type="button"
+                className="dm-btn dm-btn--outline"
                 disabled={checkingConnectivity || tableLoading || items.length === 0}
-                title="Re-run endpoint validation for each device that has a saved endpoint, then refresh connectivity in the table."
+                title="Re-run endpoint validation for each device that has a saved endpoint, then reload the table."
                 onClick={() => void checkConnectivityForListedDevices()}
               >
                 <AppIcon name="refresh" size="table" aria-hidden />
-                {checkingConnectivity ? "Checking…" : "Check connectivity"}
+                {checkingConnectivity ? "Checking…" : "Re-check connectivity"}
               </button>
             </>
           }

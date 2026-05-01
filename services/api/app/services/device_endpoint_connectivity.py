@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
+import ssl
+import threading
+import time
+import uuid
 from typing import Any
 from urllib.parse import urlparse
 
@@ -36,18 +41,149 @@ def _parse_url_host_port(url: str, default_tls: bool) -> tuple[str, int, bool] |
     return u.hostname, port, tls
 
 
-def check_mqtt_connectivity(config: dict[str, Any]) -> tuple[bool, str]:
+def _mqtt_broker_host_port_tls(config: dict[str, Any]) -> tuple[str, int, bool] | None:
+    mode = str(config.get("broker_mode") or "external").strip().lower()
     h = config.get("broker_host") or config.get("host")
-    p = config.get("broker_port", config.get("port", 1883))
+    host = str(h).strip() if h else ""
+    if mode == "internal" and not host:
+        host = "mosquitto"
+    if not host:
+        return None
+    raw_port = config.get("broker_port", config.get("port", 1883))
     try:
-        port = int(p)
+        port = int(raw_port)
     except (TypeError, ValueError):
         port = 1883
-    if not h or not str(h).strip():
+    use_tls = bool(config.get("use_tls")) or port == 8883
+    return host, port, use_tls
+
+
+def check_mqtt_connectivity(config: dict[str, Any]) -> tuple[bool, str]:
+    parsed = _mqtt_broker_host_port_tls(config)
+    if not parsed:
         return False, "MQTT broker host is missing in saved configuration."
-    host = str(h).strip()
+    host, port, _tls = parsed
     ok, msg = _tcp_check(host, port)
     return ok, msg
+
+
+MQTT_LIVE_OK = "ok"
+MQTT_LIVE_NO_MESSAGE = "no_message"
+MQTT_LIVE_ERROR = "error"
+
+
+def mqtt_subscribe_wait_for_message(
+    config: dict[str, Any],
+    *,
+    wait_seconds: float = 12.0,
+) -> tuple[str, str]:
+    """Connect as MQTT subscriber, subscribe to ``config.topic``, wait for the first message.
+
+    Returns ``(kind, detail)`` where ``kind`` is ``MQTT_LIVE_OK``, ``MQTT_LIVE_NO_MESSAGE``, or ``MQTT_LIVE_ERROR``.
+    """
+    parsed = _mqtt_broker_host_port_tls(config)
+    if not parsed:
+        return MQTT_LIVE_ERROR, "MQTT broker host is missing."
+    host, port, use_tls = parsed
+    topic = str(config.get("topic") or "").strip()
+    if not topic:
+        return MQTT_LIVE_ERROR, "MQTT topic is empty."
+    try:
+        qos = int(config.get("qos", 0))
+    except (TypeError, ValueError):
+        qos = 0
+    qos = max(0, min(2, qos))
+    user = str(config.get("username") or "").strip()
+    pw_raw = config.get("password")
+    password = str(pw_raw) if pw_raw is not None else ""
+
+    done = threading.Event()
+    state: dict[str, Any] = {"err": None, "got": False, "bytes": 0, "msg_topic": "", "connected": False}
+
+    try:
+        import paho.mqtt.client as mqtt
+        from paho.mqtt.client import CallbackAPIVersion
+        from paho.mqtt.properties import Properties
+        from paho.mqtt.reasoncodes import ReasonCode
+    except Exception as e:  # pragma: no cover
+        return MQTT_LIVE_ERROR, f"MQTT client library unavailable: {e!s}"
+
+    def on_connect(
+        client: mqtt.Client,
+        _userdata: object,
+        _flags: object,
+        reason_code: ReasonCode,
+        _properties: Properties | None,
+    ) -> None:
+        if reason_code.is_failure:
+            state["err"] = f"MQTT connect failed: {reason_code}"
+            done.set()
+            return
+        state["connected"] = True
+        try:
+            client.subscribe(topic, qos)
+        except Exception as e:
+            state["err"] = f"MQTT subscribe failed: {e!s}"[:500]
+            done.set()
+
+    def on_message(_client: mqtt.Client, _userdata: object, msg: mqtt.MQTTMessage) -> None:
+        state["got"] = True
+        state["bytes"] = len(msg.payload or b"")
+        state["msg_topic"] = getattr(msg, "topic", "") or ""
+        done.set()
+
+    cid = f"aar-validate-{uuid.uuid4().hex[:16]}"
+    client = mqtt.Client(
+        callback_api_version=CallbackAPIVersion.VERSION2,
+        client_id=cid,
+        protocol=mqtt.MQTTv311,
+    )
+    if use_tls:
+        try:
+            ctx = ssl.create_default_context()
+            if os.environ.get("MQTT_INGEST_TLS_INSECURE", "").lower() in ("1", "true", "yes"):
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            client.tls_set_context(ctx)
+        except Exception as e:
+            return MQTT_LIVE_ERROR, f"MQTT TLS setup failed: {e!s}"[:500]
+    if user:
+        client.username_pw_set(user, password)
+    client.on_connect = on_connect
+    client.on_message = on_message
+    deadline = time.monotonic() + max(3.0, float(wait_seconds))
+    try:
+        client.connect(host, port, keepalive=min(30, int(wait_seconds) + 5))
+    except Exception as e:
+        return MQTT_LIVE_ERROR, f"MQTT connect error: {e!s}"[:500]
+    client.loop_start()
+    try:
+        while time.monotonic() < deadline:
+            if done.wait(0.2):
+                break
+        if state["err"]:
+            return MQTT_LIVE_ERROR, str(state["err"])
+        if state["got"]:
+            mt = state["msg_topic"] or topic
+            return MQTT_LIVE_OK, (
+                f"Subscribed to {topic!r} and received a message on {mt!r} "
+                f"({int(state['bytes'])} bytes within {wait_seconds:.0f}s)."
+            )
+        if not state["connected"]:
+            return MQTT_LIVE_ERROR, f"MQTT connect to {host}:{port} did not complete within {wait_seconds:.0f}s."
+        return MQTT_LIVE_NO_MESSAGE, (
+            f"Subscribed to {topic!r} on {host}:{port}; no MQTT message arrived within {wait_seconds:.0f}s "
+            "(broker is reachable — confirm a publisher is sending payloads matching this filter)."
+        )
+    finally:
+        try:
+            client.loop_stop()
+        except Exception:
+            pass
+        try:
+            client.disconnect()
+        except Exception:
+            pass
 
 
 def _effective_polling_url(config: dict[str, Any]) -> str:

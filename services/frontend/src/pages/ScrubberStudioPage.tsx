@@ -672,11 +672,19 @@ function ScrubberOutputToolbar(props: {
 
 /** Preview always evaluates the current editor draft (does not use publishedBody). */
 function mappingForPreview(form: StudioDraftForm, version: string): Record<string, unknown> {
+  const draft = formToActiveDraft(form) as Record<string, unknown>;
+  const fb = draft.functionBased;
+  if (fb && typeof fb === "object" && !Array.isArray(fb)) {
+    const o = fb as { enabled?: boolean; code?: string };
+    if (String(o.code || "").trim() && !o.enabled) {
+      draft.functionBased = { ...o, enabled: true };
+    }
+  }
   return {
     scrubberStudio: {
       published: false,
       version,
-      draft: formToActiveDraft(form),
+      draft,
     },
   };
 }
@@ -2411,10 +2419,12 @@ function renderStepEditor(
           Enable Function Based step
         </label>
         <div style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
-          Define <code>transform(payload)</code> and return a dict of scalar top-level fields only. Imports are blocked.
+          Define <code>transform(payload)</code> and return a dict of scalar top-level fields only.{" "}
+          <code>import</code> is blocked; <code>if</code>/<code>for</code>/<code>while</code>, <code>range</code>,{" "}
+          <code>datetime</code>, <code>re</code>, and common builtins are available on the server.
           Helpers available: string (`lower`, `upper`, `strip`, `replace`, `split`, `join`), date (`now_iso`,
           `parse_iso`, `to_epoch`, `format_date`), math/stat (`abs`, `round`, `min`, `max`, `sum`, `pow`, `sqrt`,
-          `log`, `mean`, `median`, `stdev`).
+          `log`, `mean`, `median`, `stdev`), random (`random` module, `randint(a, b)`, `random_float()`).
         </div>
         <label style={miniLbl}>
           Timeout (ms)

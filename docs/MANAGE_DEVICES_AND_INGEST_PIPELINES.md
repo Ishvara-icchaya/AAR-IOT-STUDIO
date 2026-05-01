@@ -105,7 +105,7 @@ The table maps **saved `device_endpoints`** to **processes** and **config highli
 |-------------------|---------------|----------------------|---------|
 | **HTTP** (`http`) | **Push to Platform** — `rest_mode: inbound_hook` | `POST /api/v1/ingest/raw` (JWT); caller supplies target `device_id` | Caller chooses device; not driven by endpoint URL row for push |
 | **HTTP** (`http`) | **Pull from Upstream** — `rest_mode: polling` | `worker-rest-poller` reads `device_endpoints` and polls `config.url` / host+path | **Endpoint row** → `ingest_json_payload_for_device` |
-| **MQTT** (`mqtt`) | Subscriber ingest | `worker-mqtt-bridge` loads plan from DB (`mqtt_bridge_subscriptions.build_ingest_plan`) | Topic match → **`ingest_json_payload_for_endpoint`** |
+| **MQTT** (`mqtt`) | Subscriber ingest | `worker-mqtt-bridge` loads plan from **`endpoints.auth_config`** (`mqtt_bridge_subscriptions.build_ingest_plan`); Manage Devices saves **`device_endpoints.config`**, which the API **syncs** into the linked v2 row when `endpoints.device_endpoint_id` is set | Exact topic string (or broker wildcard in `topic`) → **`ingest_json_payload_for_endpoint`** |
 | **CoAP** (`coap`) | Listener / adapter | `worker-coap-listener` (when deployed) | Often **unbound** → `ingest_json_payload` + `resolve_device_row` unless routed by future binding |
 | **WebSocket** (`websocket`) | Ingest client | `worker-websocket-ingest` (when deployed) | **Endpoint row** → `ingest_json_payload_for_device` |
 
@@ -118,8 +118,9 @@ The table maps **saved `device_endpoints`** to **processes** and **config highli
 ### 4.2 MQTT (`mqtt`)
 
 - **Config shape**: `broker_mode`, `broker_host`, `broker_port`, `topic`, `qos`, optional `username` / `password` / `client_id`, `use_tls` (see `mqttFieldsToConfig`).
+- **Two tables, one logical config**: the bridge reads **enabled v2 MQTT** rows in **`endpoints`** and uses **`auth_config`** as the connection + topic payload. After **POST/PATCH** on **device-endpoints** with protocol **mqtt**, the API copies **`device_endpoints.config` → `endpoints.auth_config`** for the row whose **`device_endpoint_id`** points at that device endpoint. If no v2 row is linked, changing Manage Devices does **not** change what the bridge subscribes to — create/link a v2 MQTT endpoint for the site or confirm **`device_endpoint_id`** in admin flows.
 - **Bridge behavior**: one MQTT **client per distinct connection profile** (host, port, TLS, auth, explicit client id); merged subscriptions per topic with max QoS. Optional **`MQTT_TOPICS`** on **`MQTT_BROKER_HOST`** only — not a substitute for per-device `broker_host`.
-- **Resync**: plan reload on `MQTT_TOPIC_RESYNC_SECONDS` (default 90s) so Manage Devices saves propagate without restarting the worker.
+- **Resync**: plan reload on `MQTT_TOPIC_RESYNC_SECONDS` (default 90s) so Manage Devices saves propagate without restarting the worker. **`docker compose logs -f worker-mqtt-bridge`** should show **`subscribed topic=…`** matching your broker test.
 
 Details: `docs/ARCHITECTURE_MQTT_INGEST.md`.
 
@@ -145,6 +146,7 @@ Router prefix: **`/api/v1/device-endpoints`** (`services/api/app/api/v1/router.p
 | Get + observability | `GET` returns `DeviceEndpointGetResponse` with `endpoint` + **`observability`** (built in `device_endpoint_observability.build_observability`) |
 | Validate | `POST /device-endpoints/validate` — `device_endpoint_validation.run_endpoint_validation` (TCP/connectivity + **payload receipt** / staleness vs device `late_threshold_seconds`) |
 | Lifecycle hooks | `device_endpoint_lifecycle.sync_activation_after_save` / `sync_activation_after_validation` |
+| MQTT → v2 bridge parity | `device_endpoint_v2_mqtt_sync.push_mqtt_config_to_linked_v2_endpoint` (called from device-endpoints upsert/patch) |
 
 **Connectivity column** on the register page maps `validation_status`: `ok` → Valid, `warning` → Degraded (e.g. broker OK but no raw yet or stale receipt), `failed` → Invalid.
 

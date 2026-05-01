@@ -116,6 +116,14 @@ Runtime collection ordering/cursor are deterministic:
 
 ## Recently completed
 
+- **Manage Devices / MQTT ingest (v2-aligned):**
+  - API and workers treat **device endpoints** as the ingest anchor: MQTT bridge subscriptions, JSON payload ingest for linked endpoints, and connectivity/validation paths updated (`device_endpoint_v2_mqtt_sync.py` pushes MQTT config to linked v2 endpoints without legacy auto-bind heuristics).
+  - **UI:** `DeviceManagePage` / `DeviceRegisterPage` and `deviceEndpoints` client API aligned with endpoint JSON and previews.
+  - **Docs:** operational detail in [`docs/MANAGE_DEVICES_AND_INGEST_PIPELINES.md`](docs/MANAGE_DEVICES_AND_INGEST_PIPELINES.md).
+- **Scrubber derived (function-based) sandbox & UX:**
+  - Server-side `scrubber_engine` (API + workers) exposes a controlled surface: `random` (stdlib), `re`, `datetime` types, safe builtins, and helpers including **`randint`**, **`random_float`**, math/stat/string/date utilities.
+  - **Scrubber v2:** tabbed “Allowed helpers (server)” beside derived transform (Math includes random); preview treats non-empty derived code as enabled for mapping only when saving still respects the checkbox.
+  - **Legacy Scrubber Studio** and **pipeline help modal** copy updated for the same globals and examples.
 - **Endpoint Group dashboard source (default):**
   - builder source mode supports **Endpoint Group (default)** and **Individual Device (advanced)**;
   - default bindings for key widgets (`kpi`, `table`, `chart`, `device_tile`) now use `resolved_device_collection`;

@@ -27,7 +27,11 @@ from paho.mqtt.client import CallbackAPIVersion, ConnectFlags, topic_matches_sub
 from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 
-from app.ingest_archive import ingest_json_payload, ingest_json_payload_for_mqtt_endpoint
+from app.ingest_archive import (
+    ingest_json_payload,
+    ingest_json_payload_for_endpoint,
+    ingest_json_payload_for_mqtt_endpoint,
+)
 from app.logging_setup import configure_logging
 from app.mqtt_bridge_subscriptions import (
     BrokerIngestGroup,
@@ -96,9 +100,10 @@ def _tls_context() -> ssl.SSLContext:
     return ctx
 
 
-def _uuid_endpoint_ids(group: BrokerIngestGroup, mqtt_topic: str) -> list[uuid.UUID]:
-    """Map message topic to v2 endpoint ids (skip env-only hooks)."""
-    out: set[uuid.UUID] = set()
+def _mqtt_ingest_routes(group: BrokerIngestGroup, mqtt_topic: str) -> list[tuple[uuid.UUID, str]]:
+    """Map message topic to (id, kind) with kind ``v2`` or ``device_endpoint`` (skip env-only hooks)."""
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[uuid.UUID, str]] = []
     for mt in group.merged_topics:
         try:
             matched = topic_matches_sub(mt.topic, mqtt_topic)
@@ -111,8 +116,13 @@ def _uuid_endpoint_ids(group: BrokerIngestGroup, mqtt_topic: str) -> list[uuid.U
                 eid = uuid.UUID(s.endpoint_id)
             except ValueError:
                 continue
-            out.add(eid)
-    return sorted(out, key=lambda x: str(x))
+            kind = getattr(s, "source_kind", None) or "v2"
+            key = (str(eid), kind)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((eid, kind))
+    return out
 
 
 def _on_message(_client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
@@ -138,29 +148,39 @@ def _on_message(_client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> N
             return
         body = raw
         group = ud.group if ud else None
-        endpoint_ids = _uuid_endpoint_ids(group, topic) if group else []
-        if endpoint_ids:
-            for endpoint_id in endpoint_ids:
-                ok = ingest_json_payload_for_mqtt_endpoint(
-                    data,
-                    body,
-                    endpoint_id=endpoint_id,
-                    protocol_source="mqtt",
-                )
+        routes = _mqtt_ingest_routes(group, topic) if group else []
+        if routes:
+            for bind_id, kind in routes:
+                if kind == "device_endpoint":
+                    ok = ingest_json_payload_for_endpoint(
+                        data,
+                        body,
+                        device_endpoint_id=bind_id,
+                        protocol_source="mqtt",
+                    )
+                    log_id = f"device_endpoint_id={bind_id}"
+                else:
+                    ok = ingest_json_payload_for_mqtt_endpoint(
+                        data,
+                        body,
+                        endpoint_id=bind_id,
+                        protocol_source="mqtt",
+                    )
+                    log_id = f"endpoint_id={bind_id}"
                 if ok:
                     log.info(
-                        "mqtt_bridge archived raw ingest topic=%s broker=%s endpoint_id=%s bytes=%s",
+                        "mqtt_bridge archived raw ingest topic=%s broker=%s %s bytes=%s",
                         topic,
                         broker_tag,
-                        endpoint_id,
+                        log_id,
                         len(body),
                     )
                 else:
                     log.error(
-                        "mqtt_bridge ingest failed topic=%s broker=%s endpoint_id=%s (see ingest_archive logs above)",
+                        "mqtt_bridge ingest failed topic=%s broker=%s %s (see ingest_archive logs above)",
                         topic,
                         broker_tag,
-                        endpoint_id,
+                        log_id,
                     )
             return
         log.info(

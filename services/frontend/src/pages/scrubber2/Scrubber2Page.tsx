@@ -317,6 +317,7 @@ export function Scrubber2Page() {
         model,
         { objectName, version: mappingVersion, parseAs: "auto" },
         samplePayload,
+        { enableDerivedWhenCodePresent: true },
       );
       const r = await apiFetch<ScrubberPreviewBlock>(`/scrubber/preview`, {
         method: "POST",
