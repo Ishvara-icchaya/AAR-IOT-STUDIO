@@ -5,6 +5,12 @@ Convention: add a **new section at the top** (newest first) per session or logic
 
 ---
 
+## 2026-04-30 — Dashboard builder backlog note
+
+- **Follow-up (tracked in root README “Next implementation steps”):** Dashboard → Edit → configure widget **diagnostics** panel — show resolved-device-collection / preview failures and v2 binding hints (`endpoints.object_name`, identity publish, `endpoint_id` on envelopes) when widgets stay empty despite ingest.
+
+---
+
 ## 2026-04-30 — Expanded map intelligence contract doc
 
 - **Docs:** [`docs/EXPANDED_MAP_INTELLIGENCE.md`](EXPANDED_MAP_INTELLIGENCE.md) — formal API URLs, params, `auth_config` / `display_json` keys, freshness & mobility rules, response shapes, frontend behavior, limits, backlog.

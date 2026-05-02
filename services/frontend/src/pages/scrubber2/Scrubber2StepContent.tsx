@@ -34,7 +34,10 @@ type Props = {
   stepIndex: number;
   model: Scrubber2Model;
   setModel: (fn: (m: Scrubber2Model) => Scrubber2Model) => void;
-  fields: Scrubber2FieldMeta[];
+  fieldsEarlyPipeline: Scrubber2FieldMeta[];
+  fieldsFromPreview: Scrubber2FieldMeta[] | null;
+  pathSampleEarly: Record<string, unknown> | null;
+  pathSamplePreview: Record<string, unknown> | null;
   samplePayload: Record<string, unknown> | null;
   rawId: string | null;
   onRequestPreview: () => void;
@@ -44,12 +47,19 @@ export function Scrubber2StepContent({
   stepIndex,
   model,
   setModel,
-  fields,
+  fieldsEarlyPipeline,
+  fieldsFromPreview,
+  pathSampleEarly,
+  pathSamplePreview,
   samplePayload,
   rawId,
   onRequestPreview,
 }: Props) {
   const [derivedHelpTab, setDerivedHelpTab] = useState<DerivedHelpTabId>("math");
+
+  const pickerFields = stepIndex >= 4 ? (fieldsFromPreview ?? []) : fieldsEarlyPipeline;
+  const pathSampleRoot =
+    (pathSamplePreview ?? pathSampleEarly ?? samplePayload ?? null) as Record<string, unknown> | null;
 
   if (stepIndex === 0) {
     return (
@@ -119,7 +129,7 @@ export function Scrubber2StepContent({
                   <tr key={idx}>
                     <td>
                       <Scrubber2FieldPicker
-                        fields={fields}
+                        fields={pickerFields}
                         value={pair.from}
                         onChange={(p) =>
                           setModel((m) => {
@@ -242,7 +252,7 @@ export function Scrubber2StepContent({
                   <td>
                     {row.mode === "copy" ? (
                       <Scrubber2FieldPicker
-                        fields={fields}
+                        fields={pickerFields}
                         value={row.sourcePath ?? ""}
                         onChange={(p) =>
                           setModel((m) => {
@@ -498,7 +508,7 @@ export function Scrubber2StepContent({
     const syncFromFields = () => {
       setModel((m) => {
         const existing = new Map(m.fieldSemantics.map((s) => [s.path, s]));
-        for (const f of fields) {
+        for (const f of pickerFields) {
           if (!existing.has(f.path)) {
             existing.set(f.path, { path: f.path, type: f.type, roles: [], label: "" });
           }
@@ -508,9 +518,20 @@ export function Scrubber2StepContent({
     };
     return (
       <>
+        {!pathSamplePreview ? (
+          <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
+            Run <strong>Validate</strong> (server preview) to load field paths from the transformed payload — including
+            derived fields and excluding dropped paths.
+          </p>
+        ) : null}
         <div className="scrubber2-toolbar">
-          <button type="button" className="scrubber2-btn scrubber2-btn--ghost" onClick={syncFromFields}>
-            Sync fields from explorer
+          <button
+            type="button"
+            className="scrubber2-btn scrubber2-btn--ghost"
+            disabled={!pathSamplePreview || pickerFields.length === 0}
+            onClick={syncFromFields}
+          >
+            Sync rows from preview field list
           </button>
           <button
             type="button"
@@ -542,12 +563,12 @@ export function Scrubber2StepContent({
                 <tr key={i}>
                   <td>
                     <Scrubber2FieldPicker
-                      fields={fields}
+                      fields={pickerFields}
                       value={row.path}
                       onChange={(p) =>
                         setModel((m) => {
                           const fs = [...m.fieldSemantics];
-                          const hit = fields.find((x) => x.path === p);
+                          const hit = pickerFields.find((x) => x.path === p);
                           fs[i] = { ...fs[i], path: p, type: hit?.type ?? fs[i].type };
                           return { ...m, fieldSemantics: fs };
                         })
@@ -648,6 +669,11 @@ export function Scrubber2StepContent({
     const cfg = model.health.config;
     return (
       <>
+        {!pathSamplePreview ? (
+          <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
+            Run <strong>Validate</strong> (server preview) to load field paths from the transformed payload.
+          </p>
+        ) : null}
         <label>
           <span className="scrubber2-muted">Mode</span>
           <select
@@ -670,7 +696,7 @@ export function Scrubber2StepContent({
           <div style={{ marginTop: "0.5rem" }}>
             <span className="scrubber2-muted">Source field</span>
             <Scrubber2FieldPicker
-              fields={fields}
+              fields={pickerFields}
               value={String(cfg.source_field ?? "")}
               onChange={(p) =>
                 setModel((m) => ({
@@ -870,6 +896,11 @@ export function Scrubber2StepContent({
     );
     return (
       <>
+        {!pathSamplePreview ? (
+          <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
+            Run <strong>Validate</strong> (server preview) so Semantics and KPI paths match the transformed payload.
+          </p>
+        ) : null}
         <p className="scrubber2-muted">Only fields with role <strong>metric</strong> in Semantics are eligible.</p>
         <div className="scrubber2-toolbar">
           <button
@@ -988,12 +1019,17 @@ export function Scrubber2StepContent({
   if (stepIndex === 7) {
     return (
       <>
+        {!pathSamplePreview ? (
+          <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
+            Run <strong>Validate</strong> (server preview) to pick geo fields from the transformed payload.
+          </p>
+        ) : null}
         <div style={{ display: "grid", gap: "0.5rem" }}>
           <label>
             <span className="scrubber2-muted">Latitude</span>
             <div>
               <Scrubber2FieldPicker
-                fields={fields}
+                fields={pickerFields}
                 value={model.location.latitudePath ?? ""}
                 onChange={(p) => setModel((m) => ({ ...m, location: { ...m.location, latitudePath: p } }))}
               />
@@ -1003,7 +1039,7 @@ export function Scrubber2StepContent({
             <span className="scrubber2-muted">Longitude</span>
             <div>
               <Scrubber2FieldPicker
-                fields={fields}
+                fields={pickerFields}
                 value={model.location.longitudePath ?? ""}
                 onChange={(p) => setModel((m) => ({ ...m, location: { ...m.location, longitudePath: p } }))}
               />
@@ -1013,7 +1049,7 @@ export function Scrubber2StepContent({
             <span className="scrubber2-muted">Altitude (optional)</span>
             <div>
               <Scrubber2FieldPicker
-                fields={fields}
+                fields={pickerFields}
                 value={model.location.altitudePath ?? ""}
                 onChange={(p) => setModel((m) => ({ ...m, location: { ...m.location, altitudePath: p } }))}
               />
@@ -1023,17 +1059,17 @@ export function Scrubber2StepContent({
             <span className="scrubber2-muted">Heading (optional)</span>
             <div>
               <Scrubber2FieldPicker
-                fields={fields}
+                fields={pickerFields}
                 value={model.location.headingPath ?? ""}
                 onChange={(p) => setModel((m) => ({ ...m, location: { ...m.location, headingPath: p } }))}
               />
             </div>
           </label>
         </div>
-        {samplePayload ? (
+        {pathSampleRoot ? (
           <div className="scrubber2-muted" style={{ fontSize: "0.75rem", marginTop: "0.35rem" }}>
             Sample lat:{" "}
-            {model.location.latitudePath ? String(getByPath(samplePayload, model.location.latitudePath) ?? "—") : "—"}
+            {model.location.latitudePath ? String(getByPath(pathSampleRoot, model.location.latitudePath) ?? "—") : "—"}
           </div>
         ) : null}
       </>

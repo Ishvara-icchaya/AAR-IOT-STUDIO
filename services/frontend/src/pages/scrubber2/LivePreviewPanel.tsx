@@ -30,12 +30,17 @@ export function LivePreviewPanel({ scrubPreview, samplePayload, model }: Props) 
   const [tab, setTab] = useState<Tab>("payload");
 
   const mapPreview = useMemo(() => {
-    if (!samplePayload) return null;
-    const lat = model.location.latitudePath ? getByPath(samplePayload, model.location.latitudePath) : undefined;
-    const lng = model.location.longitudePath ? getByPath(samplePayload, model.location.longitudePath) : undefined;
-    const hdg = model.location.headingPath ? getByPath(samplePayload, model.location.headingPath) : undefined;
+    const raw = scrubPreview?.preview?.output_payload;
+    const root =
+      !scrubPreview?.error && raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : samplePayload;
+    if (!root) return null;
+    const lat = model.location.latitudePath ? getByPath(root, model.location.latitudePath) : undefined;
+    const lng = model.location.longitudePath ? getByPath(root, model.location.longitudePath) : undefined;
+    const hdg = model.location.headingPath ? getByPath(root, model.location.headingPath) : undefined;
     return { lat, lng, hdg };
-  }, [samplePayload, model.location]);
+  }, [scrubPreview, samplePayload, model.location]);
 
   const payloadJson = useMemo(() => {
     const p = scrubPreview?.preview?.output_payload;
@@ -117,7 +122,7 @@ export function LivePreviewPanel({ scrubPreview, samplePayload, model }: Props) 
               {mapPreview?.hdg != null ? String(mapPreview.hdg) : "—"}
             </div>
             <div className="scrubber2-muted" style={{ marginTop: "0.35rem" }}>
-              Map tile preview is omitted in v2 shell; coordinates update from field mapping + sample payload.
+              Map tile preview is omitted in v2 shell; coordinates use the server preview payload when available, otherwise the raw sample.
             </div>
           </div>
         )}

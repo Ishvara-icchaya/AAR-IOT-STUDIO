@@ -18,7 +18,14 @@ type Props = {
   onStepChange: (i: number) => void;
   model: Scrubber2Model;
   setModel: (fn: (m: Scrubber2Model) => Scrubber2Model) => void;
+  /** Raw archive JSON — Drop/Keep explorer and field counts. */
   fields: Scrubber2FieldMeta[];
+  /** After Drop/Keep (+ optional Flatten): Normalize & Attributes pickers. */
+  fieldsEarlyPipeline: Scrubber2FieldMeta[];
+  /** After full server preview (includes derived, excludes dropped); Semantics+ pickers. */
+  fieldsFromPreview: Scrubber2FieldMeta[] | null;
+  pathSampleEarly: Record<string, unknown> | null;
+  pathSamplePreview: Record<string, unknown> | null;
   samplePayload: Record<string, unknown> | null;
   rawId: string | null;
   onRequestPreview: () => void;
@@ -33,6 +40,10 @@ export function Scrubber2StepWorkspace({
   model,
   setModel,
   fields,
+  fieldsEarlyPipeline,
+  fieldsFromPreview,
+  pathSampleEarly,
+  pathSamplePreview,
   samplePayload,
   rawId,
   onRequestPreview,
@@ -143,7 +154,10 @@ export function Scrubber2StepWorkspace({
                   stepIndex={activeStep}
                   model={model}
                   setModel={setModel}
-                  fields={fields}
+                  fieldsEarlyPipeline={fieldsEarlyPipeline}
+                  fieldsFromPreview={fieldsFromPreview}
+                  pathSampleEarly={pathSampleEarly}
+                  pathSamplePreview={pathSamplePreview}
                   samplePayload={samplePayload}
                   rawId={rawId}
                   onRequestPreview={onRequestPreview}

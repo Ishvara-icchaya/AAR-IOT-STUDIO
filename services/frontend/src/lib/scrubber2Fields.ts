@@ -78,3 +78,97 @@ export function getByPath(obj: unknown, dotted: string): unknown {
   }
   return cur;
 }
+
+/** Dotted paths removed by the engine when `keepFields` is the allow-list (same as `scrubberStudio` draft). */
+export function scrubber2DropPathsFromKeep(
+  samplePayload: Record<string, unknown>,
+  keepFields: readonly string[],
+): string[] {
+  const allLeaves = collectFieldPaths(samplePayload);
+  const keep = new Set(keepFields.filter(Boolean));
+  if (keep.size === 0 && allLeaves.length > 0) return [...allLeaves];
+  return allLeaves.filter((leaf) => {
+    for (const k of keep) {
+      if (leaf === k || leaf.startsWith(`${k}.`)) return false;
+    }
+    return true;
+  });
+}
+
+export function scrubber2DeleteDottedPath(obj: Record<string, unknown>, dotted: string): void {
+  const parts = dotted.split(".").filter(Boolean);
+  if (!parts.length) return;
+  let cur: unknown = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!isObjectRecord(cur) || !(part in cur)) return;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  const last = parts[parts.length - 1];
+  if (isObjectRecord(cur) && last in cur) {
+    delete (cur as Record<string, unknown>)[last];
+  }
+}
+
+export function scrubber2PayloadAfterDropKeep(
+  samplePayload: Record<string, unknown>,
+  keepFields: readonly string[],
+): Record<string, unknown> {
+  const tree = structuredClone(samplePayload) as Record<string, unknown>;
+  for (const d of scrubber2DropPathsFromKeep(samplePayload, keepFields)) {
+    scrubber2DeleteDottedPath(tree, d);
+  }
+  return tree;
+}
+
+function flattenOneLevelPayload(input: Record<string, unknown>, delimiter: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const delim = delimiter || "_";
+  for (const [k, v] of Object.entries(input)) {
+    if (isObjectRecord(v)) {
+      const inner = Object.entries(v);
+      if (inner.length > 0) {
+        for (const [innerK, innerV] of inner) out[`${k}${delim}${innerK}`] = innerV;
+      } else {
+        out[k] = v;
+      }
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+/** Mirrors worker `flatten` until stable (dict equality via JSON), delimiter default `_`. */
+export function scrubber2FlattenComplete(
+  root: Record<string, unknown>,
+  delimiter = "_",
+  maxRounds = 64,
+): Record<string, unknown> {
+  let p: Record<string, unknown> = structuredClone(root);
+  for (let i = 0; i < maxRounds; i++) {
+    const nxt = flattenOneLevelPayload(p, delimiter);
+    if (JSON.stringify(nxt) === JSON.stringify(p)) return nxt;
+    p = nxt;
+  }
+  return p;
+}
+
+export function scrubber2ShapedPayloadForEarlyPickers(
+  samplePayload: Record<string, unknown> | null,
+  keepFields: readonly string[],
+  flatten: boolean,
+): Record<string, unknown> | null {
+  if (!samplePayload) return null;
+  const after = scrubber2PayloadAfterDropKeep(samplePayload, keepFields);
+  return flatten ? scrubber2FlattenComplete(after, "_") : after;
+}
+
+/** Strip scrubber-internal keys before listing paths for Semantics / Health / KPI / Location. */
+export function scrubberPreviewPayloadForFieldPickers(p: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...p };
+  for (const k of Object.keys(out)) {
+    if (k.startsWith("_scrubber")) delete out[k];
+  }
+  return out;
+}

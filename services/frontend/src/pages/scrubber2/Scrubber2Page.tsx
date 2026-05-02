@@ -8,7 +8,11 @@ import { listDevices } from "@/api/devices";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
-import { buildFieldMetaList } from "@/lib/scrubber2Fields";
+import {
+  buildFieldMetaList,
+  scrubberPreviewPayloadForFieldPickers,
+  scrubber2ShapedPayloadForEarlyPickers,
+} from "@/lib/scrubber2Fields";
 import { buildScrubberStudioMappingForPreview, buildStudioDraftFromV2, bumpSemverLike } from "@/lib/scrubber2ToStudioDraft";
 import { FieldExplorerPanel } from "@/pages/scrubber2/FieldExplorerPanel";
 import { LivePreviewPanel, type ScrubberPreviewBlock } from "@/pages/scrubber2/LivePreviewPanel";
@@ -33,11 +37,11 @@ type RawListHeadResp = {
   total: number;
 };
 
-const PUBLISH_PIPELINE_MODAL_TITLE = "Publish this pipeline?";
+const PUBLISH_PIPELINE_MODAL_TITLE = "Freeze this pipeline?";
 const PUBLISH_PIPELINE_MODAL_BODY =
-  "Future ingested payloads for this device will use this scrubber definition to generate data objects. This is the same canonical device mapping as classic Scrubber Studio (scrubberStudio publishedBody / version plus your Scrubber 2.0 model).";
+  "Ingestion workers will use this frozen scrubber definition (publishedBody + version) for this device. Future ingested payloads follow this mapping.";
 const PUBLISH_PIPELINE_BUTTON_HINT =
-  "Publish this scrubber configuration as the active version used by ingestion workers.";
+  "Freeze this scrubber configuration as the active version used by ingestion workers.";
 
 function hydrateV2Model(partial: Partial<Scrubber2Model> | null | undefined): Scrubber2Model {
   const d = defaultScrubber2Model();
@@ -135,7 +139,32 @@ export function Scrubber2Page() {
     }
   }, [rawPreview]);
 
-  const fields = useMemo(() => (samplePayload ? buildFieldMetaList(samplePayload) : []), [samplePayload]);
+  const fieldsRaw = useMemo(() => (samplePayload ? buildFieldMetaList(samplePayload) : []), [samplePayload]);
+
+  const shapedPayload = useMemo(
+    () =>
+      samplePayload
+        ? scrubber2ShapedPayloadForEarlyPickers(samplePayload, model.keepFields, model.normalize.flatten)
+        : null,
+    [samplePayload, model.keepFields, model.normalize.flatten],
+  );
+
+  const fieldsEarlyPipeline = useMemo(
+    () => (shapedPayload ? buildFieldMetaList(shapedPayload) : []),
+    [shapedPayload],
+  );
+
+  const pathSamplePreview = useMemo(() => {
+    if (!scrubPreview || scrubPreview.error) return null;
+    const raw = scrubPreview.preview?.output_payload;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    return scrubberPreviewPayloadForFieldPickers(raw as Record<string, unknown>);
+  }, [scrubPreview]);
+
+  const fieldsFromPreview = useMemo(
+    () => (pathSamplePreview ? buildFieldMetaList(pathSamplePreview) : null),
+    [pathSamplePreview],
+  );
 
   const keepSet = useMemo(() => new Set(model.keepFields), [model.keepFields]);
 
@@ -380,11 +409,11 @@ export function Scrubber2Page() {
   /** Canonical live publish: legacy studio draft + version bump + publishedBody; keeps scrubber2.model in sync. */
   const runPublishPipeline = useCallback(async () => {
     if (!deviceId) {
-      setErr("Select a device to publish.");
+      setErr("Select a device to freeze the pipeline for.");
       return;
     }
     if (!samplePayload) {
-      setErr("Load raw preview before publishing.");
+      setErr("Load raw preview before freezing.");
       return;
     }
     setBusy(true);
@@ -409,28 +438,29 @@ export function Scrubber2Page() {
         },
       });
       setMappingVersion(nextV);
-      setOk(`Published version ${nextV}. Ingestion workers use publishedBody as the active scrubber definition.`);
+      setOk(`Pipeline frozen as version ${nextV}. Returning to the list…`);
+      navigate("/scrubber/v2/pipelines");
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Publish failed");
+      setErr(e instanceof Error ? e.message : "Freeze failed");
     } finally {
       setBusy(false);
     }
-  }, [deviceId, samplePayload, model, objectName, mappingVersion]);
+  }, [deviceId, samplePayload, model, objectName, mappingVersion, navigate]);
 
   const openPublishConfirm = useCallback(async () => {
     if (!deviceId) {
-      setErr("Select a device to publish.");
+      setErr("Select a device to freeze the pipeline for.");
       return;
     }
     if (!samplePayload) {
-      setErr("Load raw preview before publishing.");
+      setErr("Load raw preview before freezing.");
       return;
     }
     setErr(null);
     await confirm({
       title: PUBLISH_PIPELINE_MODAL_TITLE,
       message: PUBLISH_PIPELINE_MODAL_BODY,
-      confirmLabel: "Publish",
+      confirmLabel: "Freeze",
       variant: "warning",
       onConfirm: runPublishPipeline,
     });
@@ -448,7 +478,7 @@ export function Scrubber2Page() {
           else s.delete(path);
           return { ...m, keepFields: [...s] };
         }),
-      selectAll: () => setModel((m) => ({ ...m, keepFields: fields.map((f) => f.path) })),
+      selectAll: () => setModel((m) => ({ ...m, keepFields: fieldsRaw.map((f) => f.path) })),
       clearAll: () => setModel((m) => ({ ...m, keepFields: [] })),
       setFieldDescription: (path, v) =>
         setModel((m) => ({
@@ -456,7 +486,7 @@ export function Scrubber2Page() {
           fieldDescriptions: { ...m.fieldDescriptions, [path]: v },
         })),
     }),
-    [fieldSearch, keepSet, fields],
+    [fieldSearch, keepSet, fieldsRaw],
   );
 
   return (
@@ -495,7 +525,7 @@ export function Scrubber2Page() {
               title={PUBLISH_PIPELINE_BUTTON_HINT}
               onClick={openPublishConfirm}
             >
-              Create Pipeline
+              Freeze
             </button>
             <Link to="/scrubber/raw-select" className="scrubber2-muted" style={{ fontSize: "0.78rem", marginLeft: "0.35rem" }}>
               Raw sample
@@ -533,7 +563,7 @@ export function Scrubber2Page() {
         left={
           <FieldExplorerPanel
             rawJson={rawJson}
-            fields={fields}
+            fields={fieldsRaw}
             fieldSearch={fieldSearch}
             onFieldSearchChange={setFieldSearch}
             keepSet={keepSet}
@@ -550,7 +580,11 @@ export function Scrubber2Page() {
             onStepChange={setActiveStep}
             model={model}
             setModel={setModel}
-            fields={fields}
+            fields={fieldsRaw}
+            fieldsEarlyPipeline={fieldsEarlyPipeline}
+            fieldsFromPreview={fieldsFromPreview}
+            pathSampleEarly={shapedPayload}
+            pathSamplePreview={pathSamplePreview}
             samplePayload={samplePayload}
             rawId={rawId}
             onRequestPreview={() => void runScrubberPreview()}

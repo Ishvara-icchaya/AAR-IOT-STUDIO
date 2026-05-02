@@ -140,6 +140,7 @@ Runtime collection ordering/cursor are deterministic:
 ## Next implementation steps
 
 1. Implement **Restore to Default** (full reset) per §0.7 — orchestration + reseed.
+2. **Dashboard configure diagnostics:** In Dashboard → Edit → configure widget, surface runtime/preview failures clearly (e.g. resolved-device-collection API status, empty cohort summary, and hints for v2 identity publish, `endpoint_id` on scrubber envelopes, and binding `object_name` to `endpoints.object_name` vs scrubber UI label).
 
 ## License
 

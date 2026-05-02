@@ -23,6 +23,7 @@ import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
+import { AarButton } from "@/components/system/AarButton";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
@@ -299,6 +300,7 @@ export function DeviceRegisterPage() {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [checkingConnectivity, setCheckingConnectivity] = useState(false);
+  const [refreshListBusy, setRefreshListBusy] = useState(false);
   useShellFeedback(err, ok);
 
   const [filterStatus, setFilterStatus] = useState("all");
@@ -323,7 +325,7 @@ export function DeviceRegisterPage() {
     }
   }, []);
 
-  const loadDevices = useCallback(async (q: string) => {
+  const loadDevices = useCallback(async (q: string): Promise<DeviceRead[]> => {
     setTableLoading(true);
     setErr(null);
     try {
@@ -332,13 +334,25 @@ export function DeviceRegisterPage() {
         site_id: opsSiteId?.trim() || undefined,
       });
       setItems(list);
+      return list;
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not load devices");
+      return [];
     } finally {
       setTableLoading(false);
       setLoading(false);
     }
   }, [opsSiteId]);
+
+  /** Same query as `loadDevices` without clearing global error (used between two list passes in refresh). */
+  const fetchDevicesListSilent = useCallback(
+    async (q: string): Promise<DeviceRead[]> =>
+      listDevices({
+        q: q.trim() || undefined,
+        site_id: opsSiteId?.trim() || undefined,
+      }),
+    [opsSiteId],
+  );
 
   const closeModal = useCallback(() => {
     setModalMode(null);
@@ -545,6 +559,44 @@ export function DeviceRegisterPage() {
     return n.toUpperCase();
   }
 
+  const refreshListAndStatus = useCallback(async () => {
+    setRefreshListBusy(true);
+    setTableLoading(true);
+    setErr(null);
+    setOk(null);
+    try {
+      let list = await fetchDevicesListSilent(appliedQ);
+      setItems(list);
+      const withEndpoint = list.filter((d) => d.endpoint);
+      let failures = 0;
+      for (const d of withEndpoint) {
+        try {
+          await validateDeviceEndpoint(d.id);
+        } catch {
+          failures += 1;
+        }
+      }
+      list = await fetchDevicesListSilent(appliedQ);
+      setItems(list);
+      if (failures > 0) {
+        setOk(null);
+        setErr(
+          `Refresh finished with ${failures} connectivity check failure(s) (${withEndpoint.length - failures} succeeded). The table was updated.`,
+        );
+      } else if (withEndpoint.length > 0) {
+        setOk(`Refreshed ${list.length} device(s) and re-checked connectivity for ${withEndpoint.length} with a saved endpoint.`);
+      } else {
+        setOk(`Refreshed ${list.length} device(s).`);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setTableLoading(false);
+      setLoading(false);
+      setRefreshListBusy(false);
+    }
+  }, [appliedQ, fetchDevicesListSilent]);
+
   async function checkConnectivityForListedDevices() {
     const withEndpoint = items.filter((d) => d.endpoint);
     if (withEndpoint.length === 0) {
@@ -619,7 +671,7 @@ export function DeviceRegisterPage() {
               <button
                 type="button"
                 className="dm-btn dm-btn--outline"
-                disabled={dropdownFiltered.length === 0 || tableLoading}
+                disabled={dropdownFiltered.length === 0 || tableLoading || refreshListBusy}
                 onClick={() => exportDevicesCsv(dropdownFiltered, sitesById)}
               >
                 <Download size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
@@ -631,20 +683,23 @@ export function DeviceRegisterPage() {
               <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
                 + Register new device
               </button>
-              <button
-                type="button"
-                className="dm-btn dm-btn--outline"
-                disabled={tableLoading}
-                title="Click to query the server and refresh this table (status, activation, connectivity, last data)."
-                onClick={() => void loadDevices(appliedQ)}
+              <AarButton
+                variant="outline"
+                className="device-register-page__refresh-btn"
+                disabled={tableLoading || refreshListBusy}
+                title="Reload devices from the server and re-run connectivity validation wherever an endpoint exists."
+                aria-busy={refreshListBusy || undefined}
+                onClick={() => void refreshListAndStatus()}
               >
-                <RefreshCw size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                {tableLoading ? "Loading…" : "Refresh list"}
-              </button>
+                <span className={refreshListBusy ? "device-register-page__refresh-icon device-register-page__refresh-icon--spin" : "device-register-page__refresh-icon"}>
+                  <RefreshCw size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                </span>
+                {refreshListBusy ? "Refreshing…" : "Refresh list"}
+              </AarButton>
               <button
                 type="button"
                 className="dm-btn dm-btn--outline"
-                disabled={checkingConnectivity || tableLoading || items.length === 0}
+                disabled={checkingConnectivity || tableLoading || refreshListBusy || items.length === 0}
                 title="Re-run endpoint validation for each device that has a saved endpoint, then reload the table."
                 onClick={() => void checkConnectivityForListedDevices()}
               >
@@ -927,9 +982,9 @@ export function DeviceRegisterPage() {
                               {d.endpoint?.activation_status === "active" ? (
                                 <Link
                                   className="dm-act-grid__btn"
-                                  to={`/scrubber/create?deviceId=${encodeURIComponent(d.id)}&returnTo=${encodeURIComponent("/devices/register#registered-devices-table")}`}
-                                  title="Scrubber Studio"
-                                  aria-label={`Open scrubber for ${d.name}`}
+                                  to={`/scrubber/v2/create?deviceId=${encodeURIComponent(d.id)}&returnTo=${encodeURIComponent("/devices/register#registered-devices-table")}`}
+                                  title="Scrubber pipeline (v2)"
+                                  aria-label={`Open scrubber pipeline for ${d.name}`}
                                 >
                                   <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                 </Link>
@@ -939,10 +994,10 @@ export function DeviceRegisterPage() {
                                   disabled
                                   title={
                                     d.endpoint
-                                      ? "Scrubber is available when activation status is Active."
-                                      : "Save an endpoint and reach Active activation to open the scrubber from this list."
+                                      ? "Scrubber pipeline is available when activation status is Active."
+                                      : "Save an endpoint and reach Active activation to open the scrubber pipeline from this list."
                                   }
-                                  aria-label={`Scrubber unavailable for ${d.name}`}
+                                  aria-label={`Scrubber pipeline unavailable for ${d.name}`}
                                 >
                                   <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                 </OpsActionButton>

@@ -4,17 +4,7 @@
  */
 
 import type { Scrubber2Model } from "@/types/scrubber2Model";
-import { collectFieldPaths } from "@/lib/scrubber2Fields";
-
-function dropsFromKeep(allLeaves: readonly string[], keep: Set<string>): string[] {
-  if (keep.size === 0 && allLeaves.length > 0) return [...allLeaves];
-  return allLeaves.filter((leaf) => {
-    for (const k of keep) {
-      if (leaf === k || leaf.startsWith(`${k}.`)) return false;
-    }
-    return true;
-  });
-}
+import { scrubber2DropPathsFromKeep } from "@/lib/scrubber2Fields";
 
 function windowsFromWindowToken(win: string): { win1h: boolean; win24h: boolean } {
   const w = (win || "").toLowerCase();
@@ -92,9 +82,7 @@ export function buildStudioDraftFromV2(
   ctx: { objectName: string; parseAs?: "auto" | "json" | "text"; selectPath?: string },
   samplePayload: Record<string, unknown>,
 ): Record<string, unknown> {
-  const allLeaves = collectFieldPaths(samplePayload);
-  const keep = new Set(model.keepFields.filter(Boolean));
-  const dropPaths = dropsFromKeep(allLeaves, keep);
+  const dropPaths = scrubber2DropPathsFromKeep(samplePayload, model.keepFields);
 
   const attrLiterals: Record<string, unknown> = {};
   const attrFp: Record<string, string> = {};

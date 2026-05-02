@@ -205,6 +205,14 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                   <option value="individual_device">Individual Device (advanced)</option>
                 </select>
               </label>
+              <p className="dash-widget__muted dash-chart-config-flow__row" style={{ fontSize: "0.78rem", lineHeight: 1.45 }}>
+                <strong>Endpoint group</strong> uses the v2 endpoint’s stream <strong>object name</strong> (the{" "}
+                <code>endpoints.object_name</code> value — this is what <code>latest_device_state</code> rows use after
+                ingest, and it may differ from the scrubber UI label). <strong>Individual device</strong> picks one device’s{" "}
+                <code>latest_device_state</code> or <code>result_object</code>. If ingest runs but the dashboard stays
+                empty, confirm v2 identity is published, primary keys are set on the endpoint, and worker logs are not
+                skipping v2 writes.
+              </p>
 
               {sourceMode === "endpoint_group" ? (
                 <label className="dash-drawer__label dash-chart-config-flow__row">
@@ -353,6 +361,15 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                     </select>
                   </label>
                 )}
+                {needsSource ? (
+                  <p className="dash-widget__muted" style={{ fontSize: "0.78rem", lineHeight: 1.45, marginTop: "0.15rem" }}>
+                    <strong>Endpoint group</strong> binds to <code>endpoints.object_name</code> for that endpoint (same
+                    string stored on <code>latest_device_state</code> after successful v2 resolution — it may differ from the
+                    scrubber pipeline title). <strong>Individual device</strong> picks one <code>latest_device_state</code> or{" "}
+                    <code>result_object</code>. If data is ingesting but widgets stay empty, check v2 identity publish,
+                    primary-device-key fields, and Kafka <code>endpoint_id</code> on scrubber envelopes.
+                  </p>
+                ) : null}
 
                 {needsSource && sourceMode === "endpoint_group" && (
                   <div className="dash-drawer__label">

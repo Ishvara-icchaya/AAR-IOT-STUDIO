@@ -917,3 +917,31 @@
   border-color: color-mix(in oklab, var(--dm-error-purple) 55%, var(--dm-border));
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--dm-error-purple) 14%, transparent);
 }
+
+/* Register devices: header refresh — tactile press + spinning icon while work runs */
+.device-register-page__refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.device-register-page__refresh-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+.device-register-page__refresh-icon {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+@keyframes device-register-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.device-register-page__refresh-icon--spin {
+  animation: device-register-refresh-spin 0.75s linear infinite;
+}

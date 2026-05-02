@@ -12,6 +12,9 @@ from typing import Any
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.device import Device
+from app.models.device_endpoint import DeviceEndpoint
+from app.models.device_object import DeviceObject
 from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
@@ -134,6 +137,67 @@ def _ranked_latest_device_state_subquery(
     return ranked.subquery("ranked_latest_device_state")
 
 
+def _mapping_has_scrubber_studio(mapping: dict[str, Any] | None) -> bool:
+    """True when the device has any scrubberStudio draft/publish payload (pipeline configured)."""
+    if not isinstance(mapping, dict):
+        return False
+    ss = mapping.get("scrubberStudio")
+    if not isinstance(ss, dict):
+        return False
+    if isinstance(ss.get("draft"), dict) and ss["draft"]:
+        return True
+    if isinstance(ss.get("publishedBody"), dict) and ss["publishedBody"]:
+        return True
+    return False
+
+
+def _merge_pipeline_sources_without_lds(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID,
+    existing_keys: set[tuple[uuid.UUID, str]],
+) -> list[dict[str, Any]]:
+    """Rows for endpoints that have a scrubber mapping but no latest_device_state rows yet (count 0)."""
+    stmt = (
+        select(DeviceObject, Endpoint)
+        .join(Device, Device.id == DeviceObject.device_id)
+        .join(DeviceEndpoint, DeviceEndpoint.device_id == Device.id)
+        .join(Endpoint, Endpoint.device_endpoint_id == DeviceEndpoint.id)
+        .where(
+            Device.customer_id == customer_id,
+            Device.site_id == site_id,
+            Endpoint.customer_id == customer_id,
+            Endpoint.site_id == site_id,
+            Endpoint.device_endpoint_id.isnot(None),
+        )
+    )
+    out: list[dict[str, Any]] = []
+    for do, ep in db.execute(stmt).all():
+        if not _mapping_has_scrubber_studio(do.mapping if isinstance(do.mapping, dict) else None):
+            continue
+        # Must match `latest_device_state.object_name` / v2_resolution (endpoints.object_name), not scrubberStudio.objectName.
+        on = (ep.object_name or "").strip()
+        if not on:
+            continue
+        key = (ep.id, on)
+        if key in existing_keys:
+            continue
+        existing_keys.add(key)
+        ts = do.updated_at if getattr(do, "updated_at", None) is not None else ep.updated_at
+        out.append(
+            {
+                "site_id": site_id,
+                "endpoint_id": ep.id,
+                "endpoint_name": ep.endpoint_name,
+                "object_name": on,
+                "latest_updated_at": ts,
+                "resolved_device_count": 0,
+            }
+        )
+    return out
+
+
 def count_deduped_missing_location(
     db: Session,
     *,
@@ -189,29 +253,58 @@ def list_collection_sources(
         .limit(max(1, min(limit, 500)))
     )
     rows = db.execute(stmt).all()
-    if not rows:
-        return []
-    endpoint_names = {
-        r.id: r.endpoint_name
-        for r in db.scalars(
-            select(Endpoint).where(
-                Endpoint.customer_id == customer_id,
-                Endpoint.site_id == site_id,
-                Endpoint.id.in_([row.endpoint_id for row in rows]),
-            )
-        ).all()
-    }
-    return [
-        {
-            "site_id": site_id,
-            "endpoint_id": row.endpoint_id,
-            "endpoint_name": endpoint_names.get(row.endpoint_id),
-            "object_name": row.object_name,
-            "latest_updated_at": row.latest_updated_at,
-            "resolved_device_count": int(row.resolved_device_count or 0),
+    merged: list[dict[str, Any]] = []
+    keys: set[tuple[uuid.UUID, str]] = set()
+    if rows:
+        endpoint_names = {
+            r.id: r.endpoint_name
+            for r in db.scalars(
+                select(Endpoint).where(
+                    Endpoint.customer_id == customer_id,
+                    Endpoint.site_id == site_id,
+                    Endpoint.id.in_([row.endpoint_id for row in rows]),
+                )
+            ).all()
         }
-        for row in rows
-    ]
+        for row in rows:
+            keys.add((row.endpoint_id, str(row.object_name)))
+            merged.append(
+                {
+                    "site_id": site_id,
+                    "endpoint_id": row.endpoint_id,
+                    "endpoint_name": endpoint_names.get(row.endpoint_id),
+                    "object_name": row.object_name,
+                    "latest_updated_at": row.latest_updated_at,
+                    "resolved_device_count": int(row.resolved_device_count or 0),
+                }
+            )
+
+    merged.extend(
+        _merge_pipeline_sources_without_lds(
+            db,
+            customer_id=customer_id,
+            site_id=site_id,
+            existing_keys=keys,
+        )
+    )
+
+    if not merged:
+        return []
+
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def sort_key(r: dict[str, Any]) -> tuple:
+        ts = r.get("latest_updated_at")
+        if isinstance(ts, datetime):
+            t = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+        else:
+            t = epoch
+        eid = r.get("endpoint_id")
+        oid = str(r.get("object_name") or "")
+        return (t, str(eid), oid)
+
+    merged.sort(key=sort_key, reverse=True)
+    return merged[: max(1, min(limit, 500))]
 
 
 def query_collection_page(
