@@ -1,7 +1,6 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  BrushCleaning,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -27,6 +26,7 @@ import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { AarButton } from "@/components/system/AarButton";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
+import { ScrubberRawSelectModal } from "@/pages/scrubber2/ScrubberRawSelectModal";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
 import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
 import { ENDPOINT_ACTIVATION_STATUSES, formatActivationLabel } from "@/lib/endpointActivation";
@@ -313,6 +313,20 @@ export function DeviceRegisterPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [siteId, setSiteId] = useState("");
+
+  const [rawSampleOpen, setRawSampleOpen] = useState(false);
+  const [rawSampleDeviceId, setRawSampleDeviceId] = useState("");
+  const [rawSampleDeviceName, setRawSampleDeviceName] = useState("");
+
+  const openRawSampleModal = useCallback((d: DeviceRead) => {
+    setRawSampleDeviceId(d.id);
+    setRawSampleDeviceName(d.name);
+    setRawSampleOpen(true);
+  }, []);
+
+  const closeRawSampleModal = useCallback(() => {
+    setRawSampleOpen(false);
+  }, []);
 
   const loadSites = useCallback(async () => {
     try {
@@ -969,37 +983,14 @@ export function DeviceRegisterPage() {
                               >
                                 <Settings2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </Link>
-                              <Link
-                                className="dm-act-grid__btn"
-                                to={`/devices/raw?deviceId=${encodeURIComponent(d.id)}`}
+                              <OpsActionButton
+                                tone="plain"
                                 title="View last sample payload (raw archives)"
                                 aria-label={`View raw sample for ${d.name}`}
+                                onClick={() => openRawSampleModal(d)}
                               >
                                 <FileJson2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </Link>
-                              {d.endpoint?.activation_status === "active" ? (
-                                <Link
-                                  className="dm-act-grid__btn"
-                                  to={`/scrubber/v2/create?deviceId=${encodeURIComponent(d.id)}&returnTo=${encodeURIComponent("/devices/register#registered-devices-table")}`}
-                                  title="Scrubber pipeline (v2)"
-                                  aria-label={`Open scrubber pipeline for ${d.name}`}
-                                >
-                                  <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                                </Link>
-                              ) : (
-                                <OpsActionButton
-                                  className="dm-act-grid__btn--disabled"
-                                  disabled
-                                  title={
-                                    d.endpoint
-                                      ? "Scrubber pipeline is available when activation status is Active."
-                                      : "Save an endpoint and reach Active activation to open the scrubber pipeline from this list."
-                                  }
-                                  aria-label={`Scrubber pipeline unavailable for ${d.name}`}
-                                >
-                                  <BrushCleaning size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                                </OpsActionButton>
-                              )}
+                              </OpsActionButton>
                             </div>
                           </td>
                         </tr>
@@ -1080,6 +1071,13 @@ export function DeviceRegisterPage() {
           </div>
         </form>
       </AppModalShell>
+
+      <ScrubberRawSelectModal
+        open={rawSampleOpen && Boolean(rawSampleDeviceId)}
+        onClose={closeRawSampleModal}
+        deviceId={rawSampleDeviceId}
+        deviceName={rawSampleDeviceName}
+      />
     </PageShell>
   );
 }

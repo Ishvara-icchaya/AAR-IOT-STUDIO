@@ -464,7 +464,7 @@ export function IngestDevicesPage() {
     <PageShell variant="list" className="ingest-ept-page device-manage-page">
       <div className="dm-root">
         <OpsPageHeader
-          title="Register Endpoints"
+          title="Endpoints"
           subtitle="Create v2 ingest endpoints, link Manage Devices endpoints, and map identity for resolution."
           actions={
             <>

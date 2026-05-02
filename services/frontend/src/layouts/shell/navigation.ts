@@ -27,7 +27,7 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
   },
   {
     id: "register-endpoints",
-    label: "Register Endpoints",
+    label: "Endpoints",
     to: "/devices/ingest",
     alsoActiveOn: ["/devices/ingest"],
   },
@@ -138,7 +138,7 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/devices/register") return "Manage Devices";
   if (pathname === "/devices/manage") return "Manage device";
   if (pathname === "/devices/raw") return "Raw Data";
-  if (pathname.startsWith("/devices/ingest")) return "Register Endpoints";
+  if (pathname.startsWith("/devices/ingest")) return "Endpoints";
   if (pathname === "/enterprise-ai") return "Enterprise AI";
   if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
   if (pathname === "/administration/users") return "Users";

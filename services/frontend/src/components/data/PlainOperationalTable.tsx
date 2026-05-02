@@ -42,11 +42,19 @@ export type PlainOperationalTableProps<T> = {
   innerScroll?: boolean;
   /** Adds border + radius around the shell (monitoring-style). */
   bordered?: boolean;
+  /** `dm`: Manage Devices–style table (dm-table-scroll, dm-data-table__td/th). */
+  tableVariant?: "op" | "dm";
 };
 
-function alignClass(align: PlainOperationalColumn<unknown>["align"], prefix: "th" | "td"): string {
+function alignClassOp(align: PlainOperationalColumn<unknown>["align"], prefix: "th" | "td"): string {
   if (align === "center") return ` op-data-table__${prefix}--center`;
   if (align === "right") return ` op-data-table__${prefix}--right`;
+  return "";
+}
+
+function alignClassDm(align: PlainOperationalColumn<unknown>["align"], prefix: "th" | "td"): string {
+  if (align === "center") return ` dm-data-table__${prefix}--center`;
+  if (align === "right") return ` dm-data-table__${prefix}--right`;
   return "";
 }
 
@@ -69,6 +77,7 @@ export function PlainOperationalTable<T>({
   pagerAriaLabel = "Table pages",
   bordered = false,
   innerScroll = true,
+  tableVariant = "op",
 }: PlainOperationalTableProps<T>) {
   const [page, setPage] = useState(1);
 
@@ -93,38 +102,61 @@ export function PlainOperationalTable<T>({
   const rangeEnd = pagination ? Math.min(rows.length, page * pageSize) : rows.length;
 
   if (typeof emptyMessage === "string" && rows.length === 0 && !loading) {
-    return <p className="op-table-empty">{emptyMessage || "No rows."}</p>;
+    return (
+      <p className={tableVariant === "dm" ? "dm-plain-table-empty" : "op-table-empty"}>{emptyMessage || "No rows."}</p>
+    );
   }
 
+  const alignCell = tableVariant === "dm" ? alignClassDm : alignClassOp;
+
   const densityClass =
-    density === "compact" ? " op-data-table--dense" : density === "spacious" ? " op-data-table--spacious" : "";
+    tableVariant === "op" && density === "compact"
+      ? " op-data-table--dense"
+      : tableVariant === "op" && density === "spacious"
+        ? " op-data-table--spacious"
+        : "";
 
   const scrollStyle: CSSProperties | undefined =
     !fillHeight && maxHeight ? { maxHeight } : !fillHeight ? undefined : { maxHeight: "none" };
 
+  const shellClass =
+    tableVariant === "dm"
+      ? ["dm-plain-table-harness", fillHeight ? "dm-plain-table-harness--fill" : "", className].filter(Boolean).join(" ")
+      : [
+          "op-table-shell",
+          fillHeight ? "op-table-shell--fill" : "",
+          bordered ? "op-table-shell--bordered" : "",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+  const scrollClass =
+    tableVariant === "dm"
+      ? ["dm-table-scroll", !innerScroll ? "dm-table-scroll--static" : ""].filter(Boolean).join(" ")
+      : ["op-table-scroll", !innerScroll ? "op-table-scroll--static" : ""].filter(Boolean).join(" ");
+
+  const tableClass = tableVariant === "dm" ? "dm-data-table" : `op-data-table${densityClass}`;
+  const thBase = tableVariant === "dm" ? "dm-data-table__th" : "op-data-table__th";
+  const tdBase = tableVariant === "dm" ? "dm-data-table__td" : "op-data-table__td";
+  const rowBase = tableVariant === "dm" ? "dm-data-table__row" : "op-data-table__row";
+  const rowClick = tableVariant === "dm" ? "dm-data-table__row--clickable" : "op-data-table__row--clickable";
+  const loadingCls = tableVariant === "dm" ? "dm-table-loading" : "op-table-loading";
+  const pagerCls = tableVariant === "dm" ? "dm-table-pager" : "op-table-pager";
+  const pagerControlsCls = tableVariant === "dm" ? "dm-table-pager__controls" : "op-table-pager__controls";
+  const muted = tableVariant === "dm" ? "var(--dm-muted)" : "var(--color-text-muted)";
+
   return (
-    <div
-      className={[
-        "op-table-shell",
-        fillHeight ? "op-table-shell--fill" : "",
-        bordered ? "op-table-shell--bordered" : "",
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      {loading ? <p className="op-table-loading">{loadingMessage}</p> : null}
-      <div
-        className={["op-table-scroll", !innerScroll ? "op-table-scroll--static" : ""].filter(Boolean).join(" ")}
-        style={scrollStyle}
-      >
-        <table className={`op-data-table${densityClass}`}>
+    <div className={shellClass}>
+      {loading ? <p className={loadingCls}>{loadingMessage}</p> : null}
+      <div className={scrollClass} style={scrollStyle}>
+        <table className={tableClass}>
           <thead>
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.id}
-                  className={`op-data-table__th${alignClass(col.align, "th")}`}
+                  className={`${thBase}${alignCell(col.align, "th")}`}
                   scope="col"
                   title={col.headerTitle}
                 >
@@ -136,13 +168,13 @@ export function PlainOperationalTable<T>({
           <tbody>
             {loading && rows.length === 0 ? (
               <tr>
-                <td className="op-data-table__td" colSpan={columns.length} style={{ color: "var(--color-text-muted)" }}>
+                <td className={tdBase} colSpan={columns.length} style={{ color: muted }}>
                   {loadingMessage}
                 </td>
               </tr>
             ) : !loading && pageRows.length === 0 ? (
               <tr>
-                <td className="op-data-table__td" colSpan={columns.length} style={{ color: "var(--color-text-muted)" }}>
+                <td className={tdBase} colSpan={columns.length} style={{ color: muted }}>
                   No rows.
                 </td>
               </tr>
@@ -153,13 +185,11 @@ export function PlainOperationalTable<T>({
                 return (
                   <tr
                     key={id}
-                    className={["op-data-table__row", onRowClick ? "op-data-table__row--clickable" : "", extra || ""]
-                      .filter(Boolean)
-                      .join(" ")}
+                    className={[rowBase, onRowClick ? rowClick : "", extra || ""].filter(Boolean).join(" ")}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
                   >
                     {columns.map((col) => (
-                      <td key={col.id} className={`op-data-table__td${alignClass(col.align, "td")}`}>
+                      <td key={col.id} className={`${tdBase}${alignCell(col.align, "td")}`}>
                         {col.cell(row)}
                       </td>
                     ))}
@@ -171,11 +201,11 @@ export function PlainOperationalTable<T>({
         </table>
       </div>
       {showPager ? (
-        <div className="op-table-pager" role="navigation" aria-label={pagerAriaLabel}>
+        <div className={pagerCls} role="navigation" aria-label={pagerAriaLabel}>
           <span>
             {rangeStart}–{rangeEnd} of {rows.length}
           </span>
-          <div className="op-table-pager__controls">
+          <div className={pagerControlsCls}>
             <AarButton
               variant="outline"
               className="op-table-pager__action"

@@ -1,10 +1,18 @@
 import { AppTabs } from "@/components/app";
 
-export type MonitoringTabId = "overview" | "services" | "queues" | "resources" | "storage" | "ai";
+export type MonitoringTabId =
+  | "overview"
+  | "services"
+  | "incidents"
+  | "queues"
+  | "resources"
+  | "storage"
+  | "ai";
 
 const TABS: { id: MonitoringTabId; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "services", label: "Services" },
+  { id: "incidents", label: "Recent incidents" },
   { id: "queues", label: "Queues" },
   { id: "resources", label: "Resources" },
   { id: "storage", label: "Storage" },
@@ -19,11 +27,8 @@ export function MonitoringTabs({
   onChange: (t: MonitoringTabId) => void;
 }) {
   return (
-    <AppTabs
-      tabs={TABS}
-      active={active}
-      onChange={onChange}
-      ariaLabel="Monitoring sections"
-    />
+    <div className="monitoring-page__tabs">
+      <AppTabs tabs={TABS} active={active} onChange={onChange} ariaLabel="Monitoring sections" />
+    </div>
   );
 }

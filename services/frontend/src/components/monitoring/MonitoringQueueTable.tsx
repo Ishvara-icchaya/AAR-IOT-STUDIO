@@ -56,14 +56,13 @@ export function MonitoringQueueTable({
   }, [onView]);
 
   return (
-    <div className="dm-table-scroll">
-      <PlainOperationalTable<MonitoringQueueRow>
-        rows={rows}
-        columns={columns}
-        getRowId={(r) => r.topic}
-        bordered={false}
-        emptyMessage="Kafka unreachable or no queue data."
-      />
-    </div>
+    <PlainOperationalTable<MonitoringQueueRow>
+      rows={rows}
+      columns={columns}
+      getRowId={(r) => r.topic}
+      bordered={false}
+      tableVariant="dm"
+      emptyMessage="Kafka unreachable or no queue data."
+    />
   );
 }

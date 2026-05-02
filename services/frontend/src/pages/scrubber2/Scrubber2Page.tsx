@@ -554,7 +554,7 @@ export function Scrubber2Page() {
       setOk(
         pkPaths.length
           ? "Platform ingest linked. Identity paths from Scrubber semantics are applied automatically when validation succeeds (using your frozen pipeline and archived raw if needed)."
-          : "Platform ingest linked. Tag fields as Identity in Scrubber semantics, freeze the pipeline, then link again — or set primary paths on Register Endpoints.",
+          : "Platform ingest linked. Tag fields as Identity in Scrubber semantics, freeze the pipeline, then link again — or set primary paths on Endpoints.",
       );
       navigateAfterOptionalConnect();
     } catch (e) {
@@ -704,18 +704,8 @@ export function Scrubber2Page() {
             </button>
             <button
               type="button"
-              className="scrubber2-muted"
-              style={{
-                fontSize: "0.78rem",
-                marginLeft: "0.35rem",
-                background: "none",
-                border: "none",
-                padding: 0,
-                cursor: deviceId ? "pointer" : "not-allowed",
-                font: "inherit",
-                textDecoration: "underline",
-                opacity: deviceId ? 1 : 0.45,
-              }}
+              className="scrubber2-btn scrubber2-btn--ghost"
+              style={{ marginLeft: "0.35rem" }}
               disabled={!deviceId}
               title={!deviceId ? "Select a device first" : undefined}
               onClick={() => deviceId && setRawSampleModalOpen(true)}
@@ -812,7 +802,7 @@ export function Scrubber2Page() {
                 Optional next step: link a platform stream so dashboards and resolved devices can use this device.
                 You can always add or change streams from{" "}
                 <Link to="/devices/ingest" onClick={() => setConnectModalOpen(false)}>
-                  Register Endpoints
+                  Endpoints
                 </Link>
                 .
               </p>
@@ -874,7 +864,7 @@ export function Scrubber2Page() {
                   <Link to={`/devices/manage?device=${encodeURIComponent(deviceId)}`} onClick={() => setConnectModalOpen(false)}>
                     Manage device
                   </Link>{" "}
-                  first, then you can create a linked stream from Register Endpoints.
+                  first, then you can create a linked stream from the Endpoints page.
                 </p>
               ) : null}
 
@@ -899,7 +889,7 @@ export function Scrubber2Page() {
                   <p className="scrubber2-muted" style={{ margin: "0.45rem 0 0", fontSize: "0.72rem", lineHeight: 1.4 }}>
                     Stream key is assigned automatically. You can change the display name later from{" "}
                     <Link to="/devices/ingest" onClick={() => setConnectModalOpen(false)}>
-                      Register Endpoints
+                      Endpoints
                     </Link>
                     .
                   </p>

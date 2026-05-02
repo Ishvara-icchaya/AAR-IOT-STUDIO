@@ -109,12 +109,13 @@ export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
       <div className="monitoring-ai-summary-card">
         <OpsSummary ops={data.ops} />
       </div>
-      <div className="dm-table-scroll" style={{ marginBottom: "1.25rem" }}>
+      <div style={{ marginBottom: "1.25rem" }}>
         <PlainOperationalTable<MonitoringAiServiceRow>
           rows={data.services}
           columns={serviceColumns}
           getRowId={(r) => r.service}
           bordered={false}
+          tableVariant="dm"
           emptyMessage="No AI services in this response."
         />
       </div>
@@ -124,14 +125,13 @@ export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
           None recorded.
         </p>
       ) : (
-        <div className="dm-table-scroll">
-          <PlainOperationalTable<AiIssueRow>
-            rows={issueRows}
-            columns={issueColumns}
-            getRowId={(r) => r._rowId}
-            bordered={false}
-          />
-        </div>
+        <PlainOperationalTable<AiIssueRow>
+          rows={issueRows}
+          columns={issueColumns}
+          getRowId={(r) => r._rowId}
+          bordered={false}
+          tableVariant="dm"
+        />
       )}
     </div>
   );

@@ -16,16 +16,13 @@ import {
 import { MonitoringAiTable } from "@/components/monitoring/MonitoringAiTable";
 import { MonitoringIncidentTable } from "@/components/monitoring/MonitoringIncidentTable";
 import { MonitoringLoadingBlock } from "@/components/monitoring/MonitoringLoadingBlock";
-import { MonitoringMetricCard } from "@/components/monitoring/MonitoringMetricCard";
-import { MonitoringOverviewGauges } from "@/components/monitoring/MonitoringOverviewGauges";
-import { MonitoringOverviewCards } from "@/components/monitoring/MonitoringOverviewCards";
+import { MonitoringOverviewV2 } from "@/components/monitoring/MonitoringOverviewV2";
 import { MonitoringQueueDetailDrawer } from "@/components/monitoring/MonitoringQueueDetailDrawer";
 import { MonitoringQueueTable } from "@/components/monitoring/MonitoringQueueTable";
 import { MonitoringResourcesTable } from "@/components/monitoring/MonitoringResourcesTable";
 import { MonitoringServiceDetailDrawer } from "@/components/monitoring/MonitoringServiceDetailDrawer";
 import { MonitoringServiceTable } from "@/components/monitoring/MonitoringServiceTable";
 import { MonitoringStorageTable } from "@/components/monitoring/MonitoringStorageTable";
-import { MonitoringAlertsStrip } from "@/components/ops/MonitoringAlertsStrip";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { MonitoringTabs, type MonitoringTabId } from "@/components/monitoring/MonitoringTabs";
@@ -33,7 +30,15 @@ import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import "@/pages/device-register-page.css";
 
-const TAB_IDS: MonitoringTabId[] = ["overview", "services", "queues", "resources", "storage", "ai"];
+const TAB_IDS: MonitoringTabId[] = [
+  "overview",
+  "services",
+  "incidents",
+  "queues",
+  "resources",
+  "storage",
+  "ai",
+];
 
 const DATA_TABS: MonitoringTabId[] = ["services", "queues", "resources", "storage"];
 
@@ -67,6 +72,7 @@ export function MonitoringPage() {
   const [ai, setAi] = useState<MonitoringAiPayload | null>(null);
   const [drawerService, setDrawerService] = useState<string | null>(null);
   const [drawerQueue, setDrawerQueue] = useState<MonitoringQueueRow | null>(null);
+  const [overviewFetchedAt, setOverviewFetchedAt] = useState<number | null>(null);
 
   useShellFeedback(err, null);
 
@@ -75,10 +81,11 @@ export function MonitoringPage() {
     setErr(null);
     if (!silent) setLoading(true);
     try {
-      if (t === "overview") {
-        const o = await fetchMonitoringOverview();
-        setOverview(o ?? null);
-      } else if (t === "services") {
+      const o = await fetchMonitoringOverview();
+      setOverview(o ?? null);
+      setOverviewFetchedAt(Date.now());
+
+      if (t === "services") {
         const s = await fetchMonitoringServices();
         setServices(s ?? []);
       } else if (t === "queues") {
@@ -116,13 +123,13 @@ export function MonitoringPage() {
   }, [tab, pendingServiceDrawer, services, loading]);
 
   useEffect(() => {
-    const ms = tab === "overview" ? 30_000 : 45_000;
+    const ms = tab === "overview" || tab === "incidents" ? 30_000 : 45_000;
     const id = window.setInterval(() => void loadTab(tab, { silent: true }), ms);
     return () => window.clearInterval(id);
   }, [tab, loadTab]);
 
   const showDataLoading = loading && isDataTab(tab);
-  const showOverviewLoading = loading && tab === "overview" && !overview;
+  const showOverviewLoading = loading && (tab === "overview" || tab === "incidents") && !overview;
   const showAiLoading = loading && tab === "ai";
 
   return (
@@ -130,10 +137,9 @@ export function MonitoringPage() {
       <div className="dm-root">
         <OpsPageHeader
           title="Monitoring"
-          subtitle="Platform health, services, queues, resources, storage, and AI usage — same layout as Manage Devices."
+          subtitle="Platform health, services, queues, resources, storage, and AI usage."
         />
 
-        <MonitoringAlertsStrip />
         <MonitoringTabs active={tab} onChange={setTab} />
 
         <div className="monitoring-page__tab-scroll">
@@ -146,52 +152,7 @@ export function MonitoringPage() {
               </OpsDataTable>
             ) : overview ? (
               <div className="monitoring-tab-panel">
-                <MonitoringOverviewCards summary={overview.summary} />
-                <MonitoringOverviewGauges summary={overview.summary} />
-                <div className="monitoring-tab-panel__subhead">Resource summary</div>
-                <div className="monitoring-metric-row">
-                  <MonitoringMetricCard
-                    title="CPU (API process)"
-                    status={overview.summary.cpu_percent != null ? "healthy" : "unknown"}
-                    subtitle={overview.summary.cpu_percent != null ? `${overview.summary.cpu_percent}%` : "n/a"}
-                  />
-                  <MonitoringMetricCard
-                    title="Memory (host %)"
-                    status={overview.summary.memory_percent != null ? "healthy" : "unknown"}
-                    subtitle={
-                      overview.summary.memory_percent != null ? `${overview.summary.memory_percent}%` : "n/a (host psutil)"
-                    }
-                  />
-                  <MonitoringMetricCard
-                    title="Active alerts"
-                    status={overview.summary.active_alerts > 0 ? "warning" : "healthy"}
-                    subtitle={`${overview.summary.active_alerts} open`}
-                  />
-                  <MonitoringMetricCard
-                    title="Queue lag"
-                    status={overview.summary.queue_status ?? "unknown"}
-                    subtitle={
-                      overview.summary.queue_lag_messages != null
-                        ? `${overview.summary.queue_lag_messages} msgs (sum)`
-                        : "n/a"
-                    }
-                  />
-                  <MonitoringMetricCard
-                    title="WebSockets"
-                    status="unknown"
-                    subtitle={
-                      overview.summary.websocket_connections != null
-                        ? String(overview.summary.websocket_connections)
-                        : "n/a Phase 1"
-                    }
-                  />
-                </div>
-                <div className="monitoring-tab-panel__subhead">Recent incidents</div>
-                <OpsDataTable>
-                  <div className="dm-device-table-shell">
-                    <MonitoringIncidentTable items={overview.recent_incidents} />
-                  </div>
-                </OpsDataTable>
+                <MonitoringOverviewV2 summary={overview.summary} lastFetchedAt={overviewFetchedAt} />
               </div>
             ) : null)}
 
@@ -206,6 +167,21 @@ export function MonitoringPage() {
               </div>
             </OpsDataTable>
           )}
+
+          {tab === "incidents" &&
+            (showOverviewLoading ? (
+              <OpsDataTable>
+                <div className="dm-device-table-shell">
+                  <MonitoringLoadingBlock label="Loading incidents…" />
+                </div>
+              </OpsDataTable>
+            ) : overview ? (
+              <OpsDataTable>
+                <div className="dm-device-table-shell">
+                  <MonitoringIncidentTable items={overview.recent_incidents} />
+                </div>
+              </OpsDataTable>
+            ) : null)}
 
           {tab === "queues" && (
             <OpsDataTable>

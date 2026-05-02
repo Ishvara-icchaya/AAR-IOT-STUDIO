@@ -1,0 +1,269 @@
+/* NOC overview — scoped; inherits Manage Devices / dm-root tokens (--dm-*). */
+
+.monitoring-overview-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.monitoring-overview-v2__section-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dm-muted);
+}
+
+.monitoring-overview-v2__command {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.45rem;
+}
+
+.monitoring-overview-v2__command-cell {
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid var(--dm-border);
+  background: var(--dm-surface);
+  min-width: 0;
+}
+
+.monitoring-overview-v2__command-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dm-muted);
+  margin-bottom: 0.2rem;
+}
+
+.monitoring-overview-v2__command-value {
+  font-size: 0.92rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--dm-text);
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.monitoring-overview-v2__command-sub {
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  color: var(--dm-muted);
+  line-height: 1.35;
+}
+
+.monitoring-overview-v2__health-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  border: 1px solid var(--dm-border);
+}
+
+.monitoring-overview-v2__health-pill--healthy {
+  color: color-mix(in oklab, var(--dm-neon) 92%, var(--dm-text));
+  border-color: color-mix(in oklab, var(--dm-neon) 45%, var(--dm-border));
+  background: color-mix(in oklab, var(--dm-neon) 12%, var(--dm-surface));
+}
+
+.monitoring-overview-v2__health-pill--degraded {
+  color: color-mix(in oklab, var(--dm-warn) 90%, var(--dm-text));
+  border-color: color-mix(in oklab, var(--dm-warn) 45%, var(--dm-border));
+  background: color-mix(in oklab, var(--dm-warn) 12%, var(--dm-surface));
+}
+
+.monitoring-overview-v2__health-pill--critical {
+  color: color-mix(in oklab, var(--dm-danger) 92%, var(--dm-text));
+  border-color: color-mix(in oklab, var(--dm-danger) 45%, var(--dm-border));
+  background: color-mix(in oklab, var(--dm-danger) 14%, var(--dm-surface));
+}
+
+.monitoring-overview-v2__platform-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.45rem;
+}
+
+.monitoring-overview-v2__platform-grid .dm-kpi {
+  min-height: 4rem;
+}
+
+.monitoring-overview-v2__ops-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.45rem;
+}
+
+.monitoring-overview-v2__ops-card {
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid var(--dm-border);
+  background: color-mix(in oklab, var(--dm-surface-2) 88%, transparent);
+  min-width: 0;
+}
+
+.monitoring-overview-v2__ops-card-title {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dm-muted);
+  margin-bottom: 0.35rem;
+}
+
+.monitoring-overview-v2__ops-metric {
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--dm-text);
+}
+
+.monitoring-overview-v2__ops-note {
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  color: var(--dm-muted);
+  line-height: 1.4;
+}
+
+.monitoring-overview-v2__lag-track {
+  margin-top: 0.35rem;
+  height: 6px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--dm-surface) 70%, var(--dm-border));
+  overflow: hidden;
+}
+
+.monitoring-overview-v2__lag-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--dm-neon) 55%, var(--dm-accent-blue)),
+    color-mix(in oklab, var(--dm-accent-blue) 70%, var(--dm-neon))
+  );
+  max-width: 100%;
+}
+
+.monitoring-overview-v2__resource-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+@media (min-width: 900px) {
+  .monitoring-overview-v2__resource-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
+}
+
+.monitoring-overview-v2__resource-panel,
+.monitoring-overview-v2__matrix-panel {
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  border: 1px solid var(--dm-border);
+  background: var(--dm-surface);
+  min-width: 0;
+}
+
+.monitoring-overview-v2__meter {
+  margin-top: 0.45rem;
+}
+
+.monitoring-overview-v2__meter:first-of-type {
+  margin-top: 0.25rem;
+}
+
+.monitoring-overview-v2__meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin-bottom: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--dm-muted);
+}
+
+.monitoring-overview-v2__meter-val {
+  font-weight: 700;
+  color: var(--dm-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.monitoring-overview-v2__meter-track {
+  height: 8px;
+  border-radius: 5px;
+  background: color-mix(in oklab, var(--dm-surface-2) 85%, var(--dm-border));
+  overflow: hidden;
+}
+
+.monitoring-overview-v2__meter-fill {
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--dm-accent-blue) 75%, var(--dm-neon)),
+    color-mix(in oklab, var(--dm-neon) 65%, var(--dm-accent-blue))
+  );
+  max-width: 100%;
+}
+
+.monitoring-overview-v2__matrix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.monitoring-overview-v2__matrix-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.35rem 0.2rem;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border);
+  background: color-mix(in oklab, var(--dm-surface-2) 75%, transparent);
+  min-width: 0;
+}
+
+.monitoring-overview-v2__matrix-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dm-muted);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.monitoring-overview-v2__matrix-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.monitoring-overview-v2__matrix-dot--ok {
+  background: var(--dm-neon);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--dm-neon) 50%, transparent);
+}
+
+.monitoring-overview-v2__matrix-dot--warn {
+  background: var(--dm-warn);
+}
+
+.monitoring-overview-v2__matrix-dot--bad {
+  background: var(--dm-danger);
+}
+
+.monitoring-overview-v2__matrix-dot--unk {
+  background: var(--dm-muted);
+  opacity: 0.75;
+}

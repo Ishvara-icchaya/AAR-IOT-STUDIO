@@ -1,39 +1,30 @@
 import { ChevronRight } from "lucide-react";
 import { useAlertsModal } from "@/contexts/AlertsModalContext";
+import { AarButton } from "@/components/system/AarButton";
 
 export function MonitoringAlertsStrip() {
   const { openList } = useAlertsModal();
 
   return (
-    <div className="monitoring-alerts-strip">
-      <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--color-text)" }}>Alerts & notifications</span>
-      <span style={{ fontSize: "0.78rem", color: "var(--color-text-muted)" }}>
-        Open incidents, routing, and delivery status in the unified alerts hub.
-      </span>
-      <button
-        type="button"
-        onClick={() => openList()}
-        style={{
-          marginLeft: "auto",
-          padding: "0.35rem 0.85rem",
-          borderRadius: "var(--radius)",
-          border: "1px solid color-mix(in oklab, var(--color-accent) 40%, var(--color-border))",
-          background: "color-mix(in oklab, var(--color-accent) 12%, transparent)",
-          color: "var(--color-text)",
-          fontSize: "0.8rem",
-          fontWeight: 600,
-          textDecoration: "none",
-          transition: "transform 0.15s ease",
-          cursor: "pointer",
-          fontFamily: "inherit",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "0.15rem",
-        }}
-      >
-        Open alerts
-        <ChevronRight size={16} strokeWidth={2} aria-hidden />
-      </button>
+    <div className="dm-filter-panel monitoring-alerts-strip" style={{ marginBottom: "0.75rem" }}>
+      <div className="dm-controls-form__row monitoring-alerts-strip__row" style={{ alignItems: "center" }}>
+        <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "var(--dm-text)" }}>
+          Alerts &amp; notifications
+        </span>
+        <span style={{ fontSize: "0.78rem", color: "var(--dm-muted)", flex: "1 1 12rem", minWidth: 0 }}>
+          Open incidents, routing, and delivery status in the unified alerts hub.
+        </span>
+        <AarButton
+          type="button"
+          variant="outline"
+          className="monitoring-alerts-strip__cta"
+          style={{ marginLeft: "auto" }}
+          onClick={() => openList()}
+        >
+          Open alerts
+          <ChevronRight size={16} strokeWidth={2} aria-hidden />
+        </AarButton>
+      </div>
     </div>
   );
 }

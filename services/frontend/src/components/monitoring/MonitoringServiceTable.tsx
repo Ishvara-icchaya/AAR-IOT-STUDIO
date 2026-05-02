@@ -159,17 +159,16 @@ export function MonitoringServiceTable({
           <option value="llm">llm</option>
         </select>
       </form>
-      <div className="dm-table-scroll">
-        <PlainOperationalTable<MonitoringServiceRow>
-          rows={filtered}
-          columns={columns}
-          getRowId={(r) => r.service_name}
-          bordered={false}
-          onRowClick={(r) => onView(r.service_name)}
-          resetPageKey={`${q}|${statusF}|${typeF}|${filtered.length}`}
-          emptyMessage="No services reported for this environment."
-        />
-      </div>
+      <PlainOperationalTable<MonitoringServiceRow>
+        rows={filtered}
+        columns={columns}
+        getRowId={(r) => r.service_name}
+        bordered={false}
+        tableVariant="dm"
+        onRowClick={(r) => onView(r.service_name)}
+        resetPageKey={`${q}|${statusF}|${typeF}|${filtered.length}`}
+        emptyMessage="No services reported for this environment."
+      />
     </div>
   );
 }

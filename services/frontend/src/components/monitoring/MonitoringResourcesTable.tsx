@@ -20,14 +20,13 @@ export function MonitoringResourcesTable({ rows }: { rows: MonitoringResourceRow
   }, []);
 
   return (
-    <div className="dm-table-scroll">
-      <PlainOperationalTable<MonitoringResourceRow>
-        rows={rows}
-        columns={columns}
-        getRowId={(r) => r.component}
-        bordered={false}
-        emptyMessage="No resource metrics reported."
-      />
-    </div>
+    <PlainOperationalTable<MonitoringResourceRow>
+      rows={rows}
+      columns={columns}
+      getRowId={(r) => r.component}
+      bordered={false}
+      tableVariant="dm"
+      emptyMessage="No resource metrics reported."
+    />
   );
 }

@@ -27,14 +27,13 @@ export function MonitoringStorageTable({ rows }: { rows: MonitoringStorageRow[] 
   }, []);
 
   return (
-    <div className="dm-table-scroll">
-      <PlainOperationalTable<MonitoringStorageRow>
-        rows={rows}
-        columns={columns}
-        getRowId={(r) => r.storage_layer}
-        bordered={false}
-        emptyMessage="No storage metrics reported."
-      />
-    </div>
+    <PlainOperationalTable<MonitoringStorageRow>
+      rows={rows}
+      columns={columns}
+      getRowId={(r) => r.storage_layer}
+      bordered={false}
+      tableVariant="dm"
+      emptyMessage="No storage metrics reported."
+    />
   );
 }
