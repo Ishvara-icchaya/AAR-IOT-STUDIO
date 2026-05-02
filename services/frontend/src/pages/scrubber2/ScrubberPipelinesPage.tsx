@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Eye, GitBranch, Pencil, RefreshCw, Search } from "lucide-react";
 import { apiFetch } from "@/api/client";
 import { listDevices, type DeviceRead } from "@/api/devices";
+import { listEndpoints } from "@/api/endpoints";
 import { PageStatus } from "@/components/PageStatus";
 import { AarButton } from "@/components/system/AarButton";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
@@ -38,6 +39,8 @@ type PipelineRow = {
   protocol: string;
   version: string;
   status: PipelineStatus;
+  /** True when a v2 platform endpoint is linked to this device's connectivity row. */
+  ingestLinked: boolean;
   lastPublished: string | null;
   lastData: string | null;
 };
@@ -121,6 +124,18 @@ export function ScrubberPipelinesPage() {
       for (const s of siteRows ?? []) siteMap[s.id] = s.name;
       setSitesById(siteMap);
 
+      let linkedDeviceEndpointIds = new Set<string>();
+      try {
+        const epList = await listEndpoints();
+        linkedDeviceEndpointIds = new Set(
+          (epList?.items ?? [])
+            .map((e) => e.device_endpoint_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        );
+      } catch {
+        /* list still useful without link column */
+      }
+
       const deviceObjectResults = await Promise.all(
         devices.map(async (d) => {
           try {
@@ -140,6 +155,7 @@ export function ScrubberPipelinesPage() {
         const ss = obj.mapping.scrubberStudio as Record<string, unknown> | undefined;
         const version = typeof ss?.version === "string" && ss.version.trim() ? ss.version : "—";
         const publishedAt = toMs(obj.updated_at);
+        const depId = d.endpoint?.id ?? null;
         next.push({
           deviceId: d.id,
           pipelineName: deriveName(d, obj.mapping),
@@ -148,6 +164,7 @@ export function ScrubberPipelinesPage() {
           protocol: protocolLabel(d.endpoint?.protocol ?? null),
           version: version === "—" ? "—" : `v${version}`,
           status: s,
+          ingestLinked: Boolean(depId && linkedDeviceEndpointIds.has(depId)),
           lastPublished: fmtAgo(publishedAt),
           lastData: fmtAgo(lastDataReceivedMs(d)),
         });
@@ -175,7 +192,7 @@ export function ScrubberPipelinesPage() {
       if (status !== "all" && r.status !== status) return false;
       if (protocol !== "all" && r.protocol !== protocol) return false;
       if (!q) return true;
-      const hay = `${r.pipelineName} ${r.deviceName} ${r.protocol}`.toLowerCase();
+      const hay = `${r.pipelineName} ${r.deviceName} ${r.protocol} ${r.ingestLinked ? "linked" : ""}`.toLowerCase();
       return hay.includes(q);
     });
   }, [rows, appliedSearch, status, protocol]);
@@ -286,6 +303,7 @@ export function ScrubberPipelinesPage() {
                   <th className="dm-data-table__th">Protocol</th>
                   <th className="dm-data-table__th dm-data-table__th--center">Version</th>
                   <th className="dm-data-table__th dm-data-table__th--center">Status</th>
+                  <th className="dm-data-table__th dm-data-table__th--center">Ingest linked</th>
                   <th className="dm-data-table__th">Last published</th>
                   <th className="dm-data-table__th">Last data</th>
                   <th className="dm-data-table__th dm-data-table__th--actions">Actions</th>
@@ -294,13 +312,13 @@ export function ScrubberPipelinesPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td className="dm-data-table__empty" colSpan={9}>
+                    <td className="dm-data-table__empty" colSpan={10}>
                       Loading…
                     </td>
                   </tr>
                 ) : pageRows.length === 0 ? (
                   <tr>
-                    <td className="dm-data-table__empty" colSpan={9}>
+                    <td className="dm-data-table__empty" colSpan={10}>
                       No scrubber pipelines match the current filters.
                     </td>
                   </tr>
@@ -316,6 +334,12 @@ export function ScrubberPipelinesPage() {
                       <td className="dm-data-table__td dm-data-table__td--center">{r.version}</td>
                       <td className="dm-data-table__td dm-data-table__td--center">
                         <OpsStatusPill status={r.status} variant={toneForStatus(r.status)} />
+                      </td>
+                      <td className="dm-data-table__td dm-data-table__td--center">
+                        <OpsStatusPill
+                          status={r.ingestLinked ? "Linked" : "Not linked"}
+                          variant={r.ingestLinked ? "online" : "muted"}
+                        />
                       </td>
                       <td className="dm-data-table__td dm-data-table__td--muted">{r.lastPublished}</td>
                       <td className="dm-data-table__td dm-data-table__td--muted">{r.lastData}</td>

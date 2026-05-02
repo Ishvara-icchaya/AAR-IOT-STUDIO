@@ -1,10 +1,14 @@
 import "./scrubber2.css";
 import "../device-register-page.css";
+import "@/components/app/confirm-action-modal.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch } from "@/api/client";
-import { listDevices } from "@/api/devices";
+import { apiFetch, isApiHttpError } from "@/api/client";
+import { createEndpoint, listEndpoints, type EndpointRead } from "@/api/endpoints";
+import { getDevice, listDevices } from "@/api/devices";
+import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
+import { isValidCustomEndpointName, protocolLabelForTable } from "@/lib/ingestEndpointFormOptions";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
@@ -89,12 +93,16 @@ function hydrateV2Model(partial: Partial<Scrubber2Model> | null | undefined): Sc
   };
 }
 
+type ConnectPostFreezePhase = "checking" | "form" | "linked" | "no_endpoint" | "failed";
+
 export function Scrubber2Page() {
   const navigate = useNavigate();
   const { siteId: opsSiteId, setSiteId: setOpsSiteId, refreshToken } = useOpsShell();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawIdParam = searchParams.get("rawId");
   const deviceIdParam = searchParams.get("deviceId");
+  const returnToRaw = searchParams.get("returnTo") ?? "";
+  const safeReturnTo = returnToRaw.startsWith("/") ? returnToRaw : "";
 
   const [devices, setDevices] = useState<Array<{ id: string; name: string; site_id: string }>>([]);
   const [deviceId, setDeviceId] = useState(deviceIdParam ?? "");
@@ -114,6 +122,20 @@ export function Scrubber2Page() {
   const [ok, setOk] = useState<string | null>(null);
   const confirm = useConfirmAction();
   useShellFeedback(err, ok);
+
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [connectPhase, setConnectPhase] = useState<ConnectPostFreezePhase>("checking");
+  const [connectInnerBusy, setConnectInnerBusy] = useState(false);
+  const [connectSubmitBusy, setConnectSubmitBusy] = useState(false);
+  const [connectErr, setConnectErr] = useState<string | null>(null);
+  const [connectFrozenVersion, setConnectFrozenVersion] = useState("");
+  const [connectSiteId, setConnectSiteId] = useState("");
+  const [connectSiteName, setConnectSiteName] = useState("");
+  const [connectDeviceName, setConnectDeviceName] = useState("");
+  const [connectProtocolRaw, setConnectProtocolRaw] = useState("mqtt");
+  const [connectDeviceEndpointId, setConnectDeviceEndpointId] = useState<string | null>(null);
+  const [connectLinkedEndpoint, setConnectLinkedEndpoint] = useState<EndpointRead | null>(null);
+  const [connectEndpointName, setConnectEndpointName] = useState("");
 
   const didInitKeep = useRef(false);
   /** Tracks last device we resolved raw for (mirrors classic scrubber device→latest-raw bootstrap). */
@@ -403,8 +425,128 @@ export function Scrubber2Page() {
     const okSave = await saveDraft();
     if (!okSave) return;
     setOk("Saved. Returning to pipelines list…");
-    navigate("/scrubber/v2/pipelines");
-  }, [runScrubberPreview, saveDraft, navigate]);
+    navigate(safeReturnTo || "/scrubber/v2/pipelines");
+  }, [runScrubberPreview, saveDraft, navigate, safeReturnTo]);
+
+  const navigateAfterOptionalConnect = useCallback(() => {
+    navigate(safeReturnTo || "/scrubber/v2/pipelines");
+  }, [navigate, safeReturnTo]);
+
+  const dismissConnectModal = useCallback(() => {
+    setConnectModalOpen(false);
+    setConnectErr(null);
+    navigateAfterOptionalConnect();
+  }, [navigateAfterOptionalConnect]);
+
+  const loadConnectModalState = useCallback(
+    async (frozenVersion: string) => {
+      setConnectFrozenVersion(frozenVersion);
+      setConnectPhase("checking");
+      setConnectErr(null);
+      setConnectLinkedEndpoint(null);
+      setConnectSiteId("");
+      setConnectSiteName("");
+      setConnectDeviceName("");
+      setConnectProtocolRaw("mqtt");
+      setConnectDeviceEndpointId(null);
+      setConnectInnerBusy(true);
+      try {
+        const [dev, siteRows] = await Promise.all([
+          getDevice(deviceId),
+          apiFetch<Array<{ id: string; name: string }>>("/administration/sites"),
+        ]);
+        if (!dev) {
+          setConnectErr("Device not found.");
+          setConnectPhase("failed");
+          return;
+        }
+        const siteLabel = (siteRows ?? []).find((s) => s.id === dev.site_id)?.name?.trim() ?? "";
+        setConnectSiteId(dev.site_id);
+        setConnectSiteName(siteLabel);
+        setConnectDeviceName(dev.name);
+        const proto = dev.endpoint?.protocol ?? "mqtt";
+        setConnectProtocolRaw(proto);
+        const depId = dev.endpoint?.id ?? null;
+        setConnectDeviceEndpointId(depId);
+        if (!depId) {
+          setConnectPhase("no_endpoint");
+          const sug = `${dev.name} platform`.trim();
+          setConnectEndpointName(isValidCustomEndpointName(sug) ? sug : "Platform stream");
+          return;
+        }
+        const epList = await listEndpoints({ site_id: dev.site_id });
+        const items = epList?.items ?? [];
+        const linked = items.find((e) => e.device_endpoint_id === depId) ?? null;
+        if (linked) {
+          setConnectLinkedEndpoint(linked);
+          setConnectPhase("linked");
+        } else {
+          const sug = `${dev.name} platform`.trim();
+          setConnectEndpointName(isValidCustomEndpointName(sug) ? sug : "Platform stream");
+          setConnectPhase("form");
+        }
+      } catch (e) {
+        setConnectErr(
+          isApiHttpError(e) ? e.message : e instanceof Error ? e.message : "Could not load device or endpoints.",
+        );
+        setConnectPhase("failed");
+      } finally {
+        setConnectInnerBusy(false);
+      }
+    },
+    [deviceId],
+  );
+
+  const openConnectPostFreeze = useCallback(
+    (frozenVersion: string) => {
+      setConnectModalOpen(true);
+      setConnectPhase("checking");
+      void loadConnectModalState(frozenVersion);
+    },
+    [loadConnectModalState],
+  );
+
+  const submitConnectCreate = useCallback(async () => {
+    const name = connectEndpointName.trim();
+    if (!isValidCustomEndpointName(name)) {
+      setConnectErr("Use 1–255 characters: letters, numbers, spaces, and . _ - (must start with a letter or number).");
+      return;
+    }
+    if (!connectDeviceEndpointId || !connectSiteId) return;
+    setConnectSubmitBusy(true);
+    setConnectErr(null);
+    try {
+      await createEndpoint({
+        site_id: connectSiteId,
+        endpoint_name: name,
+        protocol: normalizeProtocol(connectProtocolRaw),
+        device_endpoint_id: connectDeviceEndpointId,
+        enabled: true,
+      });
+      setConnectModalOpen(false);
+      setOk("Platform ingest linked. You can finish identity mapping from Register Endpoints when ready.");
+      navigateAfterOptionalConnect();
+    } catch (e) {
+      setConnectErr(isApiHttpError(e) ? e.message : e instanceof Error ? e.message : "Create failed.");
+    } finally {
+      setConnectSubmitBusy(false);
+    }
+  }, [
+    connectEndpointName,
+    connectDeviceEndpointId,
+    connectSiteId,
+    connectProtocolRaw,
+    navigateAfterOptionalConnect,
+  ]);
+
+  useEffect(() => {
+    if (!connectModalOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") dismissConnectModal();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [connectModalOpen, dismissConnectModal]);
 
   /** Canonical live publish: legacy studio draft + version bump + publishedBody; keeps scrubber2.model in sync. */
   const runPublishPipeline = useCallback(async () => {
@@ -438,14 +580,14 @@ export function Scrubber2Page() {
         },
       });
       setMappingVersion(nextV);
-      setOk(`Pipeline frozen as version ${nextV}. Returning to the list…`);
-      navigate("/scrubber/v2/pipelines");
+      setOk(`Pipeline frozen at version ${nextV}.`);
+      openConnectPostFreeze(nextV);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Freeze failed");
     } finally {
       setBusy(false);
     }
-  }, [deviceId, samplePayload, model, objectName, mappingVersion, navigate]);
+  }, [deviceId, samplePayload, model, objectName, mappingVersion, openConnectPostFreeze]);
 
   const openPublishConfirm = useCallback(async () => {
     if (!deviceId) {
@@ -595,6 +737,197 @@ export function Scrubber2Page() {
         right={<LivePreviewPanel scrubPreview={scrubPreview} samplePayload={samplePayload} model={model} />}
       />
 
+      {connectModalOpen ? (
+        <div
+          className="confirm-action-modal__backdrop"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !connectSubmitBusy) dismissConnectModal();
+          }}
+        >
+          <div
+            className="confirm-action-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="connect-ingest-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="confirm-action-modal__head">
+              <h2 id="connect-ingest-title" className="confirm-action-modal__title">
+                Connect platform ingest
+              </h2>
+            </div>
+            <div className="confirm-action-modal__body">
+              <p style={{ marginTop: 0 }}>
+                Optional next step: link a platform stream so dashboards and resolved devices can use this device.
+                You can always add or change streams from{" "}
+                <Link to="/devices/ingest" onClick={() => setConnectModalOpen(false)}>
+                  Register Endpoints
+                </Link>
+                .
+              </p>
+              {connectInnerBusy && connectPhase === "checking" ? (
+                <p className="scrubber2-muted" style={{ marginBottom: 0 }}>
+                  Checking existing links…
+                </p>
+              ) : (
+                <dl
+                  style={{
+                    margin: "0.5rem 0 0",
+                    display: "grid",
+                    gridTemplateColumns: "8.2rem 1fr",
+                    gap: "0.35rem 0.6rem",
+                    fontSize: "0.8rem",
+                  }}
+                >
+                  <dt className="scrubber2-muted">Site</dt>
+                  <dd style={{ margin: 0 }}>{connectSiteName || connectSiteId || "—"}</dd>
+                  <dt className="scrubber2-muted">Device</dt>
+                  <dd style={{ margin: 0 }}>{connectDeviceName || "—"}</dd>
+                  <dt className="scrubber2-muted">Protocol</dt>
+                  <dd style={{ margin: 0 }}>{protocolLabelForTable(connectProtocolRaw)}</dd>
+                  <dt className="scrubber2-muted">Pipeline frozen</dt>
+                  <dd style={{ margin: 0 }}>Version {connectFrozenVersion || "—"}</dd>
+                </dl>
+              )}
+
+              {connectPhase === "linked" && connectLinkedEndpoint ? (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <p style={{ margin: "0 0 0.4rem", color: "var(--dm-text, #f4f6f8)", fontWeight: 600 }}>
+                    Already connected
+                  </p>
+                  <p style={{ margin: "0 0 0.5rem", fontSize: "0.8rem" }}>
+                    Stream <strong>{connectLinkedEndpoint.endpoint_name}</strong> is linked to this device&apos;s
+                    connectivity row.
+                  </p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem" }}>
+                    <Link
+                      className="scrubber2-muted"
+                      to={`/devices/ingest/${encodeURIComponent(connectLinkedEndpoint.id)}/identity`}
+                      onClick={() => setConnectModalOpen(false)}
+                    >
+                      Identity mapping
+                    </Link>
+                    <span className="scrubber2-muted" aria-hidden>
+                      ·
+                    </span>
+                    <Link className="scrubber2-muted" to="/devices/ingest" onClick={() => setConnectModalOpen(false)}>
+                      Manage streams
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+
+              {connectPhase === "no_endpoint" ? (
+                <p style={{ marginTop: "0.75rem", fontSize: "0.8rem" }}>
+                  This device does not have a saved connectivity profile yet. Save protocol settings on{" "}
+                  <Link to={`/devices/manage?device=${encodeURIComponent(deviceId)}`} onClick={() => setConnectModalOpen(false)}>
+                    Manage device
+                  </Link>{" "}
+                  first, then you can create a linked stream from Register Endpoints.
+                </p>
+              ) : null}
+
+              {connectPhase === "failed" && connectErr ? (
+                <p style={{ marginTop: "0.75rem", fontSize: "0.8rem", color: "#fecaca" }}>{connectErr}</p>
+              ) : null}
+
+              {connectPhase === "form" ? (
+                <div className="confirm-action-modal__require" style={{ paddingTop: "0.5rem" }}>
+                  <label className="confirm-action-modal__require-label" htmlFor="connect-endpoint-name">
+                    Endpoint name <span style={{ color: "#fecaca" }}>*</span>
+                  </label>
+                  <input
+                    id="connect-endpoint-name"
+                    className="confirm-action-modal__input"
+                    autoComplete="off"
+                    value={connectEndpointName}
+                    onChange={(e) => setConnectEndpointName(e.target.value)}
+                    disabled={connectSubmitBusy}
+                    placeholder="Operator-visible label"
+                  />
+                  <p className="scrubber2-muted" style={{ margin: "0.45rem 0 0", fontSize: "0.72rem", lineHeight: 1.4 }}>
+                    Stream key is assigned automatically. You can change the display name later from{" "}
+                    <Link to="/devices/ingest" onClick={() => setConnectModalOpen(false)}>
+                      Register Endpoints
+                    </Link>
+                    .
+                  </p>
+                </div>
+              ) : null}
+
+              {connectPhase === "form" && connectErr ? (
+                <div className="confirm-action-modal__error" style={{ margin: "0.5rem 1rem 0" }}>
+                  {connectErr}
+                </div>
+              ) : null}
+            </div>
+            <div className="confirm-action-modal__actions">
+              {connectPhase === "linked" ? (
+                <button type="button" className="dm-btn dm-btn--primary" onClick={() => dismissConnectModal()}>
+                  Continue
+                </button>
+              ) : null}
+              {connectPhase === "failed" ? (
+                <>
+                  <button
+                    type="button"
+                    className="dm-btn dm-btn--ghost"
+                    disabled={connectInnerBusy}
+                    onClick={() => dismissConnectModal()}
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    type="button"
+                    className="dm-btn dm-btn--primary"
+                    disabled={connectInnerBusy}
+                    onClick={() => void loadConnectModalState(connectFrozenVersion)}
+                  >
+                    Try again
+                  </button>
+                </>
+              ) : null}
+              {connectPhase === "form" || connectPhase === "no_endpoint" ? (
+                <>
+                  <button
+                    type="button"
+                    className="dm-btn dm-btn--ghost"
+                    disabled={connectSubmitBusy}
+                    onClick={() => dismissConnectModal()}
+                  >
+                    Skip for now
+                  </button>
+                  {connectPhase === "form" ? (
+                    <button
+                      type="button"
+                      className="dm-btn dm-btn--primary"
+                      disabled={
+                        connectSubmitBusy ||
+                        !isValidCustomEndpointName(connectEndpointName) ||
+                        !connectDeviceEndpointId
+                      }
+                      onClick={() => void submitConnectCreate()}
+                    >
+                      {connectSubmitBusy ? "Creating…" : "Create & link"}
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              {connectPhase === "checking" ? (
+                <button
+                  type="button"
+                  className="dm-btn dm-btn--ghost"
+                  disabled={connectSubmitBusy}
+                  onClick={() => dismissConnectModal()}
+                >
+                  Skip for now
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </Scrubber2Shell>
   );
 }
