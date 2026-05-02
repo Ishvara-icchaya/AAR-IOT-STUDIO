@@ -17,6 +17,19 @@ function findWidget(
   return col?.widget ?? null;
 }
 
+/** Aligns dropdown text with Scrubber Pipelines (pipeline / device) while keeping technical binding visible. */
+function formatEndpointGroupOptionLabel(opt: dashApi.ResolvedDeviceCollectionSourceItem): string {
+  const endpointLabel = opt.endpoint_name || opt.endpoint_id.slice(0, 8);
+  const count = opt.resolved_device_count;
+  const core = `${endpointLabel} · ${opt.object_name} (${count})`;
+  const pl = (opt.pipeline_label || "").trim();
+  const dn = (opt.device_name || "").trim();
+  if (pl && dn) return `${pl} / ${dn} — ${core}`;
+  if (pl) return `${pl} — ${core}`;
+  if (dn) return `${dn} — ${core}`;
+  return core;
+}
+
 export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: string }) {
   const open = useDashboardBuilderStore((s) => s.drawerOpen);
   const target = useDashboardBuilderStore((s) => s.drawerTarget);
@@ -240,10 +253,9 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                     <option value="">— Select endpoint + object —</option>
                     {collectionOptions.map((opt) => {
                       const v = `${opt.endpoint_id}|${opt.object_name}`;
-                      const endpointLabel = opt.endpoint_name || opt.endpoint_id.slice(0, 8);
                       return (
                         <option key={v} value={v}>
-                          {endpointLabel} · {opt.object_name} ({opt.resolved_device_count})
+                          {formatEndpointGroupOptionLabel(opt)}
                         </option>
                       );
                     })}
@@ -397,10 +409,9 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                       <option value="">— Select endpoint + object —</option>
                       {collectionOptions.map((opt) => {
                         const v = `${opt.endpoint_id}|${opt.object_name}`;
-                        const endpointLabel = opt.endpoint_name || opt.endpoint_id.slice(0, 8);
                         return (
                           <option key={v} value={v}>
-                            {endpointLabel} · {opt.object_name} ({opt.resolved_device_count})
+                            {formatEndpointGroupOptionLabel(opt)}
                           </option>
                         );
                       })}

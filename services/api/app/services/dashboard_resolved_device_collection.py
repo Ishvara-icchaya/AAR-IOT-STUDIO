@@ -137,18 +137,76 @@ def _ranked_latest_device_state_subquery(
     return ranked.subquery("ranked_latest_device_state")
 
 
-def _mapping_has_scrubber_studio(mapping: dict[str, Any] | None) -> bool:
-    """True when the device has any scrubberStudio draft/publish payload (pipeline configured)."""
+def _mapping_has_pipeline_config(mapping: dict[str, Any] | None) -> bool:
+    """True when the device has scrubberStudio draft/publish or a persisted scrubber2 model."""
     if not isinstance(mapping, dict):
         return False
     ss = mapping.get("scrubberStudio")
-    if not isinstance(ss, dict):
-        return False
-    if isinstance(ss.get("draft"), dict) and ss["draft"]:
-        return True
-    if isinstance(ss.get("publishedBody"), dict) and ss["publishedBody"]:
-        return True
+    if isinstance(ss, dict):
+        if isinstance(ss.get("draft"), dict) and ss["draft"]:
+            return True
+        if isinstance(ss.get("publishedBody"), dict) and ss["publishedBody"]:
+            return True
+    s2 = mapping.get("scrubber2")
+    if isinstance(s2, dict):
+        model = s2.get("model")
+        if isinstance(model, dict) and model:
+            return True
     return False
+
+
+def _pipeline_label_from_mapping(device_name: str, mapping: dict[str, Any] | None) -> str:
+    """Match Scrubber Pipelines list: output_data_object.name, else ``{device} Pipeline``."""
+    if not isinstance(mapping, dict):
+        mapping = {}
+    ss = mapping.get("scrubberStudio")
+    if isinstance(ss, dict):
+        draft = ss.get("draft")
+        if isinstance(draft, dict):
+            out = draft.get("output_data_object")
+            if isinstance(out, dict):
+                n = str(out.get("name") or "").strip()
+                if n:
+                    return n
+    dn = (device_name or "").strip()
+    return f"{dn} Pipeline" if dn else ""
+
+
+def _enrich_collection_sources_device_context(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    rows: list[dict[str, Any]],
+) -> None:
+    """Fill device_name / pipeline_label via endpoints.device_endpoint_id → device + device_object."""
+    eids = [r["endpoint_id"] for r in rows if r.get("endpoint_id")]
+    if not eids:
+        return
+    stmt = (
+        select(Endpoint.id, Device.name, DeviceObject.mapping)
+        .outerjoin(DeviceEndpoint, DeviceEndpoint.id == Endpoint.device_endpoint_id)
+        .outerjoin(Device, Device.id == DeviceEndpoint.device_id)
+        .outerjoin(DeviceObject, DeviceObject.device_id == Device.id)
+        .where(Endpoint.customer_id == customer_id, Endpoint.id.in_(eids))
+    )
+    by_ep: dict[uuid.UUID, tuple[str | None, dict[str, Any]]] = {}
+    for ep_id, dname, mapping in db.execute(stmt).all():
+        m = mapping if isinstance(mapping, dict) else {}
+        by_ep[ep_id] = (dname if isinstance(dname, str) else None, m)
+    for r in rows:
+        eid = r.get("endpoint_id")
+        if not isinstance(eid, uuid.UUID):
+            continue
+        pair = by_ep.get(eid)
+        if not pair:
+            continue
+        dname, m = pair
+        if r.get("device_name") is None and dname:
+            r["device_name"] = dname
+        if r.get("pipeline_label") is None:
+            pl = _pipeline_label_from_mapping(dname or "", m)
+            if pl:
+                r["pipeline_label"] = pl
 
 
 def _merge_pipeline_sources_without_lds(
@@ -160,7 +218,7 @@ def _merge_pipeline_sources_without_lds(
 ) -> list[dict[str, Any]]:
     """Rows for endpoints that have a scrubber mapping but no latest_device_state rows yet (count 0)."""
     stmt = (
-        select(DeviceObject, Endpoint)
+        select(DeviceObject, Endpoint, Device)
         .join(Device, Device.id == DeviceObject.device_id)
         .join(DeviceEndpoint, DeviceEndpoint.device_id == Device.id)
         .join(Endpoint, Endpoint.device_endpoint_id == DeviceEndpoint.id)
@@ -173,26 +231,30 @@ def _merge_pipeline_sources_without_lds(
         )
     )
     out: list[dict[str, Any]] = []
-    for do, ep in db.execute(stmt).all():
-        if not _mapping_has_scrubber_studio(do.mapping if isinstance(do.mapping, dict) else None):
+    for do_row, ep_row, dev_row in db.execute(stmt).all():
+        mapping = do_row.mapping if isinstance(do_row.mapping, dict) else None
+        if not _mapping_has_pipeline_config(mapping):
             continue
         # Must match `latest_device_state.object_name` / v2_resolution (endpoints.object_name), not scrubberStudio.objectName.
-        on = (ep.object_name or "").strip()
+        on = (ep_row.object_name or "").strip()
         if not on:
             continue
-        key = (ep.id, on)
+        key = (ep_row.id, on)
         if key in existing_keys:
             continue
         existing_keys.add(key)
-        ts = do.updated_at if getattr(do, "updated_at", None) is not None else ep.updated_at
+        ts = do_row.updated_at if getattr(do_row, "updated_at", None) is not None else ep_row.updated_at
+        dname = (dev_row.name or "").strip() if dev_row is not None else ""
         out.append(
             {
                 "site_id": site_id,
-                "endpoint_id": ep.id,
-                "endpoint_name": ep.endpoint_name,
+                "endpoint_id": ep_row.id,
+                "endpoint_name": ep_row.endpoint_name,
                 "object_name": on,
                 "latest_updated_at": ts,
                 "resolved_device_count": 0,
+                "device_name": dname or None,
+                "pipeline_label": _pipeline_label_from_mapping(dname, mapping) or None,
             }
         )
     return out
@@ -250,7 +312,8 @@ def list_collection_sources(
         )
         .group_by(LatestDeviceState.endpoint_id, LatestDeviceState.object_name)
         .order_by(func.max(LatestDeviceState.updated_at).desc(), LatestDeviceState.endpoint_id.asc())
-        .limit(max(1, min(limit, 500)))
+        # No limit here: an early cap hid stale endpoint+object groups from merge keys and the dropdown.
+        # Final list is still capped after merge + sort (see return below).
     )
     rows = db.execute(stmt).all()
     merged: list[dict[str, Any]] = []
@@ -290,6 +353,8 @@ def list_collection_sources(
 
     if not merged:
         return []
+
+    _enrich_collection_sources_device_context(db, customer_id=customer_id, rows=merged)
 
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
 

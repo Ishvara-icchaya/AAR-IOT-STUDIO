@@ -110,13 +110,15 @@ def create_endpoint(
             draft["device_label_fields"] = dl
     if body.location_fields is not None:
         draft["location_fields"] = body.location_fields
+    ep_id = uuid.uuid4()
+    object_name = f"stream_{ep_id.hex}"
     ep = Endpoint(
-        id=uuid.uuid4(),
+        id=ep_id,
         customer_id=user.customer_id,
         site_id=body.site_id,
         endpoint_name=body.endpoint_name.strip(),
         protocol=body.protocol.strip().lower()[:32],
-        object_name=body.object_name.strip(),
+        object_name=object_name,
         lifecycle_status="draft",
         primary_device_key_fields=None,
         device_label_fields=None,
@@ -195,6 +197,11 @@ def update_endpoint(
     _ensure_endpoint_visible(ep, user, allowed)
 
     data = body.model_dump(exclude_unset=True)
+    if "object_name" in data:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "object_name is system-generated when the endpoint is created and cannot be changed.",
+        )
     draft = dict(ep.identity_draft or {})
     if "primary_device_key_fields" in data:
         raw_pk = data.pop("primary_device_key_fields")
@@ -234,8 +241,6 @@ def update_endpoint(
         ep.endpoint_name = data["endpoint_name"].strip()
     if "protocol" in data and data["protocol"] is not None:
         ep.protocol = data["protocol"].strip().lower()[:32]
-    if "object_name" in data and data["object_name"] is not None:
-        ep.object_name = data["object_name"].strip()
     if "auth_config" in data:
         ep.auth_config = data["auth_config"]
     if "device_endpoint_id" in data:

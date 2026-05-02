@@ -678,7 +678,7 @@ export function DeviceRegisterPage() {
                 Export
               </button>
               <Link className="dm-btn dm-btn--outline" to="/devices/ingest">
-                Ingest devices (v2)
+                Register endpoints
               </Link>
               <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
                 + Register new device

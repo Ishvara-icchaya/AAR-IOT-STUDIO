@@ -132,6 +132,8 @@ class ResolvedDeviceCollectionSourceRow(BaseModel):
     object_name: str
     latest_updated_at: datetime | None = None
     resolved_device_count: int = 0
+    device_name: str | None = None
+    pipeline_label: str | None = None
 
 
 class DashboardSourcesResolvedDeviceCollectionsResponse(BaseModel):

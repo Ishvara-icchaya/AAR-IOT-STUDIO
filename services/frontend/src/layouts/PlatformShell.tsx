@@ -15,6 +15,7 @@ export function PlatformShell() {
   /** Manage Devices renders its own title, scope controls, and actions to match the dashboard mock. */
   const hideShellPageChrome =
     pathname === "/devices/register" ||
+    pathname.startsWith("/devices/ingest") ||
     pathname.startsWith("/scrubber/v2") ||
     pathname.startsWith("/workflow") ||
     pathname.startsWith("/dashboard") ||

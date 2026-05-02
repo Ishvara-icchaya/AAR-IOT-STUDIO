@@ -26,7 +26,6 @@ export type EndpointCreateBody = {
   site_id: string;
   endpoint_name: string;
   protocol: string;
-  object_name: string;
   primary_device_key_fields?: string[] | null;
   device_label_fields?: string[] | null;
   location_fields?: Record<string, unknown> | unknown[] | null;

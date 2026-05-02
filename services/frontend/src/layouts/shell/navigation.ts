@@ -132,7 +132,7 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/devices/register") return "Manage Devices";
   if (pathname === "/devices/manage") return "Manage device";
   if (pathname === "/devices/raw") return "Raw Data";
-  if (pathname === "/devices/ingest") return "Manage Endpoints";
+  if (pathname.startsWith("/devices/ingest")) return "Register Endpoints";
   if (pathname === "/enterprise-ai") return "Enterprise AI";
   if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
   if (pathname === "/administration/users") return "Users";

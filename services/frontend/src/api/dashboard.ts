@@ -173,6 +173,10 @@ export type ResolvedDeviceCollectionSourceItem = {
   object_name: string;
   latest_updated_at?: string | null;
   resolved_device_count: number;
+  /** Linked device name when `endpoints.device_endpoint_id` is set. */
+  device_name?: string | null;
+  /** Scrubber-style title (output object name or "{device} Pipeline"). */
+  pipeline_label?: string | null;
 };
 
 export type ResolvedDeviceCollectionRuntimeItem = {
@@ -207,8 +211,12 @@ export async function listDashboardLatestDeviceStateSources(siteId: string) {
 }
 
 export async function listDashboardResolvedDeviceCollectionSources(siteId: string) {
+  const qs = new URLSearchParams({
+    site_id: siteId,
+    limit: "500",
+  });
   return apiFetch<{ items: ResolvedDeviceCollectionSourceItem[] }>(
-    `/dashboards/sources/resolved-device-collections?site_id=${encodeURIComponent(siteId)}`,
+    `/dashboards/sources/resolved-device-collections?${qs.toString()}`,
   );
 }
 

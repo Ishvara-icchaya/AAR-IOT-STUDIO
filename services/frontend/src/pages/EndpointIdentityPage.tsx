@@ -111,7 +111,7 @@ export function EndpointIdentityPage() {
   return (
     <PageShell title="Scrubber 2 — device identity">
       <div className="dash-widget__muted" style={{ marginBottom: 12 }}>
-        <Link to="/devices/ingest">← Back to endpoints</Link>
+        <Link to="/devices/ingest">← Register Endpoints</Link>
       </div>
       {loading ? <p>Loading…</p> : null}
       {ep ? (

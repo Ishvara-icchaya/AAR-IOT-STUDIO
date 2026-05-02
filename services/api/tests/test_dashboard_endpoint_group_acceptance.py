@@ -12,6 +12,8 @@ from app.services import dashboard_live as dashboard_live_module
 from app.services.dashboard_live import _load_source_record
 from app.services.dashboard_resolved_device_collection import (
     ResolvedDeviceCollectionCursor,
+    _mapping_has_pipeline_config,
+    _pipeline_label_from_mapping,
     decode_cursor,
     encode_cursor,
     health_summary_bucket,
@@ -121,6 +123,24 @@ def test_live_source_loader_has_no_data_object_fallback() -> None:
     assert payload is None
     assert updated_at is None
     assert display_name is None
+
+
+def test_mapping_has_pipeline_config_accepts_scrubber2_model_only() -> None:
+    assert _mapping_has_pipeline_config({"scrubber2": {"model": {"keepFields": []}}})
+    assert not _mapping_has_pipeline_config({"scrubber2": {"model": {}}})
+    assert not _mapping_has_pipeline_config({})
+
+
+def test_pipeline_label_from_mapping_matches_pipelines_list_fallback() -> None:
+    assert (
+        _pipeline_label_from_mapping(
+            "LG-Berger",
+            {"scrubberStudio": {"draft": {"output_data_object": {"name": "  My Out  "}}}},
+        )
+        == "My Out"
+    )
+    assert _pipeline_label_from_mapping("LG-Berger", {}) == "LG-Berger Pipeline"
+    assert _pipeline_label_from_mapping("", {}) == ""
 
 
 def test_openapi_includes_endpoint_group_dashboard_routes() -> None:

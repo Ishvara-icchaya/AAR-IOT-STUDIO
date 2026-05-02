@@ -1,0 +1,122 @@
+/* V2 ingest endpoints — layout aligned with Scrubber v2 + device ops lists */
+
+.ingest-ept-page .ingest-ept-subnav {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+}
+
+.ingest-ept-page .ingest-ept-subnav__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  color: var(--dm-accent-blue, var(--color-accent));
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ingest-ept-page .ingest-ept-subnav__back:hover {
+  text-decoration: underline;
+}
+
+.ingest-ept-page .ingest-ept-subnav__hint {
+  color: var(--dm-muted, var(--color-text-muted));
+  font-weight: 400;
+}
+
+.ingest-ept-page .ingest-ept-panels {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .ingest-ept-page .ingest-ept-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ingest-ept-page .ingest-ept-panel {
+  background: var(--color-surface-elevated, #161b22);
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+}
+
+.ingest-ept-page .ingest-ept-panel__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--dm-text, var(--color-text));
+}
+
+.ingest-ept-page .ingest-ept-panel__sub {
+  margin: 0 0 1rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--dm-muted, var(--color-text-muted));
+}
+
+.ingest-ept-page .ingest-ept-form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ingest-ept-page .ingest-ept-fieldset {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--dm-border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+}
+
+.ingest-ept-page .ingest-ept-fieldset legend {
+  padding: 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--dm-muted, var(--color-text-muted));
+}
+
+.ingest-ept-page .ingest-ept-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.35rem;
+}
+
+.ingest-ept-page .ingest-ept-check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.ingest-ept-page .ingest-ept-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.ingest-ept-page .ingest-ept-table-title {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.ingest-ept-page .ingest-ept-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--dm-muted, var(--color-text-muted));
+}

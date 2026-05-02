@@ -14,7 +14,6 @@ def test_endpoint_create_allows_omitted_primary_keys() -> None:
         site_id=uuid.uuid4(),
         endpoint_name="e",
         protocol="mqtt",
-        object_name="stream",
     )
     assert e.primary_device_key_fields is None
 
@@ -24,7 +23,6 @@ def test_endpoint_create_ok() -> None:
         site_id=uuid.uuid4(),
         endpoint_name="Gateway A",
         protocol="mqtt",
-        object_name="fleet_telemetry",
         primary_device_key_fields=["truck_id"],
         enabled=True,
     )
@@ -35,6 +33,14 @@ def test_endpoint_update_optional_fields() -> None:
     u = EndpointUpdate(endpoint_name="renamed")
     assert u.endpoint_name == "renamed"
     assert u.enabled is None
+
+
+def test_endpoint_create_schema_excludes_object_name() -> None:
+    assert "object_name" not in EndpointCreate.model_fields
+
+
+def test_endpoint_update_schema_excludes_object_name() -> None:
+    assert "object_name" not in EndpointUpdate.model_fields
 
 
 def test_router_has_endpoints_routes() -> None:

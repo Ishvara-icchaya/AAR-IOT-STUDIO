@@ -819,7 +819,7 @@ export function WorkflowEditorPage() {
     <PageShell className="workflow-editor-page workflow-editor-page--full">
       <AppToolbar variant="flat" className="workflow-editor__toolbar">
         <Link to="/workflow/list" className="scrubber2-subnav__back">
-          Workflow List /  Create workflow — build or edit the workflow; return to the list anytime.
+          ← Workflows
         </Link>
         <label className="app-field-row" style={{ marginBottom: 0, display: "inline-flex", flexDirection: "row", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
           Name

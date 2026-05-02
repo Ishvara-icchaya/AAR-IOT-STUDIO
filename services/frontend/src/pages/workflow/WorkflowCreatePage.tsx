@@ -2,7 +2,7 @@ import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiFetch } from "@/api/client";
+import { apiFetch, isApiHttpError } from "@/api/client";
 import * as wfApi from "@/api/workflow";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
@@ -46,7 +46,7 @@ export function WorkflowCreatePage() {
       });
       if (w?.id) nav(`/workflow/${w.id}/edit`);
     } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : "Create failed");
+      setErr(describeWorkflowCreateError(e2));
     }
   }
 
@@ -113,6 +113,16 @@ export function WorkflowCreatePage() {
       </div>
     </PageShell>
   );
+}
+
+function describeWorkflowCreateError(e: unknown): string {
+  if (isApiHttpError(e)) {
+    const m = e.message.trim();
+    if (m) return m;
+    return `Request failed (${e.status})`;
+  }
+  if (e instanceof Error && e.message.trim()) return e.message;
+  return "Create failed — check site access and try again.";
 }
 
 const lbl: CSSProperties = { display: "grid", gap: "0.35rem", fontSize: "0.85rem", color: "var(--color-text-muted)" };

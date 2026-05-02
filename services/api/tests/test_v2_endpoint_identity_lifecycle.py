@@ -18,7 +18,6 @@ def test_endpoint_create_defaults_to_draft_without_live_pk() -> None:
         site_id=uuid.uuid4(),
         endpoint_name="e",
         protocol="mqtt",
-        object_name="stream",
         primary_device_key_fields=["k"],
     )
     assert e.primary_device_key_fields == ["k"]

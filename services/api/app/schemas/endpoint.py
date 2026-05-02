@@ -13,7 +13,6 @@ class EndpointCreate(BaseModel):
     site_id: uuid.UUID
     endpoint_name: str = Field(..., min_length=1, max_length=255)
     protocol: str = Field(..., min_length=1, max_length=32, description="Transport: mqtt, http, coap, ws, …")
-    object_name: str = Field(..., min_length=1, max_length=255, description="Logical scrubber / data stream name")
     primary_device_key_fields: list[str] | None = Field(
         None,
         description="If set, stored in identity_draft only until POST …/publish-identity (never activates alone).",
@@ -28,7 +27,6 @@ class EndpointCreate(BaseModel):
 class EndpointUpdate(BaseModel):
     endpoint_name: str | None = Field(None, min_length=1, max_length=255)
     protocol: str | None = Field(None, min_length=1, max_length=32)
-    object_name: str | None = Field(None, min_length=1, max_length=255)
     primary_device_key_fields: list[str] | None = Field(
         None,
         description="Updates identity_draft only; use publish-identity to activate.",
