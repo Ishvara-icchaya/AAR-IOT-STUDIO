@@ -35,7 +35,7 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
     id: "raw-sample",
     label: "Raw sample",
     to: "/scrubber/raw-select",
-    alsoActiveOn: ["/scrubber/raw-select", "/scrubber/create"],
+    alsoActiveOn: ["/scrubber/raw-select"],
   },
   {
     id: "scrubber-v2",

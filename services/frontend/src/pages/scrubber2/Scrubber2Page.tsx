@@ -27,6 +27,7 @@ import { LivePreviewPanel, type ScrubberPreviewBlock } from "@/pages/scrubber2/L
 import { Scrubber2Header } from "@/pages/scrubber2/Scrubber2Header";
 import { Scrubber2Layout } from "@/pages/scrubber2/Scrubber2Layout";
 import { Scrubber2Shell } from "@/pages/scrubber2/Scrubber2Shell";
+import { ScrubberRawSelectModal } from "@/pages/scrubber2/ScrubberRawSelectModal";
 import { Scrubber2StepWorkspace, type Scrubber2ExplorerBindings } from "@/pages/scrubber2/Scrubber2StepWorkspace";
 import { defaultScrubber2Model, type Scrubber2Model } from "@/types/scrubber2Model";
 
@@ -140,6 +141,7 @@ export function Scrubber2Page() {
   const [connectDeviceEndpointId, setConnectDeviceEndpointId] = useState<string | null>(null);
   const [connectLinkedEndpoint, setConnectLinkedEndpoint] = useState<EndpointRead | null>(null);
   const [connectEndpointName, setConnectEndpointName] = useState("");
+  const [rawSampleModalOpen, setRawSampleModalOpen] = useState(false);
 
   const didInitKeep = useRef(false);
   /** Tracks last device we resolved raw for (mirrors classic scrubber device→latest-raw bootstrap). */
@@ -430,7 +432,7 @@ export function Scrubber2Page() {
           },
         },
       });
-      setOk("Draft saved (scrubberStudio + scrubber2).");
+      setOk("Saved (scrubberStudio + scrubber2).");
       return true;
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
@@ -662,6 +664,7 @@ export function Scrubber2Page() {
   );
 
   return (
+    <>
     <Scrubber2Shell>
       <nav className="scrubber2-subnav" aria-label="Scrubber pipelines">
         <Link to="/scrubber/v2/pipelines" className="scrubber2-subnav__back">
@@ -688,7 +691,7 @@ export function Scrubber2Page() {
               Validate
             </button>
             <button type="button" className="scrubber2-btn scrubber2-btn--ghost" disabled={busy} onClick={() => void saveDraft()}>
-              Save draft
+              Save
             </button>
             <button
               type="button"
@@ -699,9 +702,26 @@ export function Scrubber2Page() {
             >
               Freeze
             </button>
-            <Link to="/scrubber/raw-select" className="scrubber2-muted" style={{ fontSize: "0.78rem", marginLeft: "0.35rem" }}>
+            <button
+              type="button"
+              className="scrubber2-muted"
+              style={{
+                fontSize: "0.78rem",
+                marginLeft: "0.35rem",
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: deviceId ? "pointer" : "not-allowed",
+                font: "inherit",
+                textDecoration: "underline",
+                opacity: deviceId ? 1 : 0.45,
+              }}
+              disabled={!deviceId}
+              title={!deviceId ? "Select a device first" : undefined}
+              onClick={() => deviceId && setRawSampleModalOpen(true)}
+            >
               Raw sample
-            </Link>
+            </button>
           </>
         }
       />
@@ -959,5 +979,12 @@ export function Scrubber2Page() {
         </div>
       ) : null}
     </Scrubber2Shell>
+    <ScrubberRawSelectModal
+      open={rawSampleModalOpen && Boolean(deviceId)}
+      onClose={() => setRawSampleModalOpen(false)}
+      deviceId={deviceId}
+      deviceName={devices.find((d) => d.id === deviceId)?.name ?? deviceId}
+    />
+    </>
   );
 }

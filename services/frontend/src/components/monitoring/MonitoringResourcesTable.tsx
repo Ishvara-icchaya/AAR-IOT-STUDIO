@@ -20,12 +20,13 @@ export function MonitoringResourcesTable({ rows }: { rows: MonitoringResourceRow
   }, []);
 
   return (
-    <div className="table-scroll-sticky" style={{ overflow: "auto", borderRadius: "var(--radius)" }}>
+    <div className="dm-table-scroll">
       <PlainOperationalTable<MonitoringResourceRow>
         rows={rows}
         columns={columns}
         getRowId={(r) => r.component}
-        bordered
+        bordered={false}
+        emptyMessage="No resource metrics reported."
       />
     </div>
   );

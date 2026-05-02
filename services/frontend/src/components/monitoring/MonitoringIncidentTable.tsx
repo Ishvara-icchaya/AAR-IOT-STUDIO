@@ -58,12 +58,12 @@ export function MonitoringIncidentTable({ items }: { items: MonitoringIncident[]
   }, [openDetail]);
 
   return (
-    <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
+    <div className="dm-table-scroll">
       <PlainOperationalTable<MonitoringIncident>
         rows={items}
         columns={columns}
         getRowId={(r) => r.alert_id}
-        bordered
+        bordered={false}
         emptyMessage="No recent incidents in alert history."
       />
     </div>

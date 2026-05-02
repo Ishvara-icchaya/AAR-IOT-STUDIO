@@ -11,7 +11,8 @@
 .admin-sites-page.page-card,
 .scrubber-raw-select-page.page-card,
 .enterprise-ai-page.page-card,
-.ports-config-page.page-card {
+.ports-config-page.page-card,
+.monitoring-page--full.page-card {
   /* Legacy dm-* names map to global aar-* tokens (single source of truth). */
   --dm-bg: var(--aar-bg);
   --dm-surface: var(--aar-surface);
@@ -530,6 +531,50 @@
   min-height: 0;
   overflow: auto;
   max-height: min(560px, calc(100vh - 14rem));
+}
+
+/* Monitoring — same list shell as Manage Devices; loading avoids “No rows” flash */
+.monitoring-dm-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  min-height: 220px;
+  padding: 2rem 1.5rem;
+  color: var(--dm-muted);
+}
+
+.monitoring-dm-loading__label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.monitoring-dm-loading__spin {
+  color: var(--dm-accent-blue, var(--color-accent));
+  animation: monitoring-dm-spin 0.9s linear infinite;
+}
+
+@keyframes monitoring-dm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.monitoring-ai-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--dm-text);
+}
+
+.monitoring-ai-summary-card {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--dm-border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--dm-surface-2) 88%, transparent);
 }
 
 .dm-data-table {

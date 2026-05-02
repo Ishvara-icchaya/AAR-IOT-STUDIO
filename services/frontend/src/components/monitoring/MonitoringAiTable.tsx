@@ -104,40 +104,32 @@ export function MonitoringAiTable({ data }: { data: MonitoringAiPayload }) {
   );
 
   return (
-    <div>
-      <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>AI operations</h3>
-      <div
-        style={{
-          marginBottom: "1.25rem",
-          padding: "0.75rem",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius)",
-        }}
-      >
+    <div style={{ padding: "0.35rem 0.15rem 0.5rem" }}>
+      <h3 className="monitoring-ai-section-title">AI operations</h3>
+      <div className="monitoring-ai-summary-card">
         <OpsSummary ops={data.ops} />
       </div>
-      <div
-        className="table-scroll-sticky"
-        style={{ overflow: "auto", border: "1px solid var(--color-border)", borderRadius: "var(--radius)", marginBottom: "1.5rem" }}
-      >
+      <div className="dm-table-scroll" style={{ marginBottom: "1.25rem" }}>
         <PlainOperationalTable<MonitoringAiServiceRow>
           rows={data.services}
           columns={serviceColumns}
           getRowId={(r) => r.service}
-          bordered
+          bordered={false}
           emptyMessage="No AI services in this response."
         />
       </div>
-      <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Recent AI issues</h3>
+      <h3 className="monitoring-ai-section-title">Recent AI issues</h3>
       {issueRows.length === 0 ? (
-        <p style={{ color: "var(--color-text-muted)", fontSize: "0.9rem" }}>None recorded.</p>
+        <p className="dm-empty" style={{ margin: "0.35rem 0 0" }}>
+          None recorded.
+        </p>
       ) : (
-        <div className="table-scroll-sticky" style={{ overflow: "auto" }}>
+        <div className="dm-table-scroll">
           <PlainOperationalTable<AiIssueRow>
             rows={issueRows}
             columns={issueColumns}
             getRowId={(r) => r._rowId}
-            bordered
+            bordered={false}
           />
         </div>
       )}

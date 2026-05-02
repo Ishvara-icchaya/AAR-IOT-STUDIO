@@ -19,7 +19,8 @@ export function PlatformShell() {
     pathname.startsWith("/scrubber/v2") ||
     pathname.startsWith("/workflow") ||
     pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/enterprise-ai");
+    pathname.startsWith("/enterprise-ai") ||
+    pathname === "/administration/monitoring";
 
   useEffect(() => {
     dbg("PlatformShell mount", pathname);

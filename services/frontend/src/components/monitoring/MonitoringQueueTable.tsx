@@ -56,12 +56,12 @@ export function MonitoringQueueTable({
   }, [onView]);
 
   return (
-    <div className="table-scroll-sticky" style={{ overflow: "auto", borderRadius: "var(--radius)" }}>
+    <div className="dm-table-scroll">
       <PlainOperationalTable<MonitoringQueueRow>
         rows={rows}
         columns={columns}
         getRowId={(r) => r.topic}
-        bordered
+        bordered={false}
         emptyMessage="Kafka unreachable or no queue data."
       />
     </div>

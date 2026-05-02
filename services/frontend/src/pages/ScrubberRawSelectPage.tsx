@@ -1,177 +1,94 @@
-import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { BrushCleaning } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
-import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
 import { PageStatus } from "@/components/PageStatus";
-import { PageShell } from "@/layouts/PageShell";
-import "./device-register-page.css";
+import { ScrubberRawSelectModal } from "@/pages/scrubber2/ScrubberRawSelectModal";
+import { Scrubber2Shell } from "@/pages/scrubber2/Scrubber2Shell";
+import "@/pages/scrubber2/scrubber2.css";
 
-type DeviceRow = { id: string; name: string; site_id: string };
-
-type RawRow = {
-  id: string;
-  ingested_at: string;
-  size_bytes: number | null;
-  verify_status: string;
-  protocol_source: string | null;
-};
-
-type ListResp = { items: RawRow[]; total: number };
-
-/** Pick archived raw payloads to drive Scrubber Studio previews (raw stays unchanged in storage). */
+/**
+ * Entry point from main nav (“Raw sample”). Opens the shared modal; closing returns to Scrubber Pipelines.
+ * Optional query: `?deviceId=` to pick a device; otherwise the first registered device is used (no dropdown in the modal).
+ */
 export function ScrubberRawSelectPage() {
-  const [devices, setDevices] = useState<DeviceRow[]>([]);
-  const [deviceId, setDeviceId] = useState("");
-  const [rows, setRows] = useState<RawRow[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-
-  const loadRaw = useCallback(async () => {
-    if (!deviceId) return;
-    setErr(null);
-    try {
-      const qs = new URLSearchParams({
-        device_id: deviceId,
-        limit: "50",
-        offset: "0",
-      });
-      const data = await apiFetch<ListResp>(`/raw-data-objects?${qs.toString()}`);
-      setRows(data?.items ?? []);
-    } catch (e2) {
-      setErr(e2 instanceof Error ? e2.message : "Failed raw list");
-    }
-  }, [deviceId]);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [open, setOpen] = useState(true);
+  const [ctx, setCtx] = useState<{ id: string; name: string } | null>(null);
+  const [ctxErr, setCtxErr] = useState<string | null>(null);
+  const [ctxLoading, setCtxLoading] = useState(true);
 
   useEffect(() => {
+    const wanted = searchParams.get("deviceId")?.trim() ?? "";
+    let cancelled = false;
     void (async () => {
+      setCtxLoading(true);
+      setCtxErr(null);
       try {
-        const d = await apiFetch<{ items: DeviceRow[] }>("/devices");
-        setDevices(d?.items ?? []);
-        if (d?.items?.length) setDeviceId((prev) => prev || d.items[0].id);
+        const d = await apiFetch<{ items: { id: string; name: string }[] }>("/devices");
+        if (cancelled) return;
+        const items = d?.items ?? [];
+        if (!items.length) {
+          setCtx(null);
+          setCtxErr("No devices registered.");
+          return;
+        }
+        const hit = wanted ? items.find((x) => x.id === wanted) : undefined;
+        const pick = hit ?? items[0];
+        setCtx({ id: pick.id, name: pick.name });
       } catch (e) {
-        setErr(e instanceof Error ? e.message : "Failed devices");
+        if (!cancelled) {
+          setCtxErr(e instanceof Error ? e.message : "Failed to load devices");
+          setCtx(null);
+        }
+      } finally {
+        if (!cancelled) setCtxLoading(false);
       }
     })();
-  }, []);
-
-  useEffect(() => {
-    void loadRaw();
-  }, [loadRaw]);
-
-  async function onRefresh(e: FormEvent) {
-    e.preventDefault();
-    await loadRaw();
-  }
-
-  const latest = rows[0];
-  const returnTo = "/scrubber/raw-select";
-
-  const columns = useMemo<PlainOperationalColumn<RawRow>[]>(() => {
-    return [
-      {
-        id: "id",
-        header: "Raw ID",
-        cell: (r) => <code style={{ fontSize: "0.75rem" }}>{r.id ? `${r.id.slice(0, 8)}…` : "—"}</code>,
-      },
-      {
-        id: "ingested_at",
-        header: "Ingested",
-        cell: (r) => new Date(r.ingested_at).toLocaleString(),
-      },
-      {
-        id: "size_bytes",
-        header: "Size",
-        cell: (r) => String(r.size_bytes ?? "—"),
-      },
-      {
-        id: "protocol_source",
-        header: "Protocol",
-        cell: (r) => String(r.protocol_source ?? "—"),
-      },
-      { id: "verify_status", header: "Verify", cell: (r) => r.verify_status },
-      {
-        id: "studio",
-        header: "",
-        cell: (r) => (
-          <div className="dm-act-grid" style={{ justifyContent: "flex-start" }}>
-            <Link
-              className="dm-act-grid__btn"
-              to={`/scrubber/create?rawId=${encodeURIComponent(r.id)}&deviceId=${encodeURIComponent(
-                deviceId,
-              )}&returnTo=${encodeURIComponent(returnTo)}`}
-              title="Open Scrubber Studio"
-              aria-label="Open Scrubber Studio for this raw sample"
-            >
-              <BrushCleaning size={16} strokeWidth={2} aria-hidden />
-            </Link>
-          </div>
-        ),
-      },
-    ];
-  }, [deviceId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   return (
-    <PageShell variant="list" className="scrubber-raw-select-page device-manage-page">
-      <div className="dm-root">
-        <header className="dm-page-hero">
-          <div className="dm-page-hero__top">
-            <div className="dm-page-hero__titles">
-              <h1 className="dm-page-hero__title">Raw sample</h1>
-              <p className="dm-page-hero__subtitle">
-                Choose a device and a recent archived raw object, then open Scrubber Studio. Raw bytes in storage are never
-                modified.
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <section className="dm-filter-panel" aria-label="Filters">
-          <form noValidate onSubmit={onRefresh} className="dm-controls-form__row">
-            <label className="dm-filter-field">
-              <span className="dm-filter-field__label">Device</span>
-              <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
-                {devices.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" className="dm-btn dm-btn--primary">
-              Refresh list
-            </button>
-            {latest ? (
-              <Link
-                className="dm-btn dm-btn--outline"
-                style={{ alignSelf: "flex-end", textDecoration: "none" }}
-                to={`/scrubber/create?rawId=${encodeURIComponent(latest.id)}&deviceId=${encodeURIComponent(
-                  deviceId,
-                )}&returnTo=${encodeURIComponent("/scrubber/raw-select")}`}
-              >
-                Open studio (latest)
-              </Link>
-            ) : null}
-          </form>
-        </section>
-
-        {err ? <PageStatus variant="error">{err}</PageStatus> : null}
-
-        <div className="dm-table-wrap">
-          <div className="dm-device-table-shell">
-            <div className="dm-table-scroll">
-              <PlainOperationalTable<RawRow>
-                rows={rows}
-                columns={columns}
-                getRowId={(r) => r.id}
-                bordered
-                emptyMessage={deviceId ? "No raw objects for this device." : "Select a device."}
-                resetPageKey={deviceId}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </PageShell>
+    <>
+      <Scrubber2Shell>
+        <nav className="scrubber2-subnav" aria-label="Raw sample">
+          <button
+            type="button"
+            className="scrubber2-subnav__back"
+            onClick={() => navigate("/scrubber/v2/pipelines")}
+            style={{ border: "none", background: "none", font: "inherit", padding: 0, cursor: "pointer" }}
+          >
+            <ArrowLeft size={16} strokeWidth={2} aria-hidden />
+            Scrubber Pipelines
+          </button>
+          <span className="scrubber2-subnav__sep" aria-hidden>
+            /
+          </span>
+          <span className="scrubber2-subnav__current">Raw sample</span>
+        </nav>
+        <p className="scrubber2-muted" style={{ fontSize: "0.82rem", marginTop: 0 }}>
+          {ctxLoading
+            ? "Resolving device context…"
+            : ctx
+              ? `Showing archives for ${ctx.name}. Add ?deviceId= to the URL to choose another device.`
+              : "Open Raw sample from the pipeline editor for a device-specific view, or register a device first."}
+        </p>
+        {ctxErr ? <PageStatus variant="error">{ctxErr}</PageStatus> : null}
+      </Scrubber2Shell>
+      {ctx ? (
+        <ScrubberRawSelectModal
+          open={open}
+          onClose={() => {
+            setOpen(false);
+            navigate("/scrubber/v2/pipelines");
+          }}
+          deviceId={ctx.id}
+          deviceName={ctx.name}
+        />
+      ) : null}
+    </>
   );
 }
