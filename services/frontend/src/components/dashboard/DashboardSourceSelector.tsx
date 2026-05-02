@@ -26,10 +26,16 @@ export function DashboardSourceSelector({ siteId, sourceType, value, onChange, d
           const r = await dashApi.listDashboardLatestDeviceStateSources(siteId);
           if (cancelled) return;
           setItems(
-            (r?.items ?? []).map((x) => ({
-              id: x.id,
-              label: `${x.object_name} · ${x.id.slice(0, 8)}…`,
-            })),
+            (r?.items ?? []).map((x) => {
+              const friendly =
+                (x.device_name && x.device_name.trim()) ||
+                (x.device_label && x.device_label.trim()) ||
+                (x.endpoint_name && x.endpoint_name.trim()) ||
+                "";
+              const tail = `${x.object_name} · ${x.id.slice(0, 8)}…`;
+              const label = friendly ? `${friendly} — ${tail}` : tail;
+              return { id: x.id, label };
+            }),
           );
         } else {
           const r = await dashApi.listDashboardResultObjectSources(siteId);

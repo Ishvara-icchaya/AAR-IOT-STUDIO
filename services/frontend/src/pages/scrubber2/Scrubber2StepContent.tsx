@@ -57,7 +57,8 @@ export function Scrubber2StepContent({
 }: Props) {
   const [derivedHelpTab, setDerivedHelpTab] = useState<DerivedHelpTabId>("math");
 
-  const pickerFields = stepIndex >= 4 ? (fieldsFromPreview ?? []) : fieldsEarlyPipeline;
+  const pickerFields =
+    stepIndex >= 4 ? (fieldsFromPreview ?? fieldsEarlyPipeline) : fieldsEarlyPipeline;
   const pathSampleRoot =
     (pathSamplePreview ?? pathSampleEarly ?? samplePayload ?? null) as Record<string, unknown> | null;
 

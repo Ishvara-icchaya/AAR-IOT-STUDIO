@@ -209,6 +209,66 @@ def _enrich_collection_sources_device_context(
                 r["pipeline_label"] = pl
 
 
+def _enrich_collection_sources_from_resolved_identity(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    rows: list[dict[str, Any]],
+) -> None:
+    """If endpoints.device_endpoint_id is unset, Device join yields no name — use resolved identity (1:1 typical)."""
+    pairs: list[tuple[uuid.UUID, str]] = []
+    seen: set[tuple[uuid.UUID, str]] = set()
+    for r in rows:
+        if (r.get("device_name") or "").strip():
+            continue
+        eid = r.get("endpoint_id")
+        on = str(r.get("object_name") or "").strip()
+        if not isinstance(eid, uuid.UUID) or not on:
+            continue
+        key = (eid, on)
+        if key in seen:
+            continue
+        seen.add(key)
+        pairs.append((eid, on))
+    if not pairs:
+        return
+    conds = [
+        and_(LatestDeviceState.endpoint_id == eid, LatestDeviceState.object_name == oname) for eid, oname in pairs
+    ]
+    stmt = (
+        select(
+            LatestDeviceState.endpoint_id,
+            LatestDeviceState.object_name,
+            ResolvedDevice.device_label,
+            LatestDeviceState.updated_at,
+        )
+        .join(ResolvedDevice, ResolvedDevice.id == LatestDeviceState.resolved_device_id)
+        .where(LatestDeviceState.customer_id == customer_id, or_(*conds))
+        .order_by(LatestDeviceState.updated_at.desc())
+    )
+    picked: dict[tuple[uuid.UUID, str], str] = {}
+    for eid, on, dlab, _u in db.execute(stmt).all():
+        key = (eid, on)
+        if key in picked:
+            continue
+        if dlab and str(dlab).strip():
+            picked[key] = str(dlab).strip()
+    for r in rows:
+        eid = r.get("endpoint_id")
+        on = str(r.get("object_name") or "").strip()
+        if not isinstance(eid, uuid.UUID) or not on:
+            continue
+        dlab = picked.get((eid, on))
+        if not dlab:
+            continue
+        if not (r.get("device_name") or "").strip():
+            r["device_name"] = dlab
+        if r.get("pipeline_label") is None or not str(r.get("pipeline_label") or "").strip():
+            pl = _pipeline_label_from_mapping(dlab, {})
+            if pl:
+                r["pipeline_label"] = pl
+
+
 def _merge_pipeline_sources_without_lds(
     db: Session,
     *,
@@ -355,6 +415,7 @@ def list_collection_sources(
         return []
 
     _enrich_collection_sources_device_context(db, customer_id=customer_id, rows=merged)
+    _enrich_collection_sources_from_resolved_identity(db, customer_id=customer_id, rows=merged)
 
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
 

@@ -17,6 +17,10 @@ import {
   scrubberPreviewPayloadForFieldPickers,
   scrubber2ShapedPayloadForEarlyPickers,
 } from "@/lib/scrubber2Fields";
+import {
+  deviceLabelPathsFromScrubberSemantics,
+  primaryKeyPathsFromScrubberSemantics,
+} from "@/lib/scrubber2IdentityFromSemantics";
 import { buildScrubberStudioMappingForPreview, buildStudioDraftFromV2, bumpSemverLike } from "@/lib/scrubber2ToStudioDraft";
 import { FieldExplorerPanel } from "@/pages/scrubber2/FieldExplorerPanel";
 import { LivePreviewPanel, type ScrubberPreviewBlock } from "@/pages/scrubber2/LivePreviewPanel";
@@ -171,10 +175,12 @@ export function Scrubber2Page() {
     [samplePayload, model.keepFields, model.normalize.flatten],
   );
 
-  const fieldsEarlyPipeline = useMemo(
-    () => (shapedPayload ? buildFieldMetaList(shapedPayload) : []),
-    [shapedPayload],
-  );
+  const fieldsEarlyPipeline = useMemo(() => {
+    const fromShaped = shapedPayload ? buildFieldMetaList(shapedPayload) : [];
+    if (fromShaped.length > 0) return fromShaped;
+    if (samplePayload) return buildFieldMetaList(samplePayload);
+    return [];
+  }, [shapedPayload, samplePayload]);
 
   const pathSamplePreview = useMemo(() => {
     if (!scrubPreview || scrubPreview.error) return null;
@@ -342,8 +348,23 @@ export function Scrubber2Page() {
         const m = row?.mapping;
         const s2 = m?.scrubber2 as { model?: Partial<Scrubber2Model> } | undefined;
         if (s2?.model) setModel(hydrateV2Model(s2.model));
-        const ss = m?.scrubberStudio as { version?: string } | undefined;
-        if (ss && typeof ss.version === "string" && ss.version) setMappingVersion(ss.version);
+        const ss = m?.scrubberStudio as Record<string, unknown> | undefined;
+        if (ss && typeof ss === "object") {
+          if (typeof ss.version === "string" && ss.version) setMappingVersion(ss.version);
+          const pb = ss.publishedBody;
+          const dr = ss.draft;
+          const fromPb =
+            pb && typeof pb === "object" && pb !== null && typeof (pb as { objectName?: unknown }).objectName === "string"
+              ? String((pb as { objectName: string }).objectName).trim()
+              : "";
+          const fromDr =
+            dr && typeof dr === "object" && dr !== null && typeof (dr as { objectName?: unknown }).objectName === "string"
+              ? String((dr as { objectName: string }).objectName).trim()
+              : "";
+          if (ss.published && fromPb) setObjectName(fromPb);
+          else if (fromDr) setObjectName(fromDr);
+          else if (fromPb) setObjectName(fromPb);
+        }
       } catch {
         /* no row */
       } finally {
@@ -516,15 +537,23 @@ export function Scrubber2Page() {
     setConnectSubmitBusy(true);
     setConnectErr(null);
     try {
+      const pkPaths = primaryKeyPathsFromScrubberSemantics(model);
+      const labelPaths = deviceLabelPathsFromScrubberSemantics(model);
       await createEndpoint({
         site_id: connectSiteId,
         endpoint_name: name,
         protocol: normalizeProtocol(connectProtocolRaw),
         device_endpoint_id: connectDeviceEndpointId,
         enabled: true,
+        primary_device_key_fields: pkPaths.length ? pkPaths : undefined,
+        device_label_fields: labelPaths.length ? labelPaths : undefined,
       });
       setConnectModalOpen(false);
-      setOk("Platform ingest linked. You can finish identity mapping from Register Endpoints when ready.");
+      setOk(
+        pkPaths.length
+          ? "Platform ingest linked. Identity paths from Scrubber semantics are applied automatically when validation succeeds (using your frozen pipeline and archived raw if needed)."
+          : "Platform ingest linked. Tag fields as Identity in Scrubber semantics, freeze the pipeline, then link again — or set primary paths on Register Endpoints.",
+      );
       navigateAfterOptionalConnect();
     } catch (e) {
       setConnectErr(isApiHttpError(e) ? e.message : e instanceof Error ? e.message : "Create failed.");
@@ -536,6 +565,7 @@ export function Scrubber2Page() {
     connectDeviceEndpointId,
     connectSiteId,
     connectProtocolRaw,
+    model,
     navigateAfterOptionalConnect,
   ]);
 
@@ -803,7 +833,7 @@ export function Scrubber2Page() {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", fontSize: "0.8rem" }}>
                     <Link
                       className="scrubber2-muted"
-                      to={`/devices/ingest/${encodeURIComponent(connectLinkedEndpoint.id)}/identity`}
+                      to={`/devices/ingest?identity=${encodeURIComponent(connectLinkedEndpoint.id)}`}
                       onClick={() => setConnectModalOpen(false)}
                     >
                       Identity mapping

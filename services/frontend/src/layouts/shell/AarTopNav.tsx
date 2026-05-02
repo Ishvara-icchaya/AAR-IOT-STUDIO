@@ -24,13 +24,19 @@ const NAV_ITEMS: NavDef[] = [
     key: "devices",
     label: "Devices",
     to: "/devices/register",
-    isActive: (p) => p.startsWith("/devices"),
+    isActive: (p) => p.startsWith("/devices") && !p.startsWith("/devices/ingest"),
   },
   {
     key: "pipelines",
     label: "Pipelines",
     to: "/scrubber/v2/pipelines",
     isActive: (p) => p.startsWith("/scrubber/v2"),
+  },
+  {
+    key: "registerEndpoint",
+    label: "Register Endpoint",
+    to: "/devices/ingest",
+    isActive: (p) => p.startsWith("/devices/ingest"),
   },
   {
     key: "workflows",
@@ -187,6 +193,14 @@ export function AarTopNav({
         {NAV_ITEMS.map((item) => {
           const Icon = NAV_ICONS[item.key];
           const active = item.isActive(pathname);
+          const iconMod = item.key === "registerEndpoint" ? "register-endpoint" : item.key;
+          const iconClassName = [
+            item.key === "registerEndpoint" ? "lucide lucide-bot" : null,
+            "aar-topnav__item-icon",
+            `aar-topnav__item-icon--${iconMod}`,
+          ]
+            .filter(Boolean)
+            .join(" ");
           return (
             <NavLink
               key={item.key}
@@ -195,7 +209,7 @@ export function AarTopNav({
               aria-current={active ? "page" : undefined}
               onClick={closeMobile}
             >
-              <Icon size={ICON_SZ} strokeWidth={ICON_STROKE} aria-hidden className="aar-topnav__item-icon" />
+              <Icon size={ICON_SZ} strokeWidth={ICON_STROKE} aria-hidden className={iconClassName} />
               <span className="aar-topnav__item-label">{item.label}</span>
             </NavLink>
           );

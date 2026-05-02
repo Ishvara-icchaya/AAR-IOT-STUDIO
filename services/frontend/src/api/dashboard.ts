@@ -164,6 +164,10 @@ export type LatestDeviceStateSourceItem = {
   resolved_device_id: string;
   object_name: string;
   updated_at: string;
+  device_label?: string | null;
+  endpoint_name?: string | null;
+  /** Registered device name when the endpoint is linked to Manage Devices. */
+  device_name?: string | null;
 };
 
 export type ResolvedDeviceCollectionSourceItem = {

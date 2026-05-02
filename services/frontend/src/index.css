@@ -3023,6 +3023,146 @@ a:hover {
   gap: 0.5rem;
 }
 
+/* Long endpoint group labels: one-line summary + dialog for full text and change */
+.dash-endpoint-group-field-wrap {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dash-endpoint-group-field {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.dash-endpoint-group-display {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--color-text);
+}
+
+.dash-endpoint-group-display:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.dash-endpoint-group-display__text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  width: 100%;
+}
+
+.dash-endpoint-group-dialog {
+  z-index: 1200;
+  width: min(420px, 94vw);
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(80vh, 640px);
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.dash-endpoint-group-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.38);
+}
+
+.dash-endpoint-group-dialog__panel {
+  padding: 1rem 1.1rem 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dash-endpoint-group-dialog__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.dash-endpoint-group-dialog__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.dash-endpoint-group-dialog__full {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-bg) 88%, transparent);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: min(38vh, 280px);
+  overflow-y: auto;
+}
+
+.dash-endpoint-group-dialog__select-label {
+  margin-top: 0.25rem;
+}
+
+.dash-endpoint-group-dialog__select-label--compact {
+  font-size: 0.78rem;
+}
+
+.dash-endpoint-group-dialog__select-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0.2rem;
+  box-sizing: border-box;
+}
+
+.dash-endpoint-group-dialog__select,
+.dash-endpoint-group-dialog .dash-endpoint-group-dialog__select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  padding: 0.35rem 0.5rem;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-individual-device-dialog.dash-endpoint-group-dialog {
+  width: min(400px, 94vw);
+  max-width: calc(100vw - 1.5rem);
+}
+
+.dash-endpoint-group-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.15rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--color-border);
+}
+
 .dash-widget-config-col h3 {
   margin: 0;
   font-size: 0.9rem;

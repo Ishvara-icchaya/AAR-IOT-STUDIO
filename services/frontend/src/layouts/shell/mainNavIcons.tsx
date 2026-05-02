@@ -1,10 +1,21 @@
 import type { LucideIcon } from "lucide-react";
-import { Building2, FileCode2, FileStack, LayoutDashboard, Share2, Smartphone, Sparkles, Workflow } from "lucide-react";
+import {
+  Building2,
+  FileCode2,
+  FileStack,
+  LayoutDashboard,
+  Plug,
+  Share2,
+  Smartphone,
+  Sparkles,
+  Workflow,
+} from "lucide-react";
 import { ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
 
 /** Icons for primary shell navigation (tooltips use full labels from navigation config). */
 export const MAIN_NAV_FLAT_ICONS: Record<string, LucideIcon> = {
   devices: Smartphone,
+  "register-endpoints": Plug,
   "raw-sample": FileStack,
   "scrubber-v2": FileCode2,
   workflow: Workflow,

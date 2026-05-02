@@ -677,9 +677,6 @@ export function DeviceRegisterPage() {
                 <Download size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 Export
               </button>
-              <Link className="dm-btn dm-btn--outline" to="/devices/ingest">
-                Register endpoints
-              </Link>
               <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
                 + Register new device
               </button>

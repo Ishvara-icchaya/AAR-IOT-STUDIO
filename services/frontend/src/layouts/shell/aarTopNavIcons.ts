@@ -15,6 +15,7 @@ import {
 export const NAV_ICONS = {
   devices: Server,
   pipelines: DatabaseZap,
+  registerEndpoint: Bot,
   workflows: Workflow,
   dashboards: LayoutDashboard,
   ai: Bot,

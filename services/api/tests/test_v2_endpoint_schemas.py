@@ -54,6 +54,7 @@ def test_router_has_endpoints_routes() -> None:
     assert "/{endpoint_id}/scrubbed-events" in paths
     assert "/{endpoint_id}/publish-identity" in paths
     assert "/{endpoint_id}/sample-field-metadata" in paths
+    assert "/{endpoint_id}/scrubber-identity-hints" in paths
 
 
 def test_app_includes_endpoints_openapi_path() -> None:
@@ -66,3 +67,4 @@ def test_app_includes_endpoints_openapi_path() -> None:
     paths = schema["paths"]
     assert "/api/v1/endpoints" in paths
     assert "/api/v1/endpoints/{endpoint_id}" in paths
+    assert "/api/v1/endpoints/{endpoint_id}/scrubber-identity-hints" in paths

@@ -1,12 +1,13 @@
 import type { Dispatch, SetStateAction } from "react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
   GitBranch,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -19,11 +20,12 @@ import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
-import { OpsListPage } from "@/components/ops/OpsListPage";
+import { EndpointIdentityPanel } from "@/components/endpoint/EndpointIdentityPanel";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { AarButton } from "@/components/system/AarButton";
 import { useOpsShell } from "@/contexts/OpsShellContext";
+import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import {
   DEVICE_LABEL_PATH_OPTIONS,
@@ -38,6 +40,7 @@ import { ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
 
 import "./device-register-page.css";
 import "./ingest-endpoints-page.css";
+import "@/components/endpoint/endpoint-identity-panel.css";
 
 type SiteRow = { id: string; name: string };
 
@@ -62,6 +65,7 @@ function formatLifecycleLabel(s: string | null | undefined): string {
 
 export function IngestDevicesPage() {
   const { siteId: opsSiteId, refreshToken } = useOpsShell();
+  const [searchParams, setSearchParams] = useSearchParams();
   const didInitScopeSite = useRef(false);
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [filterSiteId, setFilterSiteId] = useState("");
@@ -86,8 +90,27 @@ export function IngestDevicesPage() {
   const [pkExtras, setPkExtras] = useState<string[]>([]);
   const [labelExtras, setLabelExtras] = useState<string[]>([]);
   const [editing, setEditing] = useState<EndpointRead | null>(null);
+  const [endpointModalOpen, setEndpointModalOpen] = useState(false);
+  const [identityModalId, setIdentityModalId] = useState<string | null>(null);
 
   useShellFeedback(err, ok);
+
+  useEffect(() => {
+    const id = searchParams.get("identity")?.trim();
+    if (id) setIdentityModalId(id);
+  }, [searchParams]);
+
+  const closeIdentityModal = useCallback(() => {
+    setIdentityModalId(null);
+    setSearchParams(
+      (prev) => {
+        const n = new URLSearchParams(prev);
+        n.delete("identity");
+        return n;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
 
   useEffect(() => {
     void apiFetch<SiteRow[]>("/administration/sites")
@@ -209,6 +232,11 @@ export function IngestDevicesPage() {
     setLabelExtras([]);
   }
 
+  function openCreateEndpointModal() {
+    resetForm();
+    setEndpointModalOpen(true);
+  }
+
   function startEdit(ep: EndpointRead) {
     setEditing(ep);
     setFormSiteId(ep.site_id);
@@ -234,6 +262,7 @@ export function IngestDevicesPage() {
     const dlExtra = dl.filter((x) => !DEVICE_LABEL_PATH_OPTIONS.includes(x as (typeof DEVICE_LABEL_PATH_OPTIONS)[number]));
     setLabelSelected(new Set(dlCommon));
     setLabelExtras(dlExtra);
+    setEndpointModalOpen(true);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -278,6 +307,7 @@ export function IngestDevicesPage() {
         });
         setOk("Endpoint created.");
       }
+      setEndpointModalOpen(false);
       resetForm();
       await loadEndpoints();
     } catch (ex) {
@@ -305,11 +335,149 @@ export function IngestDevicesPage() {
     });
   }
 
+  const endpointForm = (
+    <form className="ingest-ept-form-grid" onSubmit={onSubmit}>
+      {!editing ? (
+        <label className="dm-filter-field">
+          <span>Site</span>
+          <select
+            className="dm-search-input"
+            required
+            value={formSiteId}
+            onChange={(e) => setFormSiteId(e.target.value)}
+          >
+            <option value="">Select site…</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="dash-widget__muted" style={{ fontSize: "0.8rem", margin: 0 }}>
+          Site is fixed for this endpoint ({sitesById[editing.site_id] ?? editing.site_id.slice(0, 8) + "…"}).
+        </p>
+      )}
+
+      <label className="dm-filter-field">
+        <span>Endpoint name</span>
+        <input
+          className="dm-search-input"
+          value={endpointName}
+          onChange={(e) => setEndpointName(e.target.value)}
+          maxLength={255}
+          placeholder="e.g. Fleet MQTT Telemetry"
+          autoComplete="off"
+          required
+          aria-label="Endpoint name"
+        />
+      </label>
+      <p className="dash-widget__muted" style={{ fontSize: "0.75rem", margin: "-0.2rem 0 0" }}>
+        Internal stream key (<code>endpoints.object_name</code>) is set by the API when the endpoint is created (
+        <code>stream_</code> + endpoint id) and cannot be edited here.
+      </p>
+
+      <label className="dm-filter-field">
+        <span>Protocol</span>
+        <select className="dm-search-input" value={protocol} onChange={(e) => setProtocol(e.target.value as IngestProtocol)}>
+          {V2_ENDPOINT_PROTOCOL_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="dm-filter-field">
+        <span>Link to device endpoint</span>
+        <select
+          className="dm-search-input"
+          value={linkDeviceEndpointId}
+          onChange={(e) => setLinkDeviceEndpointId(e.target.value)}
+          disabled={!formSiteId && !editing}
+          aria-label="Link device endpoint"
+        >
+          <option value="">— Not linked —</option>
+          {linkableDevices.map((d) =>
+            d.endpoint?.id ? (
+              <option key={d.endpoint.id} value={d.endpoint.id}>
+                {d.name} · {protocolLabelForTable(d.endpoint.protocol ?? "")}
+              </option>
+            ) : null,
+          )}
+        </select>
+      </label>
+      {!formSiteId && !editing ? (
+        <p className="dash-widget__muted" style={{ fontSize: "0.75rem", margin: 0 }}>
+          Select a site to load devices for linking.
+        </p>
+      ) : null}
+
+      <fieldset className="ingest-ept-fieldset">
+        <legend>Primary key JSON paths</legend>
+        <div className="ingest-ept-check-grid">
+          {PRIMARY_KEY_PATH_OPTIONS.map((path) => (
+            <label key={path} className="ingest-ept-check">
+              <input type="checkbox" checked={pkSelected.has(path)} onChange={() => toggleInSet(setPkSelected, path)} />
+              <code>{path}</code>
+            </label>
+          ))}
+        </div>
+        {pkExtras.length > 0 ? (
+          <p className="dash-widget__muted" style={{ fontSize: "0.72rem", margin: "0.5rem 0 0" }}>
+            Additional PK paths on this endpoint (preserved on save): <code>{pkExtras.join(", ")}</code>
+          </p>
+        ) : null}
+      </fieldset>
+
+      <fieldset className="ingest-ept-fieldset">
+        <legend>Device label JSON paths</legend>
+        <div className="ingest-ept-check-grid">
+          {DEVICE_LABEL_PATH_OPTIONS.map((path) => (
+            <label key={path} className="ingest-ept-check">
+              <input type="checkbox" checked={labelSelected.has(path)} onChange={() => toggleInSet(setLabelSelected, path)} />
+              <code>{path}</code>
+            </label>
+          ))}
+        </div>
+        {labelExtras.length > 0 ? (
+          <p className="dash-widget__muted" style={{ fontSize: "0.72rem", margin: "0.5rem 0 0" }}>
+            Additional label paths on this endpoint (preserved on save): <code>{labelExtras.join(", ")}</code>
+          </p>
+        ) : null}
+      </fieldset>
+
+      <div className="ingest-ept-actions ingest-ept-actions--modal-footer">
+        <AarButton type="button" variant="outline" onClick={() => { resetForm(); setEndpointModalOpen(false); }}>
+          Cancel
+        </AarButton>
+        <AarButton type="submit" variant="primary" disabled={loading}>
+          {editing ? "Save changes" : "Create endpoint"}
+        </AarButton>
+      </div>
+    </form>
+  );
+
   return (
-    <OpsListPage
-      className="ingest-ept-page device-manage-page"
-      header={<OpsPageHeader title="Register Endpoints" />}
-      kpiRow={
+    <PageShell variant="list" className="ingest-ept-page device-manage-page">
+      <div className="dm-root">
+        <OpsPageHeader
+          title="Register Endpoints"
+          subtitle="Create v2 ingest endpoints, link Manage Devices endpoints, and map identity for resolution."
+          actions={
+            <>
+              <Link className="dm-btn dm-btn--outline" to="/devices/register">
+                Manage Devices
+              </Link>
+              <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateEndpointModal}>
+                <Plus size={16} strokeWidth={2} aria-hidden style={{ verticalAlign: "middle", marginRight: 6 }} />
+                Create endpoint
+              </button>
+            </>
+          }
+        />
+
         <OpsKpiRow ariaLabel="Endpoint summary" className="dm-kpi-row--equal-5">
           <div className="dm-kpi">
             <div className="dm-kpi__body">
@@ -342,8 +510,8 @@ export function IngestDevicesPage() {
             </div>
           </div>
         </OpsKpiRow>
-      }
-      filterPanel={
+
+        <section className="ops-list-page__section">
         <OpsFilterPanel ariaLabel="Endpoint filters">
           <form className="dm-controls-form" onSubmit={onSearch}>
             <div className="dm-controls-form__row">
@@ -394,183 +562,51 @@ export function IngestDevicesPage() {
                   ))}
                 </select>
               </div>
-              <div className="dm-search-wrap">
+              <div className="dm-filter-field ingest-ept-filter-refresh">
+                <label htmlFor="ingest-filter-refresh">Refresh</label>
+                <AarButton
+                  id="ingest-filter-refresh"
+                  type="button"
+                  variant="outline"
+                  disabled={loading}
+                  title="Reload endpoints from the server"
+                  className="ingest-ept-filter-refresh__btn"
+                  onClick={() => void loadEndpoints()}
+                >
+                  <RefreshCw size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                  <span className="ingest-ept-filter-refresh__label">Refresh</span>
+                </AarButton>
+              </div>
+              <div className="dm-search-wrap ingest-ept-search-wrap">
                 <Search size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 <input
                   id="ingest-q"
                   className="dm-search-input"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search endpoint name…"
+                  placeholder="Search name…"
                   aria-label="Search endpoints"
                 />
               </div>
               <AarButton type="submit" variant="primary" className="aar-btn--search dm-btn--search">
                 Search
               </AarButton>
-              <OpsActionButton type="button" onClick={() => void loadEndpoints()} disabled={loading} title="Reload endpoints">
-                <RefreshCw size={16} strokeWidth={2} aria-hidden />
-                <span style={{ marginLeft: 6 }}>Refresh</span>
-              </OpsActionButton>
             </div>
           </form>
         </OpsFilterPanel>
-      }
-      content={
-        <>
+        </section>
+
           <nav className="ingest-ept-subnav" aria-label="Ingest endpoints navigation">
             <Link to="/devices/register" className="ingest-ept-subnav__back">
               <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-              Register devices
+              Manage Devices
             </Link>
           </nav>
 
           {err ? <PageStatus variant="error">{err}</PageStatus> : null}
           {ok ? <PageStatus variant="success">{ok}</PageStatus> : null}
 
-          <div className="ingest-ept-panels">
-            <section className="ingest-ept-panel">
-              <h2 className="ingest-ept-panel__title">{editing ? "Edit endpoint" : "Create endpoint"}</h2>
-              <form className="ingest-ept-form-grid" onSubmit={onSubmit}>
-                {!editing ? (
-                  <label className="dm-filter-field">
-                    <span>Site</span>
-                    <select
-                      className="dm-search-input"
-                      required
-                      value={formSiteId}
-                      onChange={(e) => setFormSiteId(e.target.value)}
-                    >
-                      <option value="">Select site…</option>
-                      {sites.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <p className="dash-widget__muted" style={{ fontSize: "0.8rem", margin: 0 }}>
-                    Site is fixed for this endpoint ({sitesById[editing.site_id] ?? editing.site_id.slice(0, 8) + "…"}).
-                  </p>
-                )}
-
-                <label className="dm-filter-field">
-                  <span>Endpoint name</span>
-                  <input
-                    className="dm-search-input"
-                    value={endpointName}
-                    onChange={(e) => setEndpointName(e.target.value)}
-                    maxLength={255}
-                    placeholder="e.g. Fleet MQTT Telemetry"
-                    autoComplete="off"
-                    required
-                    aria-label="Endpoint name"
-                  />
-                </label>
-                <p className="dash-widget__muted" style={{ fontSize: "0.75rem", margin: "-0.2rem 0 0" }}>
-                  Internal stream key (<code>endpoints.object_name</code>) is set by the API when the endpoint is
-                  created (<code>stream_</code> + endpoint id) and cannot be edited here.
-                </p>
-
-                <label className="dm-filter-field">
-                  <span>Protocol</span>
-                  <select
-                    className="dm-search-input"
-                    value={protocol}
-                    onChange={(e) => setProtocol(e.target.value as IngestProtocol)}
-                  >
-                    {V2_ENDPOINT_PROTOCOL_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="dm-filter-field">
-                  <span>Link to device endpoint</span>
-                  <select
-                    className="dm-search-input"
-                    value={linkDeviceEndpointId}
-                    onChange={(e) => setLinkDeviceEndpointId(e.target.value)}
-                    disabled={!formSiteId && !editing}
-                    aria-label="Link device endpoint"
-                  >
-                    <option value="">— Not linked —</option>
-                    {linkableDevices.map((d) =>
-                      d.endpoint?.id ? (
-                        <option key={d.endpoint.id} value={d.endpoint.id}>
-                          {d.name} · {protocolLabelForTable(d.endpoint.protocol ?? "")}
-                        </option>
-                      ) : null,
-                    )}
-                  </select>
-                </label>
-                {!formSiteId && !editing ? (
-                  <p className="dash-widget__muted" style={{ fontSize: "0.75rem", margin: 0 }}>
-                    Select a site to load devices for linking.
-                  </p>
-                ) : null}
-
-                <fieldset className="ingest-ept-fieldset">
-                  <legend>Primary key JSON paths</legend>
-                  <div className="ingest-ept-check-grid">
-                    {PRIMARY_KEY_PATH_OPTIONS.map((path) => (
-                      <label key={path} className="ingest-ept-check">
-                        <input
-                          type="checkbox"
-                          checked={pkSelected.has(path)}
-                          onChange={() => toggleInSet(setPkSelected, path)}
-                        />
-                        <code>{path}</code>
-                      </label>
-                    ))}
-                  </div>
-                  {pkExtras.length > 0 ? (
-                    <p className="dash-widget__muted" style={{ fontSize: "0.72rem", margin: "0.5rem 0 0" }}>
-                      Additional PK paths on this endpoint (preserved on save):{" "}
-                      <code>{pkExtras.join(", ")}</code>
-                    </p>
-                  ) : null}
-                </fieldset>
-
-                <fieldset className="ingest-ept-fieldset">
-                  <legend>Device label JSON paths</legend>
-                  <div className="ingest-ept-check-grid">
-                    {DEVICE_LABEL_PATH_OPTIONS.map((path) => (
-                      <label key={path} className="ingest-ept-check">
-                        <input
-                          type="checkbox"
-                          checked={labelSelected.has(path)}
-                          onChange={() => toggleInSet(setLabelSelected, path)}
-                        />
-                        <code>{path}</code>
-                      </label>
-                    ))}
-                  </div>
-                  {labelExtras.length > 0 ? (
-                    <p className="dash-widget__muted" style={{ fontSize: "0.72rem", margin: "0.5rem 0 0" }}>
-                      Additional label paths on this endpoint (preserved on save):{" "}
-                      <code>{labelExtras.join(", ")}</code>
-                    </p>
-                  ) : null}
-                </fieldset>
-
-                <div className="ingest-ept-actions">
-                  <AarButton type="submit" variant="primary" disabled={loading}>
-                    {editing ? "Save changes" : "Create endpoint"}
-                  </AarButton>
-                  {editing ? (
-                    <AarButton type="button" variant="outline" onClick={() => resetForm()}>
-                      Cancel edit
-                    </AarButton>
-                  ) : null}
-                </div>
-              </form>
-            </section>
-
-            <section className="ingest-ept-panel">
+            <section className="ingest-ept-panel ingest-ept-panel--fullbleed">
               <h2 className="ingest-ept-table-title">Endpoints</h2>
               <OpsDataTable id="v2-ingest-endpoints-table">
                 {loading && filteredItems.length === 0 ? (
@@ -638,13 +674,33 @@ export function IngestDevicesPage() {
                                   {linked ? <span>{linked}</span> : <span className="dash-widget__muted">—</span>}
                                 </td>
                                 <td className="dm-data-table__td dm-data-table__td--center">
-                                  <Link
+                                  <button
+                                    type="button"
                                     className="dm-name-link"
-                                    to={`/devices/ingest/${encodeURIComponent(ep.id)}/identity`}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      padding: 0,
+                                      cursor: "pointer",
+                                      font: "inherit",
+                                      color: "var(--color-accent, #4da3ff)",
+                                      textDecoration: "underline",
+                                    }}
+                                    onClick={() => {
+                                      setIdentityModalId(ep.id);
+                                      setSearchParams(
+                                        (prev) => {
+                                          const n = new URLSearchParams(prev);
+                                          n.set("identity", ep.id);
+                                          return n;
+                                        },
+                                        { replace: true },
+                                      );
+                                    }}
                                   >
                                     <GitBranch size={14} strokeWidth={2} aria-hidden style={{ verticalAlign: "middle", marginRight: 4 }} />
                                     Map identity
-                                  </Link>
+                                  </button>
                                 </td>
                                 <td className="dm-data-table__td dm-data-table__td--actions">
                                   <div className="dm-act-grid">
@@ -681,9 +737,50 @@ export function IngestDevicesPage() {
                 </div>
               ) : null}
             </section>
+
+        {endpointModalOpen ? (
+          <div
+            className="eip-modal-overlay"
+            role="presentation"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) {
+                resetForm();
+                setEndpointModalOpen(false);
+              }
+            }}
+          >
+            <div
+              className="eip-modal-dialog ingest-ept-endpoint-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ingest-endpoint-modal-title"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <h2 id="ingest-endpoint-modal-title" className="ingest-ept-modal-title">
+                {editing ? "Edit endpoint" : "Create endpoint"}
+              </h2>
+              {endpointForm}
+            </div>
           </div>
-        </>
-      }
-    />
+        ) : null}
+
+        {identityModalId ? (
+          <div
+            className="eip-modal-overlay"
+            role="presentation"
+            onMouseDown={(e) => e.target === e.currentTarget && closeIdentityModal()}
+          >
+            <div
+              className="eip-modal-dialog"
+              role="dialog"
+              aria-modal="true"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <EndpointIdentityPanel endpointId={identityModalId} onClose={closeIdentityModal} />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </PageShell>
   );
 }

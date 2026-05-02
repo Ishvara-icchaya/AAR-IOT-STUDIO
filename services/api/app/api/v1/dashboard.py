@@ -6,7 +6,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
@@ -19,9 +19,11 @@ from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.data_object import DataObject
 from app.models.latest_device_state import LatestDeviceState
 from app.models.endpoint import Endpoint
+from app.models.resolved_device import ResolvedDevice
 from app.services.data_object_query import order_by_metadata_recency
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
+from app.models.device_endpoint import DeviceEndpoint
 from app.models.user import User
 from app.models.user_site import UserSite
 from app.models.workflow_result_object import WorkflowResultObject
@@ -234,22 +236,38 @@ def list_latest_device_state_sources(
     if not user_may_access_site(user, site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     stmt = (
-        select(LatestDeviceState)
+        select(LatestDeviceState, ResolvedDevice.device_label, Endpoint.endpoint_name, Device.name)
+        .outerjoin(
+            ResolvedDevice,
+            and_(
+                ResolvedDevice.id == LatestDeviceState.resolved_device_id,
+                ResolvedDevice.customer_id == LatestDeviceState.customer_id,
+            ),
+        )
+        .outerjoin(
+            Endpoint,
+            and_(Endpoint.id == LatestDeviceState.endpoint_id, Endpoint.customer_id == LatestDeviceState.customer_id),
+        )
+        .outerjoin(DeviceEndpoint, DeviceEndpoint.id == Endpoint.device_endpoint_id)
+        .outerjoin(Device, Device.id == DeviceEndpoint.device_id)
         .where(LatestDeviceState.customer_id == user.customer_id, LatestDeviceState.site_id == site_id)
         .order_by(LatestDeviceState.updated_at.desc())
         .limit(limit)
     )
-    rows = list(db.scalars(stmt).all())
+    rows = list(db.execute(stmt).all())
     items = [
         LatestDeviceStateSourceRow(
-            id=r.id,
-            site_id=r.site_id,
-            endpoint_id=r.endpoint_id,
-            resolved_device_id=r.resolved_device_id,
-            object_name=r.object_name,
-            updated_at=r.updated_at,
+            id=st.id,
+            site_id=st.site_id,
+            endpoint_id=st.endpoint_id,
+            resolved_device_id=st.resolved_device_id,
+            object_name=st.object_name,
+            updated_at=st.updated_at,
+            device_label=rd_label if isinstance(rd_label, str) and rd_label.strip() else None,
+            endpoint_name=ep_name if isinstance(ep_name, str) and ep_name.strip() else None,
+            device_name=dv_name if isinstance(dv_name, str) and dv_name.strip() else None,
         )
-        for r in rows
+        for st, rd_label, ep_name, dv_name in rows
     ]
     return DashboardSourcesLatestDeviceStatesResponse(items=items)
 

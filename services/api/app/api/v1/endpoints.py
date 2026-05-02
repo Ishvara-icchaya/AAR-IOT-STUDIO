@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session
 from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
 from app.api.deps import get_current_user
 from app.db.session import get_db
+from app.models.device import Device
+from app.models.device_endpoint import DeviceEndpoint
+from app.models.device_object import DeviceObject
 from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
@@ -21,6 +24,8 @@ from app.models.scrubbed_event import ScrubbedEvent
 from app.models.user import User
 from app.schemas.payload_field_metadata import PayloadFieldEntry, PayloadFieldMetadataResponse
 from app.services.endpoint_identity_publish import merge_identity_draft, publish_endpoint_identity, sample_document_for_validation
+from app.services.endpoint_scrubber_identity_hints import paths_from_device_mapping
+from app.services.endpoint_scrubber_semantics_identity_sync import sync_v2_endpoint_identity_from_device_mapping
 from app.services.endpoint_sample_service import normalize_sample_document
 from app.services.payload_field_catalog import build_payload_field_entries
 from app.schemas.endpoint import (
@@ -30,6 +35,7 @@ from app.schemas.endpoint import (
     EndpointListResponse,
     EndpointRead,
     EndpointUpdate,
+    ScrubberIdentityHintsResponse,
     LatestDeviceStateListResponse,
     LatestDeviceStateRead,
     ResolvedDeviceListResponse,
@@ -129,6 +135,20 @@ def create_endpoint(
         enabled=body.enabled,
     )
     db.add(ep)
+    db.flush()
+    if body.device_endpoint_id is not None:
+        de_row = db.get(DeviceEndpoint, body.device_endpoint_id)
+        if de_row:
+            do = db.execute(
+                select(DeviceObject).where(DeviceObject.device_id == de_row.device_id).limit(1)
+            ).scalar_one_or_none()
+            m = dict(do.mapping) if do and isinstance(do.mapping, dict) else {}
+            sync_v2_endpoint_identity_from_device_mapping(
+                db,
+                device_id=de_row.device_id,
+                merged_mapping=m,
+                device_customer_id=user.customer_id,
+            )
     db.commit()
     db.refresh(ep)
     log.debug("endpoints.create id=%s site_id=%s object_name=%s", ep.id, ep.site_id, ep.object_name)
@@ -147,6 +167,37 @@ def get_endpoint(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
     _ensure_endpoint_visible(ep, user, allowed)
     return EndpointRead.model_validate(ep)
+
+
+@router.get(
+    "/{endpoint_id}/scrubber-identity-hints",
+    response_model=ScrubberIdentityHintsResponse,
+)
+def get_endpoint_scrubber_identity_hints(
+    endpoint_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Primary key / label JSON paths implied by Scrubber Studio semantics on the linked device."""
+    allowed = allowed_site_ids_for_user(db, user)
+    ep = _load_endpoint(db, endpoint_id, user.customer_id)
+    if not ep:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    _ensure_endpoint_visible(ep, user, allowed)
+    if ep.device_endpoint_id is None:
+        return ScrubberIdentityHintsResponse(primary_device_key_fields=[], device_label_fields=[])
+    de = db.get(DeviceEndpoint, ep.device_endpoint_id)
+    if not de:
+        return ScrubberIdentityHintsResponse(primary_device_key_fields=[], device_label_fields=[])
+    dev = db.get(Device, de.device_id)
+    if not dev or dev.customer_id != user.customer_id:
+        return ScrubberIdentityHintsResponse(primary_device_key_fields=[], device_label_fields=[])
+    do = db.execute(
+        select(DeviceObject).where(DeviceObject.device_id == de.device_id).limit(1)
+    ).scalar_one_or_none()
+    mapping = do.mapping if do and isinstance(do.mapping, dict) else None
+    pk, labels = paths_from_device_mapping(mapping)
+    return ScrubberIdentityHintsResponse(primary_device_key_fields=pk, device_label_fields=labels)
 
 
 @router.get(
@@ -250,6 +301,19 @@ def update_endpoint(
 
     ep.updated_at = _utcnow()
     db.add(ep)
+    if "device_endpoint_id" in data and ep.device_endpoint_id is not None:
+        de_row = db.get(DeviceEndpoint, ep.device_endpoint_id)
+        if de_row:
+            do = db.execute(
+                select(DeviceObject).where(DeviceObject.device_id == de_row.device_id).limit(1)
+            ).scalar_one_or_none()
+            m = dict(do.mapping) if do and isinstance(do.mapping, dict) else {}
+            sync_v2_endpoint_identity_from_device_mapping(
+                db,
+                device_id=de_row.device_id,
+                merged_mapping=m,
+                device_customer_id=ep.customer_id,
+            )
     db.commit()
     db.refresh(ep)
     return EndpointRead.model_validate(ep)

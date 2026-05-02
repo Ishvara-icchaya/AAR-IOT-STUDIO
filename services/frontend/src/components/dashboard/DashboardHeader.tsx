@@ -140,7 +140,7 @@ export function DashboardHeader({ dashboardId }: Props) {
       <nav className="dash-header__subnav" aria-label="Dashboard navigation">
         <Link to="/dashboard/list" className="scrubber2-subnav__back">
           <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-          Dashboard List
+          Dashboard
         </Link>
         <span className="dash-header__subnav-hint">
           {" "}

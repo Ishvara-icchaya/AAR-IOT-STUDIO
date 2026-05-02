@@ -119,6 +119,11 @@ class LatestDeviceStateSourceRow(BaseModel):
     resolved_device_id: uuid.UUID
     object_name: str
     updated_at: datetime
+    # Identity label from resolved_devices (when endpoints.device_endpoint_id is unset).
+    device_label: str | None = None
+    endpoint_name: str | None = None
+    # Registered device name when endpoints.device_endpoint_id links to Manage Devices.
+    device_name: str | None = None
 
 
 class DashboardSourcesLatestDeviceStatesResponse(BaseModel):

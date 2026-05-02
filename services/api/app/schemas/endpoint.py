@@ -70,6 +70,13 @@ class EndpointListResponse(BaseModel):
     items: list[EndpointRead]
 
 
+class ScrubberIdentityHintsResponse(BaseModel):
+    """Paths from linked device `device_objects.mapping.scrubber2.fieldSemantics` (identity / display roles)."""
+
+    primary_device_key_fields: list[str]
+    device_label_fields: list[str]
+
+
 class ResolvedDeviceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

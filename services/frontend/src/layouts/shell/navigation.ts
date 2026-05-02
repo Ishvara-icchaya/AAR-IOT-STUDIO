@@ -21,9 +21,15 @@ export type MainNavFlatLink = {
 export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
   {
     id: "devices",
-    label: "Manage Endpoints",
+    label: "Manage Devices",
     to: "/devices/register",
-    alsoActiveOn: ["/devices/manage", "/devices/raw", "/devices/ingest"],
+    alsoActiveOn: ["/devices/manage", "/devices/raw"],
+  },
+  {
+    id: "register-endpoints",
+    label: "Register Endpoints",
+    to: "/devices/ingest",
+    alsoActiveOn: ["/devices/ingest"],
   },
   {
     id: "raw-sample",

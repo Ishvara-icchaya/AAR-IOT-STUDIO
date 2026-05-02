@@ -56,6 +56,18 @@ export async function getEndpoint(id: string) {
   return apiFetch<EndpointRead>(`/endpoints/${encodeURIComponent(id)}`);
 }
 
+export type ScrubberIdentityHints = {
+  primary_device_key_fields: string[];
+  device_label_fields: string[];
+};
+
+/** Paths from linked device Scrubber 2 semantics (`identity` / `display` roles). */
+export async function getEndpointScrubberIdentityHints(endpointId: string) {
+  return apiFetch<ScrubberIdentityHints>(
+    `/endpoints/${encodeURIComponent(endpointId)}/scrubber-identity-hints`,
+  );
+}
+
 export async function updateEndpoint(id: string, body: EndpointUpdateBody) {
   return apiFetch<EndpointRead>(`/endpoints/${encodeURIComponent(id)}`, { method: "PATCH", json: body });
 }

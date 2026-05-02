@@ -272,11 +272,7 @@ export function DashboardListPage() {
       className="dashboard-list-page device-manage-page"
       header={
         <OpsPageHeader
-          title={
-            <Link to="/dashboard/list" className="dm-page-hero__title-link">
-              Dashboard List
-            </Link>
-          }
+          title="Dashboard"
           subtitle="Create dashboard — build or edit Dashboard; return to the list anytime."
           actions={
             <Link to="/dashboard/create" className="aar-btn aar-btn--primary dm-btn dm-btn--primary">

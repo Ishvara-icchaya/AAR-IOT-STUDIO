@@ -74,7 +74,7 @@ export function DashboardCreatePage() {
       <nav className="dash-page-subnav" aria-label="Dashboard navigation">
         <Link to="/dashboard/list" className="dash-page-subnav__back">
           <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-          Dashboard List
+          Dashboard
         </Link>
         <span className="dash-page-subnav__hint">
           {" "}
