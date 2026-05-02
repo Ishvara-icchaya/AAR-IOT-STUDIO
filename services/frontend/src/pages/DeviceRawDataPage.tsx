@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
 
@@ -299,22 +300,15 @@ export function DeviceRawDataPage() {
         <RawArchiveAggregateGrid groups={groups} busyPayload={busyPayload} onOpenPayload={(name, id) => void openPayload(name, id)} />
       </div>
 
-      {payloadModal ? (
-        <div style={modalBackdrop} onClick={closePayloadModal} role="presentation">
-          <div
-            style={modalPanel}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-labelledby="raw-payload-title"
-          >
-            <div style={modalHeader}>
-              <h2 id="raw-payload-title" style={modalTitle}>
-                Payload — {payloadModal.title}
-              </h2>
-              <button type="button" style={modalClose} onClick={closePayloadModal} aria-label="Close">
-                ×
-              </button>
-            </div>
+      <AppModalShell
+        open={!!payloadModal}
+        onClose={closePayloadModal}
+        title={payloadModal ? `Payload — ${payloadModal.title}` : "Payload"}
+        titleId="raw-payload-title"
+        size="lg"
+      >
+        {payloadModal ? (
+          <>
             <p style={modalMeta}>
               <code style={{ fontSize: "0.72rem" }}>{payloadModal.rawId}</code>
             </p>
@@ -338,9 +332,9 @@ export function DeviceRawDataPage() {
             ) : !payloadModal.error ? (
               <p style={{ color: "var(--color-text-muted)" }}>Loading…</p>
             ) : null}
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </AppModalShell>
     </PageShell>
   );
 }
@@ -388,63 +382,14 @@ const sbtn: CSSProperties = {
   fontFamily: "inherit",
 };
 
-const modalBackdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.55)",
-  zIndex: 1000,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "1rem",
-};
-
-const modalPanel: CSSProperties = {
-  background: "var(--color-surface-elevated)",
-  color: "var(--color-text)",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  maxWidth: "min(920px, 100%)",
-  maxHeight: "min(85vh, 100%)",
-  width: "100%",
-  display: "flex",
-  flexDirection: "column",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
-};
-
-const modalHeader: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: "0.5rem",
-  padding: "0.75rem 1rem",
-  borderBottom: "1px solid var(--color-border)",
-};
-
-const modalTitle: CSSProperties = {
-  margin: 0,
-  fontSize: "1rem",
-  fontWeight: 600,
-};
-
-const modalClose: CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: "var(--color-text-muted)",
-  fontSize: "1.5rem",
-  lineHeight: 1,
-  cursor: "pointer",
-  padding: "0 0.25rem",
-};
-
 const modalMeta: CSSProperties = {
-  margin: "0.35rem 1rem 0",
+  margin: "0 0 0.35rem",
   fontSize: "0.72rem",
   color: "var(--color-text-muted)",
 };
 
 const prePayload: CSSProperties = {
-  margin: "0.75rem 1rem 1rem",
+  margin: "0.75rem 0 0",
   padding: "0.65rem",
   overflow: "auto",
   flex: 1,

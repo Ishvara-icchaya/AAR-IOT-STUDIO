@@ -1,6 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+
+import "@/components/app/app-modal.css";
 
 /** Above shell content, page-card glow (stacking contexts), and dashboard z-1000 overlays. */
 const Z_BACKDROP = 12000;
@@ -92,22 +95,8 @@ export function ConfigDrawer({
               <p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "var(--color-text-muted)" }}>{subtitle}</p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              flexShrink: 0,
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius)",
-              background: "var(--color-surface-elevated)",
-              color: "var(--color-text)",
-              cursor: "pointer",
-              padding: "0.25rem 0.55rem",
-              fontSize: "0.85rem",
-              lineHeight: 1,
-            }}
-          >
-            ×
+          <button type="button" className="app-modal__close" onClick={onClose} aria-label="Close">
+            <X size={20} strokeWidth={2} aria-hidden />
           </button>
         </div>
         <div

@@ -13,6 +13,7 @@ import {
   type StaticIngestionListItem,
 } from "@/api/staticIngestion";
 import { PlainOperationalTable, type PlainOperationalColumn } from "@/components/data/PlainOperationalTable";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { AppButton } from "@/components/app";
 import { PageStatus } from "@/components/PageStatus";
 
@@ -352,23 +353,17 @@ export function DeviceEndpointStaticJsonPanel({
         </div>
       </div>
 
-      {modalOpen ? (
-        <div
-          style={modalBackdrop}
-          onClick={() => !siBusy && closeModal()}
-          onKeyDown={(e) => e.key === "Escape" && !siBusy && closeModal()}
-          role="presentation"
-        >
-          <div
-            style={modalPanel}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-          >
-            <h2 style={{ margin: "0 0 0.75rem", fontSize: "1.05rem" }}>
-              {editingId ? "Edit static JSON source" : "New static JSON source"}
-            </h2>
+      <AppModalShell
+        open={modalOpen}
+        onClose={() => {
+          if (!siBusy) closeModal();
+        }}
+        title={editingId ? "Edit static JSON source" : "New static JSON source"}
+        titleId="static-json-modal-title"
+        size="lg"
+        closeOnBackdrop={!siBusy}
+      >
+        <>
             <div style={formGrid}>
               <label style={lblRow}>
                 <span style={lblRowLabel}>Ingestion name</span>
@@ -587,39 +582,12 @@ export function DeviceEndpointStaticJsonPanel({
               <AppButton type="button" variant="primary" disabled={siBusy} onClick={() => void onSaveStatic()}>
                 Save
               </AppButton>
-              <AppButton type="button" variant="ghost" disabled={siBusy} onClick={closeModal}>
-                Cancel
-              </AppButton>
             </div>
-          </div>
-        </div>
-      ) : null}
+        </>
+      </AppModalShell>
     </div>
   );
 }
-
-const modalBackdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-  padding: "1rem",
-};
-
-const modalPanel: CSSProperties = {
-  background: "var(--color-surface-elevated)",
-  color: "var(--color-text)",
-  borderRadius: "var(--radius)",
-  maxWidth: "min(920px, 100%)",
-  width: "100%",
-  maxHeight: "min(92vh, 900px)",
-  overflow: "auto",
-  padding: "1rem",
-  border: "1px solid var(--color-border)",
-};
 
 const formGrid: CSSProperties = {
   display: "flex",

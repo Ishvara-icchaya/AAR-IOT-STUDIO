@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 
 import {
   getEndpoint,
@@ -11,6 +12,7 @@ import {
 } from "@/api/endpoints";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 
+import "@/components/app/app-modal.css";
 import "./endpoint-identity-panel.css";
 
 function splitFields(v: string): string[] {
@@ -39,11 +41,13 @@ export function sampleDocumentForIdentityDisplay(ep: EndpointRead | null): Recor
 
 type Props = {
   endpointId: string;
-  /** When set, panel shows a title bar with close (modal usage). */
+  /** When set, panel shows a title bar with icon close (standalone modal usage). */
   onClose?: () => void;
+  /** When true, outer title/close row is omitted (parent `AppModalShell` provides chrome). */
+  embedded?: boolean;
 };
 
-export function EndpointIdentityPanel({ endpointId, onClose }: Props) {
+export function EndpointIdentityPanel({ endpointId, onClose, embedded = false }: Props) {
   const [ep, setEp] = useState<EndpointRead | null>(null);
   const [fields, setFields] = useState<PayloadFieldEntry[]>([]);
   const [pkInput, setPkInput] = useState("");
@@ -148,27 +152,42 @@ export function EndpointIdentityPanel({ endpointId, onClose }: Props) {
 
   return (
     <div className="eip-root">
-      <div className="eip-header">
-        <div>
-          <h2 className="eip-title">{ep?.endpoint_name ?? "Endpoint identity"}</h2>
-          {ep ? (
-            <p className="eip-meta">
-              Lifecycle: <strong>{ep.lifecycle_status}</strong>
-              {ep.identity_published_at ? (
-                <>
-                  {" "}
-                  · Published <time dateTime={ep.identity_published_at}>{ep.identity_published_at}</time>
-                </>
-              ) : null}
-            </p>
+      {!embedded ? (
+        <div className="eip-header">
+          <div>
+            <h2 className="eip-title">{ep?.endpoint_name ?? "Endpoint identity"}</h2>
+            {ep ? (
+              <p className="eip-meta">
+                Lifecycle: <strong>{ep.lifecycle_status}</strong>
+                {ep.identity_published_at ? (
+                  <>
+                    {" "}
+                    · Published <time dateTime={ep.identity_published_at}>{ep.identity_published_at}</time>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+          </div>
+          {onClose ? (
+            <button type="button" className="app-modal__close" onClick={onClose} aria-label="Close">
+              <X size={20} strokeWidth={2} aria-hidden />
+            </button>
           ) : null}
         </div>
-        {onClose ? (
-          <button type="button" className="dm-btn dm-btn--outline" onClick={onClose}>
-            Close
-          </button>
-        ) : null}
-      </div>
+      ) : ep ? (
+        <p className="eip-meta" style={{ marginTop: 0 }}>
+          <strong className="eip-title" style={{ fontSize: "1rem", display: "block", marginBottom: "0.25rem" }}>
+            {ep.endpoint_name}
+          </strong>
+          Lifecycle: <strong>{ep.lifecycle_status}</strong>
+          {ep.identity_published_at ? (
+            <>
+              {" "}
+              · Published <time dateTime={ep.identity_published_at}>{ep.identity_published_at}</time>
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       {loading ? <p className="eip-muted">Loading…</p> : null}
 

@@ -1,4 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { X } from "lucide-react";
+
+import "./app-modal.css";
 import "./confirm-action-modal.css";
 
 type Variant = "default" | "danger" | "warning" | "success";
@@ -126,6 +129,9 @@ export function ConfirmActionModal({
           <h2 id={titleId} className="confirm-action-modal__title">
             {title}
           </h2>
+          <button type="button" className="app-modal__close" onClick={onCancel} disabled={!canDismiss} aria-label="Close">
+            <X size={20} strokeWidth={2} aria-hidden />
+          </button>
         </div>
         <div id={descId} className="confirm-action-modal__body">
           {message}

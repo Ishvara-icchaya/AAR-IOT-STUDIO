@@ -21,6 +21,7 @@ import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
 import { AarButton } from "@/components/system/AarButton";
@@ -1043,48 +1044,42 @@ export function DeviceRegisterPage() {
         </OpsDataTable>
       </div>
 
-      {modalMode ? (
-        <div style={modalBackdrop} role="presentation" onMouseDown={(e) => e.target === e.currentTarget && closeModal()}>
-          <div style={modalDialog} role="dialog" aria-modal="true" aria-labelledby="device-modal-title">
-            <h2 id="device-modal-title" style={modalTitle}>
-              {modalMode === "create" ? "Register device" : "Edit device"}
-            </h2>
-            <form onSubmit={onModalSubmit}>
-              <div style={modalRow}>
-                <label style={modalField}>
-                  Site
-                  <select value={siteId} onChange={(e) => setSiteId(e.target.value)} required style={inp}>
-                    <option value="" disabled>
-                      Select site
-                    </option>
-                    {sites.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label style={modalField}>
-                  Device name
-                  <input value={name} onChange={(e) => setName(e.target.value)} required style={inp} />
-                </label>
-                <label style={modalField}>
-                  Description
-                  <input value={description} onChange={(e) => setDescription(e.target.value)} style={inp} />
-                </label>
-                <button type="submit" style={btnPrimary} disabled={saving || !sites.length}>
-                  {saving ? "Saving…" : modalMode === "create" ? "Register device" : "Save changes"}
-                </button>
-              </div>
-              <div style={modalFooter}>
-                <button type="button" style={btnSecondary} onClick={closeModal} disabled={saving}>
-                  Cancel
-                </button>
-              </div>
-            </form>
+      <AppModalShell
+        open={Boolean(modalMode)}
+        onClose={closeModal}
+        title={modalMode === "create" ? "Register device" : "Edit device"}
+        titleId="device-modal-title"
+        size="md"
+      >
+        <form onSubmit={onModalSubmit}>
+          <div style={modalRow}>
+            <label style={modalField}>
+              Site
+              <select value={siteId} onChange={(e) => setSiteId(e.target.value)} required style={inp}>
+                <option value="" disabled>
+                  Select site
+                </option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={modalField}>
+              Device name
+              <input value={name} onChange={(e) => setName(e.target.value)} required style={inp} />
+            </label>
+            <label style={modalField}>
+              Description
+              <input value={description} onChange={(e) => setDescription(e.target.value)} style={inp} />
+            </label>
+            <button type="submit" style={btnPrimary} disabled={saving || !sites.length}>
+              {saving ? "Saving…" : modalMode === "create" ? "Register device" : "Save changes"}
+            </button>
           </div>
-        </div>
-      ) : null}
+        </form>
+      </AppModalShell>
     </PageShell>
   );
 }
@@ -1111,18 +1106,6 @@ const btnPrimary: CSSProperties = {
   cursor: "pointer",
 };
 
-const btnSecondary: CSSProperties = {
-  padding: "0.5rem 0.85rem",
-  borderRadius: "var(--radius)",
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface-elevated)",
-  color: "var(--color-text)",
-  fontFamily: "inherit",
-  fontWeight: 600,
-  fontSize: "0.88rem",
-  cursor: "pointer",
-};
-
 const tdDesc: CSSProperties = {
   maxWidth: "320px",
   overflow: "hidden",
@@ -1138,33 +1121,6 @@ const linkBtn: CSSProperties = {
   cursor: "pointer",
   font: "inherit",
   textDecoration: "underline",
-};
-
-const modalBackdrop: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.45)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-  padding: "1rem",
-};
-
-const modalDialog: CSSProperties = {
-  background: "var(--color-surface)",
-  border: "1px solid var(--color-border)",
-  borderRadius: "12px",
-  padding: "1.25rem 1.5rem",
-  maxWidth: "min(960px, 100%)",
-  width: "100%",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
-};
-
-const modalTitle: CSSProperties = {
-  margin: "0 0 1rem",
-  fontSize: "1.1rem",
-  fontWeight: 600,
 };
 
 const modalRow: CSSProperties = {
@@ -1184,9 +1140,3 @@ const modalField: CSSProperties = {
   minWidth: "120px",
 };
 
-const modalFooter: CSSProperties = {
-  marginTop: "1rem",
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "0.5rem",
-};

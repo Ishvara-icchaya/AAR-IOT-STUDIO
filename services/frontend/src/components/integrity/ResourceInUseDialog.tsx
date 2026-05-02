@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { X } from "lucide-react";
+
+import "@/components/app/app-modal.css";
 import { apiFetch } from "@/api/client";
 import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
 import type { DependencyItem, ResourceInUseDetail } from "@/types/integrity";
@@ -54,39 +57,30 @@ export function ResourceInUseDialog({ open, detail, onClose }: Props) {
 
   return (
     <div
-      className="resource-in-use-overlay"
+      className="app-modal__overlay"
       role="presentation"
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 13000,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1rem",
-      }}
+      style={{ zIndex: 13000 }}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
+        className="app-modal__dialog app-modal__dialog--md"
         role="dialog"
         aria-modal="true"
         aria-labelledby="resource-in-use-title"
-        style={{
-          maxWidth: "min(520px, 100%)",
-          width: "100%",
-          background: "var(--color-bg-elevated, var(--color-bg))",
-          color: "var(--color-text)",
-          borderRadius: "var(--radius)",
-          border: "1px solid var(--color-border)",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.25)",
-          padding: "1.25rem",
-        }}
         onMouseDown={(e) => e.stopPropagation()}
+        style={{ maxHeight: "min(90vh, 720px)" }}
       >
-        <h2 id="resource-in-use-title" style={{ margin: "0 0 0.5rem", fontSize: "1.1rem" }}>
-          Cannot delete
-        </h2>
+        <header className="app-modal__header">
+          <div className="app-modal__header-text">
+            <h2 id="resource-in-use-title" className="app-modal__title">
+              Cannot delete
+            </h2>
+          </div>
+          <button type="button" className="app-modal__close" onClick={onClose} aria-label="Close">
+            <X size={20} strokeWidth={2} aria-hidden />
+          </button>
+        </header>
+        <div className="app-modal__body">
         <p style={{ margin: "0 0 1rem", fontSize: "0.92rem", lineHeight: 1.5 }}>{snapshot.message}</p>
         {snapshot.dependencies.length > 0 ? (
           <div style={{ marginBottom: "1rem" }}>
@@ -109,22 +103,7 @@ export function ResourceInUseDialog({ open, detail, onClose }: Props) {
             </ul>
           </div>
         ) : null}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              padding: "0.45rem 0.85rem",
-              borderRadius: "var(--radius)",
-              border: "1px solid var(--color-border)",
-              background: "transparent",
-              color: "var(--color-text)",
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            Cancel
-          </button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.5rem" }}>
           {snapshot.deactivate_url ? (
             <button
               type="button"
@@ -145,6 +124,7 @@ export function ResourceInUseDialog({ open, detail, onClose }: Props) {
               {busy ? "Working…" : "Deactivate instead"}
             </button>
           ) : null}
+        </div>
         </div>
       </div>
     </div>

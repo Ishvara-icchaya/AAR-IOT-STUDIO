@@ -20,6 +20,7 @@ import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { EndpointIdentityPanel } from "@/components/endpoint/EndpointIdentityPanel";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
@@ -738,48 +739,29 @@ export function IngestDevicesPage() {
               ) : null}
             </section>
 
-        {endpointModalOpen ? (
-          <div
-            className="eip-modal-overlay"
-            role="presentation"
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) {
-                resetForm();
-                setEndpointModalOpen(false);
-              }
-            }}
-          >
-            <div
-              className="eip-modal-dialog ingest-ept-endpoint-dialog"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="ingest-endpoint-modal-title"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <h2 id="ingest-endpoint-modal-title" className="ingest-ept-modal-title">
-                {editing ? "Edit endpoint" : "Create endpoint"}
-              </h2>
-              {endpointForm}
-            </div>
-          </div>
-        ) : null}
+        <AppModalShell
+          open={endpointModalOpen}
+          title={editing ? "Edit endpoint" : "Create endpoint"}
+          titleId="ingest-endpoint-modal-title"
+          onClose={() => {
+            resetForm();
+            setEndpointModalOpen(false);
+          }}
+          size="lg"
+          dialogClassName="ingest-ept-endpoint-dialog"
+        >
+          {endpointForm}
+        </AppModalShell>
 
-        {identityModalId ? (
-          <div
-            className="eip-modal-overlay"
-            role="presentation"
-            onMouseDown={(e) => e.target === e.currentTarget && closeIdentityModal()}
-          >
-            <div
-              className="eip-modal-dialog"
-              role="dialog"
-              aria-modal="true"
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <EndpointIdentityPanel endpointId={identityModalId} onClose={closeIdentityModal} />
-            </div>
-          </div>
-        ) : null}
+        <AppModalShell
+          open={Boolean(identityModalId)}
+          title="Endpoint identity"
+          titleId="ingest-identity-modal-title"
+          onClose={closeIdentityModal}
+          size="lg"
+        >
+          {identityModalId ? <EndpointIdentityPanel embedded endpointId={identityModalId} /> : null}
+        </AppModalShell>
       </div>
     </PageShell>
   );

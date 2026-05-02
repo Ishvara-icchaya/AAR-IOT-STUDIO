@@ -1,6 +1,6 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardCheck, Loader2, Save, X } from "lucide-react";
+import { ClipboardCheck, Loader2, Save } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import type { DeviceRead } from "@/api/devices";
@@ -13,7 +13,7 @@ import {
 import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
 import { AppButton, AppCard, AppEmptyState, AppField, AppGrid, AppInput, AppSelect, AppTabs, AppTextarea, AppToolbar } from "@/components/app";
 import { DeviceEndpointStaticJsonPanel } from "@/components/device/DeviceEndpointStaticJsonPanel";
-import { ConfigDrawer } from "@/components/ops/ConfigDrawer";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
@@ -564,12 +564,14 @@ export function DeviceManagePage() {
           <span style={breadcrumbMuted}> — open a device from Register devices to configure its endpoint</span>
         </nav>
 
-        <ConfigDrawer
+        <AppModalShell
           open={Boolean(editingDevice || deviceIdFromQuery)}
           onClose={cancelEdit}
           title="Device & endpoint"
           subtitle={editingDevice?.name ?? (deviceIdFromQuery ? "…" : undefined)}
-          width={1680}
+          size="xl"
+          titleId="device-endpoint-modal-title"
+          dialogClassName="device-endpoint-config-modal"
         >
           {editingDevice ? (
             <>
@@ -634,16 +636,6 @@ export function DeviceManagePage() {
                       <Save size={16} strokeWidth={2} aria-hidden />
                     )}
                     {submitting ? "Saving…" : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    className="dm-btn dm-btn--outline"
-                    onClick={cancelEdit}
-                    disabled={submitting}
-                    title="Close without saving — return to Register devices"
-                  >
-                    <X size={16} strokeWidth={2} aria-hidden />
-                    Cancel
                   </button>
                 </>
               }
@@ -1368,7 +1360,7 @@ export function DeviceManagePage() {
               Back.
             </div>
           ) : null}
-        </ConfigDrawer>
+        </AppModalShell>
 
         {!editingDevice ? (
           <AppEmptyState title="Configure a device endpoint">

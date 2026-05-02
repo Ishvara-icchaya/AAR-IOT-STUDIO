@@ -1,0 +1,120 @@
+/**
+ * Shared modal shell — aligned with endpoint identity / map identity overlays
+ * (.eip-modal-*): centered dialog, dim backdrop, header title + icon close only.
+ */
+
+.app-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.app-modal__dialog {
+  position: relative;
+  width: 100%;
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--color-surface, #111822);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.app-modal__dialog--md {
+  max-width: min(32rem, 100%);
+}
+
+.app-modal__dialog--lg {
+  max-width: min(1100px, 100%);
+}
+
+.app-modal__dialog--xl {
+  max-width: min(1680px, 100%);
+}
+
+.app-modal__header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  background: color-mix(in oklab, var(--color-surface-elevated, #161b22) 88%, transparent);
+}
+
+.app-modal__header-text {
+  min-width: 0;
+}
+
+.app-modal__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-text, #f4f6f8);
+  line-height: 1.25;
+}
+
+.app-modal__subtitle {
+  margin: 0.28rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #9aa3b2);
+  line-height: 1.35;
+}
+
+.app-modal__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: -0.15rem -0.25rem 0 0;
+  padding: 0;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius, 8px);
+  background: color-mix(in oklab, var(--color-surface-elevated, #161b22) 90%, transparent);
+  color: var(--color-text, #f4f6f8);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.app-modal__close:hover {
+  background: color-mix(in oklab, var(--color-text, #fff) 8%, var(--color-surface-elevated, #161b22));
+  border-color: var(--color-border-strong, rgba(255, 255, 255, 0.16));
+}
+
+.app-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.app-modal__body--flush {
+  padding: 0;
+}
+
+/* Device manage — wide endpoint editor */
+.device-endpoint-config-modal {
+  max-height: min(94vh, 980px);
+}
+
+/* Scrubber pipeline help — compact width */
+.scrubber-help-modal-dialog {
+  max-width: min(760px, 100%);
+  max-height: min(90vh, 860px);
+}

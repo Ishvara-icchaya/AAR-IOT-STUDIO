@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import type { PipelineStepId } from "@/types/scrubberPipeline";
 
 export type ScrubberHelpTabId = "overview" | PipelineStepId;
@@ -276,52 +277,32 @@ export function ScrubberPipelineHelpModal({
     if (open) setTab(initialStepId);
   }, [open, initialStepId]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div className="scrubber-debug-modal-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="scrubber-help-modal"
-        role="dialog"
-        aria-modal
-        aria-labelledby="scrubber-help-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="scrubber-debug-modal__head">
-          <h2 id="scrubber-help-title" style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>
-            Pipeline help
-          </h2>
-          <button type="button" className="scrubber-btn scrubber-btn--ghost" onClick={onClose}>
-            Close
+    <AppModalShell
+      open={open}
+      onClose={onClose}
+      title="Pipeline help"
+      titleId="scrubber-help-title"
+      size="md"
+      dialogClassName="scrubber-help-modal-dialog"
+    >
+      <div className="scrubber-help-tabs" role="tablist" aria-label="Help sections">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`scrubber-help-tab${tab === t.id ? " scrubber-help-tab--active" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
           </button>
-        </div>
-        <div className="scrubber-help-tabs" role="tablist" aria-label="Help sections">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              className={`scrubber-help-tab${tab === t.id ? " scrubber-help-tab--active" : ""}`}
-              onClick={() => setTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="scrubber-help-panel" role="tabpanel">
-          {renderPanel(tab)}
-        </div>
+        ))}
       </div>
-    </div>
+      <div className="scrubber-help-panel" role="tabpanel">
+        {renderPanel(tab)}
+      </div>
+    </AppModalShell>
   );
 }
