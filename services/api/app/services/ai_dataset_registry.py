@@ -78,7 +78,7 @@ DATASETS: dict[str, DatasetSpec] = {
         default_limit=200,
         max_limit=500,
         allowed_roles=ALL_ROLES,
-        allowed_filter_keys=frozenset({"site_ids", "kpi_keys"}),
+        allowed_filter_keys=frozenset({"site_ids", "kpi_keys", "device_ids"}),
         allowed_aggregations=frozenset({"hourly_avg_by_key", "daily_avg_by_key", "recent_points"}),
         allow_payload=False,
     ),

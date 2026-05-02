@@ -259,6 +259,14 @@ export function EnterpriseAiPage() {
             <OpsScopeControls variant="filters" timeRangeLabel="Range" />
           </div>
         </OpsFilterPanel>
+        {health && !health.ollama_reachable ? (
+          <PageStatus variant="warning">
+            <strong>LLM summaries are offline.</strong> Enterprise AI still returns structured KPI and alert data, but natural-language
+            summaries need Ollama reachable from the API. {health.ollama_error ? <span>{health.ollama_error} </span> : null}
+            Set <code>OLLAMA_BASE_URL</code> and <code>OLLAMA_MODEL</code>, pull the model on the Ollama host, then reload this page.
+          </PageStatus>
+        ) : null}
+
         <section className="dm-kpi-row dm-kpi-row--equal-4" aria-label="Assistant metrics">
           <div className="dm-kpi">
             <div className="dm-kpi__body">

@@ -24,6 +24,20 @@ def _parse_site_ids(raw: Any) -> list[uuid.UUID]:
     return out
 
 
+def _parse_device_ids(raw: Any) -> list[uuid.UUID]:
+    if not raw:
+        return []
+    if not isinstance(raw, list):
+        return []
+    out: list[uuid.UUID] = []
+    for x in raw:
+        try:
+            out.append(uuid.UUID(str(x)))
+        except ValueError as e:
+            raise PlanRejected(f"invalid device id: {x}") from e
+    return out
+
+
 def validate_and_clamp_plan(plan: dict[str, Any], *, user_role: str) -> dict[str, Any]:
     name = plan.get("dataset")
     if not isinstance(name, str):
@@ -62,6 +76,10 @@ def validate_and_clamp_plan(plan: dict[str, Any], *, user_role: str) -> dict[str
 
     site_ids = _parse_site_ids(cleaned.get("site_ids"))
     cleaned["site_ids"] = [str(s) for s in site_ids]
+
+    if name == "ai_kpi_trends" and cleaned.get("device_ids") is not None:
+        dev_ids = _parse_device_ids(cleaned.get("device_ids"))
+        cleaned["device_ids"] = [str(d) for d in dev_ids]
 
     if name == "ai_publish_delivery_trends" and cleaned.get("published_service_id"):
         try:

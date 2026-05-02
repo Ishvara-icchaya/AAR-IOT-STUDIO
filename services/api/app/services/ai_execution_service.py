@@ -90,6 +90,17 @@ def _execute_plan_core(
 
     if dataset == "ai_kpi_trends":
         keys = sanitize_kpi_keys(filters.get("kpi_keys"))
+        restrict: list[uuid.UUID] | None = None
+        raw_devs = filters.get("device_ids")
+        if isinstance(raw_devs, list) and raw_devs:
+            restrict = []
+            for x in raw_devs:
+                try:
+                    restrict.append(uuid.UUID(str(x)))
+                except (ValueError, TypeError):
+                    pass
+            if not restrict:
+                restrict = None
         return query_kpi_trends(
             db,
             customer_id=customer_id,
@@ -100,6 +111,7 @@ def _execute_plan_core(
             row_limit=limit,
             kpi_keys=keys,
             statement_timeout_ms=statement_timeout_ms,
+            restrict_device_ids=restrict,
         )
 
     if dataset == "ai_health_trends":

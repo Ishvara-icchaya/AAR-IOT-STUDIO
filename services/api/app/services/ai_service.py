@@ -32,6 +32,7 @@ from app.services.ai_prompt_service import (
     pick_configured_llm_template,
     system_instruction_with_optional_template,
 )
+from app.services.ai_plan_device_hints import apply_kpi_device_hint
 from app.services.ai_query_planner import build_plan
 from app.services.ai_response_builder import chat_response
 from app.services.ai_sql_guard import PlanRejected, validate_and_clamp_plan
@@ -129,6 +130,11 @@ def _structured_answer(
             "lists, data object health, workflows, dashboards, published services, or platform monitoring."
         )
     if not rows and dataset != "ai_monitoring_overview":
+        if metrics.get("reason") == "device_filter_no_match":
+            return (
+                "No KPI rows matched that device name in your site scope and time range. "
+                "Check spelling, shell site filter, and that the device exists."
+            )
         return "No matching rows were found for your site scope and time range."
 
     parts: list[str] = []
@@ -244,6 +250,13 @@ def run_chat(db: Session, user: User, body: AIChatRequest) -> dict[str, Any]:
         use_llm=body.use_llm,
         debug_raw=body.debug_raw and role == "admin",
         user_role=role,
+    )
+    plan = apply_kpi_device_hint(
+        db,
+        customer_id=user.customer_id,
+        site_ids=sites,
+        message=body.message,
+        plan=plan,
     )
     try:
         plan = validate_and_clamp_plan(plan, user_role=role)

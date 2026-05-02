@@ -68,9 +68,16 @@ def query_kpi_trends(
     row_limit: int,
     kpi_keys: list[str] | None,
     statement_timeout_ms: int | None = None,
+    restrict_device_ids: list[uuid.UUID] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    dev_ids = list_device_ids_for_sites(metadata_db, customer_id=customer_id, site_ids=site_ids)
+    base_dev_ids = list_device_ids_for_sites(metadata_db, customer_id=customer_id, site_ids=site_ids)
+    dev_ids = base_dev_ids
+    if restrict_device_ids:
+        allow = set(restrict_device_ids)
+        dev_ids = [d for d in dev_ids if d in allow]
     if not dev_ids:
+        if restrict_device_ids and base_dev_ids:
+            return [], {"rows_returned": 0, "reason": "device_filter_no_match", "source": "timescale"}
         return [], {"rows_returned": 0, "reason": "no_devices_in_sites", "source": "timescale"}
 
     t0u = t0 if t0.tzinfo else t0.replace(tzinfo=timezone.utc)
