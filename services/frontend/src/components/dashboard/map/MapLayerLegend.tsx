@@ -105,9 +105,9 @@ export function MapLayerLegend({ layerControls: lc, markers, intelOverlay }: Pro
 
   return (
     <div className="dash-map-legend-wrap">
-      <section className="dash-map-legend" aria-label="Color legend">
+      <section className="dash-map-legend dash-map-legend--colors" aria-label="Color legend">
         <h4 className="dash-map-legend__title">Legend</h4>
-        <ul className="dash-map-legend__list">
+        <ul className="dash-map-legend__list dash-map-legend__list--grid">
           {colorRows.map((r) => (
             <li key={r.key} className="dash-map-legend__item">
               <Swatch rgba={r.rgba} />
@@ -119,7 +119,7 @@ export function MapLayerLegend({ layerControls: lc, markers, intelOverlay }: Pro
       {routeRows.length ? (
         <section className="dash-map-legend dash-map-legend--route" aria-label="Trace legend">
           <h4 className="dash-map-legend__title">Trace</h4>
-          <ul className="dash-map-legend__list">
+          <ul className="dash-map-legend__list dash-map-legend__list--grid">
             {routeRows.map((r) => (
               <li key={r.key} className="dash-map-legend__item">
                 <Swatch rgba={r.rgba} />
