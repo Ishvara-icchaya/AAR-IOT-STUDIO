@@ -15,13 +15,23 @@ export function openDashboardMapMarkerPopup(
     trendScope?: "resolved_device" | "endpoint" | "site";
     /** When set, passed as repeated kpiKeys query params so detail KPIs match the map widget binding. */
     kpiKeys?: string[];
+    /** When popup is mounted outside DashboardLiveProvider, pass live refresh meta from the map widget. */
+    detailRefreshIntervalSec?: number;
+    detailRenderEpoch?: string;
+    /**
+     * Expanded “Intelligence view”: popups must sit above panels and avoid tight max-width
+     * so tables are usable; grid map uses a compact card.
+     */
+    expandedMapIntel?: boolean;
   },
 ): maplibregl.Popup {
   const host = document.createElement("div");
+  const intel = opts.expandedMapIntel === true;
   const popup = new maplibregl.Popup({
-    offset: 18,
-    maxWidth: "380px",
-    className: "dash-map-popup-shell",
+    anchor: intel ? "bottom" : "top",
+    offset: intel ? 12 : 10,
+    maxWidth: intel ? "520px" : "380px",
+    className: `dash-map-popup-shell${intel ? " dash-map-popup-shell--intel-view" : " dash-map-popup-shell--grid"}`,
     closeButton: true,
     closeOnClick: false,
   })
@@ -51,6 +61,8 @@ export function openDashboardMapMarkerPopup(
       blockedMessage={opts.blockedMessage}
       trendScope={opts.trendScope}
       kpiKeys={opts.kpiKeys}
+      detailRefreshIntervalSec={opts.detailRefreshIntervalSec}
+      detailRenderEpoch={opts.detailRenderEpoch}
     />,
   );
 

@@ -16,9 +16,18 @@ from app.db.session import get_db
 from app.models.endpoint import Endpoint
 from app.models.resolved_device import ResolvedDevice
 from app.models.user import User
-from app.services.dashboard_live import _map_markers_site, build_map_marker_for_source
-from app.services.map_intelligence_service import build_device_path, build_expanded_intelligence
+from app.services.dashboard_live import (
+    _map_markers_site,
+    build_map_marker_for_source,
+    merge_latest_device_state_map_markers,
+)
+from app.services.map_intelligence_service import (
+    build_device_path,
+    build_expanded_intelligence,
+    build_site_historical_sample_points,
+)
 from app.services.map_runtime_service import (
+    aggregate_data_object_markers_by_device,
     compute_map_init_from_markers,
     internal_aggregator_visibility,
     list_eligible_map_objects,
@@ -63,6 +72,7 @@ class MapMarkersQueryBody(BaseModel):
     included_sources: list[dict[str, Any]] | None = None
     single_source_type: str | None = None
     single_source_id: uuid.UUID | None = None
+    aggregate_by_device: bool = False
 
 
 class MapMarkersQueryResponse(BaseModel):
@@ -163,6 +173,18 @@ def map_markers(
         allowed_device_ids=allowed_devices,
         pg_markers_fn=_map_markers_site,
     )
+    markers = merge_latest_device_state_map_markers(
+        markers,
+        db,
+        customer_id=user.customer_id,
+        site_id=site_id,
+        latf=latitude_field,
+        lonf=longitude_field,
+        kpi_fields=kpi_list,
+        excluded=excluded,
+        title_field=None,
+        health_field=None,
+    )
     if light:
         markers = [map_marker_to_light(m) for m in markers]
     return MapMarkersResponse(markers=markers)
@@ -247,6 +269,21 @@ def map_markers_query(
             allowed_device_ids=allowed_devices,
             pg_markers_fn=_map_markers_site,
         )
+        markers = merge_latest_device_state_map_markers(
+            markers,
+            db,
+            customer_id=user.customer_id,
+            site_id=body.site_id,
+            latf=body.latitude_field,
+            lonf=body.longitude_field,
+            kpi_fields=kpi_list,
+            excluded=excluded,
+            title_field=body.title_field,
+            health_field=body.health_field,
+        )
+
+    if mode != "single" and body.aggregate_by_device:
+        markers = aggregate_data_object_markers_by_device(markers)
 
     if body.light:
         markers = [map_marker_to_light(m) for m in markers]
@@ -267,6 +304,11 @@ def map_object_detail(
         alias="trendScope",
         description="For latest_device_state: trend_context scope (resolved_device|endpoint|site). Default resolved_device.",
         pattern="^(resolved_device|endpoint|site)$",
+    ),
+    include_timescale_history: bool = Query(
+        False,
+        alias="includeTimescaleHistory",
+        description="When true, load Timescale KPI samples (slower). Default false for fast popups.",
     ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -292,6 +334,7 @@ def map_object_detail(
         display_field_paths=display_field_paths,
         kpi_keys=kpi_keys,
         trend_scope=trend_scope,
+        include_timescale_history=include_timescale_history,
     )
     if not detail:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Object not found")
@@ -304,7 +347,7 @@ def map_intelligence_expanded(
     endpoint_id: uuid.UUID | None = Query(None),
     mode: str = Query("runtime", pattern="^(runtime|historical)$"),
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=200),
     kpi_keys: list[str] | None = Query(None, alias="kpiKeys"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -369,6 +412,39 @@ def map_intelligence_path(
         expected_frequency_sec=expected_frequency_sec,
     )
     return path
+
+
+@router.get("/intelligence/historical-markers")
+def map_intelligence_historical_markers(
+    site_id: uuid.UUID = Query(...),
+    endpoint_id: uuid.UUID | None = Query(None),
+    from_ts: datetime | None = Query(None, alias="from"),
+    to_ts: datetime | None = Query(None, alias="to"),
+    max_points: int = Query(400, ge=50, le=2000),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Deduped scrubbed-event coordinates for historical map overlay (all devices in scope)."""
+    allowed = allowed_site_ids_for_user(db, user)
+    site = ensure_site_in_tenant(db, user.customer_id, site_id)
+    if not site:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
+    if not user_may_access_site(user, site_id, allowed):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    if endpoint_id is not None:
+        ep = db.get(Endpoint, endpoint_id)
+        if not ep or ep.site_id != site_id or ep.customer_id != user.customer_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
+    body = build_site_historical_sample_points(
+        db,
+        customer_id=user.customer_id,
+        site_id=site_id,
+        endpoint_id=endpoint_id,
+        from_ts=from_ts,
+        to_ts=to_ts,
+        max_points=max_points,
+    )
+    return body
 
 
 @router.get("/internal/aggregator", include_in_schema=False)

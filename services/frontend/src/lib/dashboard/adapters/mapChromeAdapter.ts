@@ -43,6 +43,9 @@ export type MapChromeVM = {
   mapProfile: "site" | "fleet";
   /** When set, LDS map detail uses this ``trendScope`` unless overridden (e.g. cluster → endpoint). */
   mapDefaultTrendScope: "resolved_device" | "endpoint" | "site" | null;
+  aggregateByDevice: boolean;
+  mapSmoothMarkers: boolean;
+  mapTrackMode: string;
 };
 
 function readControls(d: Record<string, unknown>): MapControlsVM {
@@ -139,6 +142,10 @@ export function adaptMapChrome(block: DashboardLiveWidgetDTO): MapChromeVM {
   const mapProfile: "site" | "fleet" =
     block.type === "fleet_map" || mp === "fleet" ? "fleet" : "site";
 
+  const aggregateByDevice = d.aggregate_by_device === true || d.aggregateByDevice === true;
+  const mapSmoothMarkers = d.map_smooth_markers !== false && d.mapSmoothMarkers !== false;
+  const mapTrackMode = String(d.map_track_mode ?? d.mapTrackMode ?? "site").trim() || "site";
+
   const rawScope = d.map_default_trend_scope ?? d.mapDefaultTrendScope;
   let mapDefaultTrendScope: "resolved_device" | "endpoint" | "site" | null = null;
   if (typeof rawScope === "string") {
@@ -169,6 +176,9 @@ export function adaptMapChrome(block: DashboardLiveWidgetDTO): MapChromeVM {
     sourceMissing: d.source_missing === true,
     mapProfile,
     mapDefaultTrendScope,
+    aggregateByDevice,
+    mapSmoothMarkers,
+    mapTrackMode,
   };
 }
 
@@ -188,6 +198,9 @@ export function mapChromeFetchKey(chrome: MapChromeVM): string {
     inc: chrome.includedSources,
     single: [chrome.singleSourceType, chrome.singleSourceId],
     manual: chrome.manualSources,
+    agg: chrome.aggregateByDevice,
+    smooth: chrome.mapSmoothMarkers,
+    track: chrome.mapTrackMode,
   });
 }
 
@@ -204,6 +217,7 @@ export function buildMarkersQueryBody(chrome: MapChromeVM): MapMarkersQueryBody 
     health_field: chrome.healthField,
     light: true,
     mode: "auto",
+    aggregate_by_device: chrome.aggregateByDevice,
   };
   if (chrome.deviceIds?.length) {
     base.device_ids = chrome.deviceIds;

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatMetricValue } from "@/lib/formatMetricValue";
+import { formatTrendLocalTime, MapTrendSparkline } from "@/components/dashboard/map/MapTrendSparkline";
 
 type KpiRow = { t: string; kpi_key?: string; value?: number | null };
 
@@ -11,8 +12,7 @@ type Props = {
 };
 
 /**
- * Map popup trends for data_object / result_object: uses `kpi_history_timescale`
- * from map detail (Timescale samples), not Redis 5m windows.
+ * Map popup: Timescale `kpi_history_timescale` samples — same table layout for 1h / 24h.
  */
 export default function MapObjectKpiTrendPopup(props: Props) {
   const { detail, metricKeys } = props;
@@ -35,12 +35,14 @@ export default function MapObjectKpiTrendPopup(props: Props) {
     return <p className="dash-map-popup__hint">No metrics configured for trends.</p>;
   }
 
-  const allEmpty = metricKeys.slice(0, 16).every((mk) => (rowsByMetric[mk] ?? []).length === 0);
+  const keys = metricKeys.slice(0, 16);
 
   return (
     <div className="dash-map-popup__section dash-map-popup__section--trend">
       <div className="dash-map-popup__section-title">KPI history (Timescale)</div>
-      <p className="dash-map-popup__hint">Sample points from map history (not Redis 5m buckets).</p>
+      <p className="dash-map-popup__hint dash-map-popup__hint--static">
+        Sample points from map history (not Redis 5m buckets).
+      </p>
       <div className="dash-map-popup__trend-toggle" role="group" aria-label="Window">
         <button type="button" className={win === "1h" ? "is-active" : ""} onClick={() => setWin("1h")}>
           1h
@@ -49,50 +51,50 @@ export default function MapObjectKpiTrendPopup(props: Props) {
           24h
         </button>
       </div>
-      {allEmpty ? (
-        <p className="dash-map-popup__hint" role="status">
-          No trend data available yet.
-        </p>
-      ) : (
-        <div className="dash-map-popup__trend-metrics">
-          {metricKeys.slice(0, 16).map((mk) => {
-            const pts = rowsByMetric[mk] ?? [];
-            if (!pts.length) {
+      <div className="dash-map-popup__table-wrap dash-map-popup__table-wrap--trend">
+        <table className="dash-map-popup__table dash-map-popup__table--kpi-trend">
+          <thead>
+            <tr>
+              <th scope="col">KPI</th>
+              <th scope="col"># of samples</th>
+              <th scope="col">Latest</th>
+              <th scope="col">Local time</th>
+              <th scope="col">Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {keys.map((mk) => {
+              const pts = rowsByMetric[mk] ?? [];
+              if (!pts.length) {
+                return (
+                  <tr key={mk}>
+                    <th scope="row">{mk}</th>
+                    <td>—</td>
+                    <td>—</td>
+                    <td>—</td>
+                    <td className="dash-map-popup__td--spark">
+                      <span className="dash-map-popup__spark-empty">—</span>
+                    </td>
+                  </tr>
+                );
+              }
+              const last = pts[pts.length - 1]!;
+              const sparkVals = pts.map((r) => r.value);
               return (
-                <div key={mk} className="dash-map-popup__trend-metric">
-                  <div className="dash-map-popup__trend-metric-name">{mk}</div>
-                  <p className="dash-map-popup__hint">No samples in this window.</p>
-                </div>
+                <tr key={mk}>
+                  <th scope="row">{mk}</th>
+                  <td>{pts.length}</td>
+                  <td>{formatMetricValue(last.value, floatMeta)}</td>
+                  <td>{formatTrendLocalTime(last.t)}</td>
+                  <td className="dash-map-popup__td--spark">
+                    <MapTrendSparkline values={sparkVals} />
+                  </td>
+                </tr>
               );
-            }
-            const last = pts[pts.length - 1]!;
-            const tail = pts.slice(-5).reverse();
-            return (
-              <div key={mk} className="dash-map-popup__trend-metric">
-                <div className="dash-map-popup__trend-metric-name">{mk}</div>
-                <table className="dash-map-popup__table dash-map-popup__table--compact">
-                  <tbody>
-                    <tr>
-                      <th scope="row">Latest</th>
-                      <td>{formatMetricValue(last.value, floatMeta)} @ {last.t}</td>
-                    </tr>
-                    <tr>
-                      <th scope="row">Samples</th>
-                      <td>{pts.length}</td>
-                    </tr>
-                    {tail.map((r) => (
-                      <tr key={`${mk}-${r.t}`}>
-                        <th scope="row">{r.t}</th>
-                        <td>{formatMetricValue(r.value, floatMeta)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
-        </div>
-      )}
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -23,6 +23,26 @@ def _truthy(name: str, default: str = "true") -> bool:
     return os.environ.get(name, default).lower() in ("1", "true", "yes")
 
 
+def _location_json_from_flat_geo_keys(payload: dict[str, Any]) -> dict[str, float] | None:
+    """When scrubber does not emit ``gps`` / ``location_json``, map common MQTT top-level pairs to ``lat``/``lon``."""
+    for lat_key, lon_key in (
+        ("geo_lat", "geo_long"),
+        ("geo_lat", "geo_lon"),
+        ("latitude", "longitude"),
+        ("lat", "lon"),
+    ):
+        lat_v = payload.get(lat_key)
+        lon_v = payload.get(lon_key)
+        try:
+            la = float(lat_v)
+            lo = float(lon_v)
+            if -90 <= la <= 90 and -180 <= lo <= 180:
+                return {"lat": la, "lon": lo}
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _list_of_str(raw: Any) -> list[str]:
     if not isinstance(raw, list):
         return []
@@ -187,6 +207,8 @@ def try_write_v2_from_scrubber(
                         location_json = {"lat": float(lat_v), "lon": float(lon_v)}
                     except (TypeError, ValueError):
                         location_json = None
+            if not isinstance(location_json, dict):
+                location_json = _location_json_from_flat_geo_keys(payload)
             event_ts = now
             raw_ts = payload.get("ts")
             if isinstance(raw_ts, str) and raw_ts.strip():

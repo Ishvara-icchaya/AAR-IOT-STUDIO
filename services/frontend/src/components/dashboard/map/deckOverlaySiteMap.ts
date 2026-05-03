@@ -1,19 +1,56 @@
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import type { IControl, Map as MaplibreMap } from "maplibre-gl";
 import Supercluster from "supercluster";
 import type { MapPointVM } from "@/lib/dashboard/mapViewModel";
 import { healthToRgb } from "@/lib/dashboard/mapViewModel";
+import {
+  DEFAULT_MAP_LAYER_CONTROLS,
+  type MapLayerControls,
+  stableHueFromString,
+} from "@/lib/dashboard/mapLayerControls";
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h * 12) % 12;
+    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+  };
+  return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+}
 
 /** Historical footprint + gap markers (expanded map intelligence). */
 export type IntelOverlayState = {
-  footprint: [number, number][];
+  /** Polyline for one device path (optional when only site samples are shown). */
+  footprint?: [number, number][];
   gapPoints?: [number, number][];
   start?: [number, number];
   end?: [number, number];
+  /** Head of vehicle during historical replay (lng, lat). */
+  movingLngLat?: [number, number];
+  /** Deduped scrubbed-event samples (site or endpoint) for historical mode. */
+  samplePoints?: [number, number][];
 };
 
 type PointFeat = GeoJSON.Feature<GeoJSON.Point, Record<string, unknown>>;
+
+function markerFillRgba(vm: MapPointVM | undefined, colorMode: MapLayerControls["colorMode"]): [number, number, number, number] {
+  if (!vm) return [148, 163, 184, 220];
+  if (colorMode === "health") {
+    return healthToRgb(vm.health_status);
+  }
+  if (colorMode === "group") {
+    if (typeof vm.marker_hue === "number" && Number.isFinite(vm.marker_hue)) {
+      const rgb = hslToRgb(vm.marker_hue / 360, 0.72, 0.5);
+      return [...rgb, 232];
+    }
+    return healthToRgb(vm.health_status);
+  }
+  const key = (vm.device_id && String(vm.device_id).trim()) || vm.source_id || vm.id || "x";
+  const h = stableHueFromString(key);
+  const rgb = hslToRgb(h / 360, 0.68, 0.52);
+  return [...rgb, 232];
+}
 
 function toFeatures(points: MapPointVM[]): PointFeat[] {
   return points.map((p) => ({
@@ -41,6 +78,7 @@ function buildClusterData(index: Supercluster, map: MaplibreMap): PointFeat[] {
 export type DeckSiteMapHandle = {
   updatePoints: (points: MapPointVM[], useCluster: boolean) => void;
   setIntelligenceOverlay: (state: IntelOverlayState | null) => void;
+  applyLayerControls: (next: MapLayerControls) => void;
   getClusterExpansionZoom: (clusterId: number) => number;
   /** Supercluster leaves for a cluster id (empty if not in cluster mode). */
   getClusterLeaves: (clusterId: number) => MapPointVM[];
@@ -57,6 +95,7 @@ export function attachDeckSiteMapOverlay(
     profile: "site" | "fleet";
     onPointPick: (vm: MapPointVM, lngLat: [number, number]) => void;
     onClusterPick: (clusterId: number, lngLat: [number, number], expansionZoom: number) => void;
+    initialLayerControls?: MapLayerControls;
   },
 ): DeckSiteMapHandle {
   const overlay = new MapboxOverlay({ interleaved: true, layers: [] });
@@ -64,6 +103,10 @@ export function attachDeckSiteMapOverlay(
 
   let lastPoints: MapPointVM[] = [];
   let intelOverlay: IntelOverlayState | null = null;
+  let layerControls: MapLayerControls = {
+    ...DEFAULT_MAP_LAYER_CONTROLS,
+    ...(options.initialLayerControls ?? {}),
+  };
 
   let index: Supercluster | null = null;
   let useClusterMode = true;
@@ -95,7 +138,7 @@ export function attachDeckSiteMapOverlay(
           const p = d.properties;
           if (p?.cluster) return [79, 70, 229, 235];
           const vm = p?.vm as MapPointVM | undefined;
-          return healthToRgb(vm?.health_status ?? (p?.health_status as string));
+          return markerFillRgba(vm, layerControls.colorMode);
         },
         getLineColor: [255, 255, 255, 220],
         lineWidthMinPixels: 2,
@@ -142,7 +185,27 @@ export function attachDeckSiteMapOverlay(
       );
     }
 
-    if (intelOverlay?.footprint && intelOverlay.footprint.length >= 2) {
+    if (intelOverlay?.samplePoints?.length) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "dash-intel-hist-samples",
+          data: intelOverlay.samplePoints.map((p) => ({ position: p as [number, number] })),
+          getPosition: (d: { position: [number, number] }) => d.position,
+          getRadius: 6,
+          radiusUnits: "pixels",
+          getFillColor: [96, 165, 250, 210],
+          stroked: true,
+          getLineColor: [15, 23, 42, 160],
+          lineWidthMinPixels: 1,
+          pickable: false,
+        }),
+      );
+    }
+    if (
+      layerControls.showHistoricalPath &&
+      intelOverlay?.footprint &&
+      intelOverlay.footprint.length >= 2
+    ) {
       layers.push(
         new PathLayer({
           id: "dash-intel-footprint",
@@ -155,7 +218,7 @@ export function attachDeckSiteMapOverlay(
         }),
       );
     }
-    if (intelOverlay?.gapPoints?.length) {
+    if (layerControls.showGapPoints && intelOverlay?.gapPoints?.length) {
       layers.push(
         new ScatterplotLayer({
           id: "dash-intel-gaps",
@@ -172,10 +235,10 @@ export function attachDeckSiteMapOverlay(
       );
     }
     const anchorPts: { position: [number, number]; fill: [number, number, number, number] }[] = [];
-    if (intelOverlay?.start) {
+    if (layerControls.showStartEndAnchors && intelOverlay?.start) {
       anchorPts.push({ position: intelOverlay.start, fill: [34, 197, 94, 240] });
     }
-    if (intelOverlay?.end) {
+    if (layerControls.showStartEndAnchors && intelOverlay?.end) {
       anchorPts.push({ position: intelOverlay.end, fill: [239, 68, 68, 240] });
     }
     if (anchorPts.length) {
@@ -190,6 +253,46 @@ export function attachDeckSiteMapOverlay(
           stroked: true,
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 2,
+          pickable: false,
+        }),
+      );
+    }
+    if (layerControls.showReplayHead && intelOverlay?.movingLngLat) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "dash-intel-moving",
+          data: [{ position: intelOverlay.movingLngLat as [number, number] }],
+          getPosition: (row: { position: [number, number] }) => row.position,
+          getRadius: 14,
+          radiusUnits: "pixels",
+          getFillColor: [250, 204, 21, 240],
+          stroked: true,
+          getLineColor: [255, 255, 255, 230],
+          lineWidthMinPixels: 2,
+          pickable: false,
+        }),
+      );
+    }
+
+    if (layerControls.showLabels && lastPoints.length) {
+      const labelRows = lastPoints.map((p) => ({
+        position: [p.longitude, p.latitude] as [number, number],
+        text: p.label?.trim() ? String(p.label).slice(0, 40) : "·",
+      }));
+      layers.push(
+        new TextLayer({
+          id: "dash-marker-labels",
+          data: labelRows,
+          getPosition: (d: { position: [number, number] }) => d.position,
+          getText: (d: { text: string }) => d.text,
+          getSize: 11,
+          sizeUnits: "pixels",
+          getColor: [250, 250, 250, 240],
+          getBackgroundColor: [15, 23, 42, 200],
+          background: true,
+          backgroundPadding: [3, 1] as [number, number],
+          getPixelOffset: [0, -16] as [number, number],
+          billboard: true,
           pickable: false,
         }),
       );
@@ -218,6 +321,10 @@ export function attachDeckSiteMapOverlay(
 
   return {
     updatePoints,
+    applyLayerControls: (next: MapLayerControls) => {
+      layerControls = { ...DEFAULT_MAP_LAYER_CONTROLS, ...next };
+      refresh();
+    },
     setIntelligenceOverlay: (state: IntelOverlayState | null) => {
       intelOverlay = state;
       refresh();

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { getMapIntelligenceExpanded, getMapIntelligencePath, getMapObjectDetail } from "@/api/dashboard";
+import {
+  getMapIntelligenceExpanded,
+  getMapIntelligenceHistoricalMarkers,
+  getMapIntelligencePath,
+  getMapObjectDetail,
+} from "@/api/dashboard";
 import { getTrendsWindow } from "@/api/trends";
 import type { IntelOverlayState } from "@/components/dashboard/map/deckOverlaySiteMap";
 
@@ -60,9 +65,12 @@ export function MapIntelligencePanel({
   const [detailLoading, setDetailLoading] = useState(false);
   const [pathLoading, setPathLoading] = useState(false);
   const [pathErr, setPathErr] = useState<string | null>(null);
+  const [pathPolyline, setPathPolyline] = useState<[number, number][] | null>(null);
+  const [replayFrame, setReplayFrame] = useState<number | null>(null);
   const [showEndpointTrend, setShowEndpointTrend] = useState(false);
   const [showDeviceTrend, setShowDeviceTrend] = useState(false);
   const [trendSummary, setTrendSummary] = useState<string | null>(null);
+  const histSamplesRef = useRef<[number, number][] | null>(null);
 
   const refreshSec = useMemo(() => {
     const n = Number(payload?.refresh_interval_sec);
@@ -103,10 +111,72 @@ export function MapIntelligencePanel({
 
   useEffect(() => {
     if (mode === "runtime") {
+      histSamplesRef.current = null;
       onIntelOverlay(null);
       setPathErr(null);
+      setPathPolyline(null);
+      setReplayFrame(null);
     }
   }, [mode, onIntelOverlay]);
+
+  useEffect(() => {
+    if (mode !== "historical" || !expanded || !siteId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const to = new Date();
+        const from = new Date(to.getTime() - 24 * 3600 * 1000);
+        const r = await getMapIntelligenceHistoricalMarkers({
+          siteId,
+          endpointId: endpointId ?? undefined,
+          from: from.toISOString(),
+          to: to.toISOString(),
+          maxPoints: 600,
+        });
+        if (cancelled) return;
+        const pts = Array.isArray(r?.sample_points) ? (r.sample_points as [number, number][]) : [];
+        histSamplesRef.current = pts.length ? pts : null;
+        onIntelOverlay(histSamplesRef.current ? { samplePoints: histSamplesRef.current } : null);
+      } catch {
+        histSamplesRef.current = null;
+        if (!cancelled) onIntelOverlay(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, expanded, siteId, endpointId, onIntelOverlay]);
+
+  useEffect(() => {
+    if (replayFrame === null || !pathPolyline?.length) return;
+    const poly = pathPolyline;
+    const len = poly.length;
+    const samples = histSamplesRef.current ?? undefined;
+    if (replayFrame >= len) {
+      onIntelOverlay({
+        footprint: poly,
+        start: poly[0],
+        end: poly[len - 1],
+        movingLngLat: poly[len - 1],
+        samplePoints: samples,
+      });
+      return;
+    }
+    onIntelOverlay({
+      footprint: poly.slice(0, replayFrame + 1),
+      start: poly[0],
+      end: poly[len - 1],
+      movingLngLat: poly[replayFrame],
+      samplePoints: samples,
+    });
+  }, [replayFrame, pathPolyline, onIntelOverlay]);
+
+  useEffect(() => {
+    if (replayFrame === null || pathPolyline === null) return;
+    if (replayFrame >= pathPolyline.length) return;
+    const t = window.setTimeout(() => setReplayFrame((f) => (f == null ? 0 : f + 1)), 55);
+    return () => clearTimeout(t);
+  }, [replayFrame, pathPolyline]);
 
   const devices = useMemo(() => {
     const raw = payload?.devices;
@@ -160,12 +230,15 @@ export function MapIntelligencePanel({
         expectedFrequencySec: exp,
       });
       if (!path) {
+        setPathPolyline(null);
         setPathErr("Empty path response");
         onIntelOverlay(null);
         return;
       }
       const poly = path.polyline as [number, number][] | undefined;
       if (poly && poly.length >= 2) {
+        setPathPolyline(poly);
+        setReplayFrame(null);
         const gapPoints = (path.gaps as { lng: number; lat: number }[] | undefined)?.map(
           (g) => [g.lng, g.lat] as [number, number],
         );
@@ -174,12 +247,15 @@ export function MapIntelligencePanel({
           gapPoints: gapPoints?.length ? gapPoints : undefined,
           start: poly[0],
           end: poly[poly.length - 1],
+          samplePoints: histSamplesRef.current ?? undefined,
         });
       } else {
+        setPathPolyline(null);
         onIntelOverlay(null);
         setPathErr("No scrubbed path points in this window (ingest history may be empty).");
       }
     } catch (e) {
+      setPathPolyline(null);
       setPathErr(e instanceof Error ? e.message : "Path load failed");
       onIntelOverlay(null);
     } finally {
@@ -358,6 +434,15 @@ export function MapIntelligencePanel({
           <div className="dash-map-intel__path-actions">
             <button type="button" className="dash-map-intel__btn" disabled={pathLoading} onClick={() => void loadPath()}>
               {pathLoading ? "Loading path…" : "Load 24h footprint"}
+            </button>
+            <button
+              type="button"
+              className="dash-map-intel__btn"
+              disabled={!pathPolyline || pathPolyline.length < 2 || pathLoading}
+              title="Replay route: growing line with moving head, then full path"
+              onClick={() => setReplayFrame(0)}
+            >
+              Replay path
             </button>
             {pathErr ? <p className="dash-map-intel__err">{pathErr}</p> : null}
           </div>

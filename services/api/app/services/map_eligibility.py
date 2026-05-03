@@ -131,3 +131,36 @@ def extract_gps_coords(
     payload: dict[str, Any], lat_field: str, lon_field: str
 ) -> tuple[float | None, float | None]:
     return _extract_lat_lon(payload, lat_field, lon_field)
+
+
+def lat_lon_from_lds_row_fragments(
+    *,
+    location_json: dict[str, Any] | None,
+    display_json: dict[str, Any] | None,
+    kpi_json: dict[str, Any] | None,
+) -> tuple[float | None, float | None]:
+    """Coordinates for v2 LDS map rows: ``location_json`` first, then flat keys on merged display/kpi.
+
+    Many MQTT payloads use ``geo_lat`` / ``geo_long`` at the top level instead of ``gps.lat`` / ``gps.lon``.
+    """
+    loc = location_json if isinstance(location_json, dict) else {}
+    lat = _coerce_float(loc.get("lat"))
+    lon = _coerce_float(loc.get("lon"))
+    if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+        return lat, lon
+    merged: dict[str, Any] = {}
+    if isinstance(display_json, dict):
+        merged.update(display_json)
+    if isinstance(kpi_json, dict):
+        merged.update(kpi_json)
+    for lat_key, lon_key in (
+        ("geo_lat", "geo_long"),
+        ("geo_lat", "geo_lon"),
+        ("latitude", "longitude"),
+        ("lat", "lon"),
+    ):
+        la = _coerce_float(merged.get(lat_key))
+        lo = _coerce_float(merged.get(lon_key))
+        if la is not None and lo is not None and -90 <= la <= 90 and -180 <= lo <= 180:
+            return la, lo
+    return None, None

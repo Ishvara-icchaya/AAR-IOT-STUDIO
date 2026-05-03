@@ -27,8 +27,9 @@ def _client():
         return redis.from_url(
             settings.redis_url,
             decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
+            socket_connect_timeout=3,
+            # Map marker batches can be large; 2s was timing out mid-pipeline (500 on markers/query).
+            socket_timeout=8,
         )
     except Exception:
         log.debug("map_runtime_redis client unavailable", exc_info=True)

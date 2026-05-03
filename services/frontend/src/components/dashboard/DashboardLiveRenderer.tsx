@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { DEFAULT_MAP_STYLE_URL } from "@/lib/dashboardMapStyle";
 import { parseDashboardLayout } from "@/lib/dashboard/dashboardLayoutEngine";
+import { parseLiveRefreshIntervalSec } from "@/lib/dashboardLiveSettings";
 import {
   DashboardLiveProvider,
   type DashboardLiveRuntimeValue,
@@ -57,9 +58,12 @@ export function DashboardLiveRenderer({
   const list = Array.isArray(widgets) ? widgets : [];
   const byId = Object.fromEntries(list.map((w) => [w.widget_id, w])) as Record<string, DashboardLiveWidgetDTO>;
   const rows = parseDashboardLayout(layout);
+  const refreshSec = parseLiveRefreshIntervalSec(dashboard);
   const runtime: DashboardLiveRuntimeValue = {
     ...buildRuntimeFromDashboard(dashboard),
     enterpriseMode: enterpriseMode === true,
+    renderedAt,
+    refreshIntervalSec: refreshSec,
   };
 
   if (rows.length === 0) {

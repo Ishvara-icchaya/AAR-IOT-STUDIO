@@ -20,7 +20,11 @@ from app.models.workflow_result_object import WorkflowResultObject
 from app.core.dashboard_runtime import merge_layout_settings
 from app.schemas.dashboard_layout import iter_widgets
 from app.services.dashboard_health import derive_blink_mode, extract_health_fields
-from app.services.map_eligibility import map_eligible_data_object, map_eligible_result_object
+from app.services.map_eligibility import (
+    lat_lon_from_lds_row_fragments,
+    map_eligible_data_object,
+    map_eligible_result_object,
+)
 from app.services.data_object_query import as_of_timestamp
 from app.services.workflow_result_query import as_of_timestamp as result_object_as_of_timestamp
 from app.services.map_runtime_service import (
@@ -88,9 +92,16 @@ def _resolve_kpi_metric_value(merged: dict[str, Any], metric: str) -> Any:
         v = merged.get(m)
     if v is not None:
         return v
+    metrics = merged.get("metrics")
+    if isinstance(metrics, dict):
+        meta = metrics.get(m)
+        if isinstance(meta, dict):
+            if meta.get("value") is not None:
+                return meta.get("value")
+            if meta.get("raw") is not None:
+                return meta.get("raw")
     if m != "value":
         return None
-    metrics = merged.get("metrics")
     if isinstance(metrics, dict) and metrics:
         for meta in metrics.values():
             if not isinstance(meta, dict):
@@ -552,6 +563,93 @@ def _parse_map_device_ids(config: dict[str, Any]) -> set[uuid.UUID] | None:
     return out if out else None
 
 
+def _map_aggregate_from_config(config: dict[str, Any]) -> bool:
+    v = config.get("map_aggregate_by_device") or config.get("mapAggregateByDevice")
+    return bool(v is True or (isinstance(v, str) and v.strip().lower() in ("1", "true", "yes", "on")))
+
+
+def _merge_map_endpoint_group_entries(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    binding: dict[str, Any],
+    dashboard_site_id: uuid.UUID,
+    entries: list[Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any], str | None]:
+    """Build latest_device_state manual source list from one or more endpoint-group definitions."""
+    manual_sources: list[dict[str, Any]] = []
+    agg: dict[str, Any] = {
+        "total": 0,
+        "online": 0,
+        "late": 0,
+        "offline": 0,
+        "error": 0,
+        "healthy": 0,
+        "warning": 0,
+        "critical": 0,
+        "unknown": 0,
+        "groups": 0,
+    }
+    used_groups = 0
+    for idx, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        eid_raw = entry.get("endpointId") or entry.get("endpoint_id")
+        oname_raw = entry.get("objectName") or entry.get("object_name")
+        if not eid_raw or not str(oname_raw or "").strip():
+            continue
+        sub_binding: dict[str, Any] = {
+            **binding,
+            "source_type": "resolved_device_collection",
+            "sourceType": "resolved_device_collection",
+            "endpoint_id": str(eid_raw).strip(),
+            "endpointId": str(eid_raw).strip(),
+            "object_name": str(oname_raw).strip(),
+            "objectName": str(oname_raw).strip(),
+            "site_id": str(dashboard_site_id),
+            "siteId": str(dashboard_site_id),
+        }
+        lc = entry.get("lifecycleStatus") or entry.get("lifecycle_status")
+        if lc:
+            sub_binding["lifecycle_status"] = str(lc).strip()
+            sub_binding["lifecycleStatus"] = str(lc).strip()
+        hs = entry.get("healthStatus") or entry.get("health_status")
+        if hs:
+            sub_binding["health_status"] = str(hs).strip()
+            sub_binding["healthStatus"] = str(hs).strip()
+        dt = entry.get("deviceType") or entry.get("device_type")
+        if dt:
+            sub_binding["device_type"] = str(dt).strip()
+            sub_binding["deviceType"] = str(dt).strip()
+        rows, summary, err = _load_resolved_collection_rows(
+            db,
+            customer_id=customer_id,
+            binding=sub_binding,
+            dashboard_site_id=dashboard_site_id,
+            require_location=True,
+        )
+        if err:
+            return [], {}, err
+        used_groups += 1
+        for k in ("total", "online", "late", "offline", "error", "healthy", "warning", "critical", "unknown"):
+            if k in summary and isinstance(summary[k], int):
+                agg[k] += int(summary[k])
+        for r in rows:
+            lid = r.get("latest_device_state_id")
+            if lid:
+                manual_sources.append(
+                    {
+                        "sourceType": "latest_device_state",
+                        "sourceId": lid,
+                        "marker_group_index": idx,
+                    }
+                )
+    agg["groups"] = used_groups
+    if used_groups == 0:
+        return [], {}, "mapEndpointGroupEntries requires at least one group with endpoint_id and object_name"
+    return manual_sources, agg, None
+
+
 def _site_summary(
     db: Session, *, customer_id: uuid.UUID, site_id: uuid.UUID
 ) -> dict[str, Any]:
@@ -631,10 +729,8 @@ def _map_markers_site(
             health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
-        kpis: dict[str, Any] = {}
         merged = {**payload, **payload.get("_kpi", {})}
-        for k in kpi_fields:
-            kpis[str(k)] = _get_path(merged, str(k))
+        kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
         title = row.name
         if title_field:
             tv = _get_path(payload, title_field)
@@ -646,6 +742,7 @@ def _map_markers_site(
             {
                 "source_type": "data_object",
                 "source_id": sid,
+                "device_id": str(row.device_id),
                 "display_name": title,
                 "device_name": device_name,
                 "site_name": site_name,
@@ -659,6 +756,29 @@ def _map_markers_site(
                 "latest_seen_at": row.latest_seen_at.isoformat() if row.latest_seen_at else None,
             }
         )
+
+    stmt_lds = select(LatestDeviceState).where(
+        LatestDeviceState.customer_id == customer_id,
+        LatestDeviceState.site_id == site_id,
+    )
+    for row in db.scalars(stmt_lds).all():
+        sid = str(row.id)
+        if sid in excluded:
+            continue
+        m = build_map_marker_for_source(
+            db,
+            customer_id=customer_id,
+            site_id=site_id,
+            source_type="latest_device_state",
+            source_id=row.id,
+            latf=latf,
+            lonf=lonf,
+            kpi_fields=kpi_fields,
+            title_field=title_field,
+            health_field=health_field,
+        )
+        if m:
+            markers.append(m)
 
     stmt_ro = select(WorkflowResultObject).where(
         WorkflowResultObject.customer_id == customer_id,
@@ -685,7 +805,8 @@ def _map_markers_site(
             health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
-        kpis = {str(k): _get_path(payload, str(k)) for k in kpi_fields}
+        ro_merged = dict(payload)
+        kpis = {str(k): _resolve_kpi_metric_value(ro_merged, str(k)) for k in kpi_fields}
         title = row.result_object_name
         if title_field:
             tv = _get_path(payload, title_field)
@@ -709,6 +830,48 @@ def _map_markers_site(
             }
         )
     return markers
+
+
+def merge_latest_device_state_map_markers(
+    markers: list[dict[str, Any]],
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID,
+    latf: str,
+    lonf: str,
+    kpi_fields: list[str],
+    excluded: set[str],
+    title_field: str | None,
+    health_field: str | None,
+) -> list[dict[str, Any]]:
+    """Append v2 ingest markers (latest_device_state) not already present — Redis may only hold legacy data_objects."""
+    existing = {(str(m.get("source_type") or ""), str(m.get("source_id") or "")) for m in markers}
+    out = list(markers)
+    stmt_lds = select(LatestDeviceState).where(
+        LatestDeviceState.customer_id == customer_id,
+        LatestDeviceState.site_id == site_id,
+    )
+    for row in db.scalars(stmt_lds).all():
+        sid = str(row.id)
+        if sid in excluded or ("latest_device_state", sid) in existing:
+            continue
+        m = build_map_marker_for_source(
+            db,
+            customer_id=customer_id,
+            site_id=site_id,
+            source_type="latest_device_state",
+            source_id=row.id,
+            latf=latf,
+            lonf=lonf,
+            kpi_fields=kpi_fields,
+            title_field=title_field,
+            health_field=health_field,
+        )
+        if m:
+            out.append(m)
+            existing.add(("latest_device_state", sid))
+    return out
 
 
 def build_map_marker_for_source(
@@ -765,7 +928,7 @@ def build_map_marker_for_source(
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
         merged = {**payload, **payload.get("_kpi", {})}
-        kpis = {str(k): _get_path(merged, str(k)) for k in kpi_fields}
+        kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
         title = row.name
         if title_field:
             tv = _get_path(payload, title_field)
@@ -776,6 +939,7 @@ def build_map_marker_for_source(
         return {
             "source_type": "data_object",
             "source_id": str(row.id),
+            "device_id": str(row.device_id),
             "display_name": title,
             "device_name": device_name,
             "site_name": site_name,
@@ -793,10 +957,25 @@ def build_map_marker_for_source(
         row = db.get(LatestDeviceState, source_id)
         if not row or row.customer_id != customer_id or row.site_id != site_id:
             return None
+        loc_json = row.location_json if isinstance(row.location_json, dict) else {}
         payload = dict(row.display_json or {})
         payload["_kpi"] = dict(row.kpi_json or {})
         if row.health_status:
             payload["health_status"] = row.health_status
+        lat_canon, lon_canon = lat_lon_from_lds_row_fragments(
+            location_json=loc_json if loc_json else None,
+            display_json=row.display_json if isinstance(row.display_json, dict) else None,
+            kpi_json=row.kpi_json if isinstance(row.kpi_json, dict) else None,
+        )
+        if lat_canon is not None and lon_canon is not None:
+            gps = payload.get("gps")
+            if not isinstance(gps, dict):
+                payload["gps"] = {}
+                gps = payload["gps"]
+            if "lat" not in gps:
+                gps["lat"] = lat_canon
+            if "lon" not in gps:
+                gps["lon"] = lon_canon
         lat, lon = _extract_lat_lon(payload, latf, lonf)
         if lat is None or lon is None:
             return None
@@ -815,18 +994,18 @@ def build_map_marker_for_source(
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
         merged = {**payload, **payload.get("_kpi", {})}
-        kpis = {str(k): _get_path(merged, str(k)) for k in kpi_fields}
+        kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
         title = row.object_name
         if title_field:
             tv = _get_path(payload, title_field)
             if tv is not None:
                 title = str(tv)
         hmsg = payload.get("health_message")
-        loc_json = row.location_json if isinstance(row.location_json, dict) else {}
         hdeg = extract_heading_deg(loc_json)
         ep_row = db.get(Endpoint, row.endpoint_id)
         exp_sec, ep_mob = read_endpoint_intelligence_defaults(ep_row) if ep_row else (15, None)
-        mob, has_h = infer_mobility(ep_mob, read_display_mobility(disp), hdeg, str(row.object_name or ""))
+        disp_for_mob = dict(row.display_json) if isinstance(row.display_json, dict) else {}
+        mob, has_h = infer_mobility(ep_mob, read_display_mobility(disp_for_mob), hdeg, str(row.object_name or ""))
         return {
             "source_type": "latest_device_state",
             "source_id": str(row.id),
@@ -869,7 +1048,8 @@ def build_map_marker_for_source(
             health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
-        kpis = {str(k): _get_path(payload, str(k)) for k in kpi_fields}
+        ro_merged = dict(payload)
+        kpis = {str(k): _resolve_kpi_metric_value(ro_merged, str(k)) for k in kpi_fields}
         title = row.result_object_name
         if title_field:
             tv = _get_path(payload, title_field)
@@ -1060,6 +1240,49 @@ def resolve_widget_data(
         health_field = binding.get("health_field") or binding.get("healthField")
         health_field = str(health_field) if health_field else None
         included_raw = config.get("included_sources") or config.get("includedSources")
+        multi_groups = config.get("map_endpoint_group_entries") or config.get("mapEndpointGroupEntries")
+        agg_by_dev = _map_aggregate_from_config(config if isinstance(config, dict) else {})
+
+        if (
+            isinstance(multi_groups, list)
+            and len(multi_groups) > 0
+            and dashboard_site_id
+        ):
+            manual_sources_m, summary_m, err_m = _merge_map_endpoint_group_entries(
+                db,
+                customer_id=customer_id,
+                binding=binding,
+                dashboard_site_id=dashboard_site_id,
+                entries=multi_groups,
+            )
+            if err_m:
+                return {
+                    "widget_id": wid,
+                    "type": wtype,
+                    "title": title,
+                    "data": {"error": err_m},
+                }
+            data_mg: dict[str, Any] = {
+                "mode": "multi",
+                "latitude_field": latf,
+                "longitude_field": lonf,
+                "manual_sources": True,
+                "site_id": str(dashboard_site_id),
+                "map_controls": _map_controls_dict(config),
+                "kpi_fields": kpi_fields,
+                "title_field": title_field,
+                "health_field": health_field,
+                "included_sources": manual_sources_m,
+                "map_profile": "fleet" if fleet_profile else "site",
+                "collection_summary": summary_m,
+                "source_type": "resolved_device_collection",
+                "map_track_mode": "endpoint_groups",
+                "aggregate_by_device": agg_by_dev,
+            }
+            if len(manual_sources_m) == 0:
+                data_mg["degraded"] = True
+                data_mg["warning"] = "No resolved devices matched the configured endpoint groups."
+            return {"widget_id": wid, "type": wtype, "title": title, "data": data_mg}
 
         if str(st) == "resolved_device_collection":
             rows, summary, err = _load_resolved_collection_rows(
@@ -1095,6 +1318,7 @@ def resolve_widget_data(
                 "map_profile": "fleet" if fleet_profile else "site",
                 "collection_summary": summary,
                 "source_type": "resolved_device_collection",
+                "aggregate_by_device": agg_by_dev,
             }
             if len(manual_sources) == 0:
                 data_ms["degraded"] = True
@@ -1133,6 +1357,7 @@ def resolve_widget_data(
                 "health_field": health_field,
                 "included_sources": list(included_raw) if isinstance(included_raw, list) else [],
                 "map_profile": "fleet" if fleet_profile else "site",
+                "aggregate_by_device": agg_by_dev,
             }
             if mi:
                 data_ms["map_init"] = mi
@@ -1162,6 +1387,18 @@ def resolve_widget_data(
                 allowed_device_ids=allowed_devices,
                 pg_markers_fn=_map_markers_site,
             )
+            markers = merge_latest_device_state_map_markers(
+                markers,
+                db,
+                customer_id=customer_id,
+                site_id=dashboard_site_id,
+                latf=latf,
+                lonf=lonf,
+                kpi_fields=kpi_fields,
+                excluded=excluded,
+                title_field=title_field,
+                health_field=health_field,
+            )
             light = lighten_map_markers(markers)
             mi = compute_map_init_from_markers(light)
             data: dict[str, Any] = {
@@ -1175,6 +1412,7 @@ def resolve_widget_data(
                 "title_field": title_field,
                 "health_field": health_field,
                 "map_profile": "fleet" if fleet_profile else "site",
+                "aggregate_by_device": agg_by_dev,
             }
             if allowed_devices is not None:
                 data["device_ids"] = [str(x) for x in sorted(allowed_devices)]
@@ -1249,6 +1487,7 @@ def resolve_widget_data(
             "title_field": title_field,
             "health_field": health_field,
             "map_profile": "fleet" if fleet_profile else "site",
+            "aggregate_by_device": agg_by_dev,
         }
         if lat is not None and lon is not None:
             try:

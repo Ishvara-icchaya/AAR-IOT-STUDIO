@@ -24,6 +24,12 @@ from app.schemas.device import (
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.alert_emit import emit_alert
 from app.services.dependency_service import device_delete_dependencies
+from app.services.device_operational_footprint_service import (
+    batch_dashboard_association_counts,
+    batch_load_footprint_sidecars,
+    build_device_footprint_payload,
+    evaluate_footprint_for_device,
+)
 from app.services.lifecycle_actions import archive_device, deactivate_device, reactivate_device
 
 router = APIRouter()
@@ -36,6 +42,31 @@ def _load_device(db: Session, device_id: uuid.UUID, customer_id: uuid.UUID) -> D
         .options(joinedload(Device.endpoint))
         .where(Device.id == device_id, Device.customer_id == customer_id)
     ).scalar_one_or_none()
+
+
+def _device_reads_with_footprint(db: Session, user: User, devices: list[Device]) -> list[DeviceRead]:
+    if not devices:
+        return []
+    ep_by_de, dobjs = batch_load_footprint_sidecars(db, devices)
+    dash_counts = batch_dashboard_association_counts(
+        db, customer_id=user.customer_id, device_ids={d.id for d in devices}
+    )
+    out: list[DeviceRead] = []
+    for d in devices:
+        dr = DeviceRead.model_validate(d)
+        st, code, msg = evaluate_footprint_for_device(
+            db, d, ep_by_de=ep_by_de, dobjs=dobjs, dashboard_counts=dash_counts
+        )
+        out.append(
+            dr.model_copy(
+                update={
+                    "footprint_operational_status": st,
+                    "footprint_recommendation_code": code,
+                    "footprint_recommendation_message": msg,
+                }
+            )
+        )
+    return out
 
 
 def _ensure_device_visible(
@@ -94,7 +125,7 @@ def list_devices(
         )
 
     rows = db.scalars(stmt).unique().all()
-    return DeviceListResponse(items=[DeviceRead.model_validate(d) for d in rows])
+    return DeviceListResponse(items=_device_reads_with_footprint(db, user, list(rows)))
 
 
 @router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)
@@ -143,7 +174,7 @@ def register_device(
         site_id=str(body.site_id),
         customer_id=str(user.customer_id),
     )
-    return DeviceRead.model_validate(d)
+    return _device_reads_with_footprint(db, user, [d])[0]
 
 
 @router.get("/{device_id}", response_model=DeviceRead)
@@ -158,7 +189,27 @@ def get_device(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
-    return DeviceRead.model_validate(device)
+    return _device_reads_with_footprint(db, user, [device])[0]
+
+
+@router.get("/{device_id}/footprint")
+def get_device_footprint(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ep_by_de, dobjs = batch_load_footprint_sidecars(db, [device])
+    dash_counts = batch_dashboard_association_counts(
+        db, customer_id=user.customer_id, device_ids={device.id}
+    )
+    return build_device_footprint_payload(
+        db, device, ep_by_de=ep_by_de, dobjs=dobjs, dashboard_counts=dash_counts
+    )
 
 
 @router.patch("/{device_id}", response_model=DeviceRead)
@@ -217,7 +268,7 @@ def update_device(
             )
         except Exception:
             log.debug("device inactive alert emit failed", exc_info=True)
-    return DeviceRead.model_validate(d)
+    return _device_reads_with_footprint(db, user, [d])[0]
 
 
 @router.get("/{device_id}/dependencies", response_model=DependenciesListResponse)

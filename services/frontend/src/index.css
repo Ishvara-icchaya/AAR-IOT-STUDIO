@@ -3533,6 +3533,148 @@ a:hover {
   height: 100%;
 }
 
+/* Standard map: map + docked marker detail (not enterprise, not Intelligence). */
+.dash-widget--map:not(.dash-map-widget--expanded):not(.dash-map-widget--enterprise) .dash-map-widget__inline-split {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+}
+
+.dash-map-widget__inline-split-map {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-widget--map:not(.dash-map-widget--expanded) .dash-map-widget__single-map-wrap--inline {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-widget--map:not(.dash-map-widget--expanded)
+  .dash-map-widget__single-map-wrap--inline
+  > .dash-map-widget__map {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dash-map-widget__inline-detail {
+  flex: 0 0 0;
+  width: 0;
+  max-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    flex-basis 0.2s ease,
+    max-width 0.2s ease,
+    opacity 0.15s ease;
+}
+
+.dash-map-widget__inline-split--open .dash-map-widget__inline-split-map {
+  flex: 1 1 50%;
+  max-width: 50%;
+  min-width: 0;
+}
+
+.dash-map-widget__inline-split--open .dash-map-widget__inline-detail {
+  flex: 1 1 50%;
+  max-width: 50%;
+  min-width: 0;
+  border-left: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 93%, transparent);
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.dash-map-widget__inline-detail-head {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.4rem 0.45rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent);
+}
+
+.dash-map-widget__inline-detail-close {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in oklab, var(--color-border) 75%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 94%, transparent);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.dash-map-widget__inline-detail-close:hover {
+  background: color-mix(in oklab, var(--color-accent) 10%, var(--color-surface));
+}
+
+.dash-map-widget__inline-detail-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.35rem 0.45rem 0.55rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dash-map-widget__inline-detail-body .dash-map-popup {
+  max-width: 100% !important;
+  min-width: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.dash-map-widget__inline-detail-body .dash-map-popup__footer {
+  border-top: none;
+}
+
+@media (max-width: 640px) {
+  .dash-map-widget__inline-split--open {
+    flex-direction: column;
+    aspect-ratio: unset;
+    flex: 1 1 auto;
+    min-height: min(70dvh, 520px);
+  }
+
+  .dash-map-widget__inline-split--open .dash-map-widget__inline-split-map {
+    flex: 1 1 50%;
+    max-width: none;
+    min-height: 200px;
+  }
+
+  .dash-map-widget__inline-split--open .dash-map-widget__inline-detail {
+    flex: 1 1 50%;
+    max-width: none;
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+    max-height: min(42dvh, 20rem);
+  }
+}
+
 .dash-widget--map.dash-map-widget--enterprise:not(.dash-map-widget--expanded) .dash-map-widget__enterprise-grid {
   justify-content: flex-start;
   flex: 1 1 auto;
@@ -3630,6 +3772,8 @@ a:hover {
   align-items: stretch;
   min-height: 0;
   width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   gap: 0;
 }
 
@@ -3637,18 +3781,153 @@ a:hover {
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+  /* Popups are DOM children of the map; overflow:hidden clips them in Intelligence view. */
+  overflow: visible;
+}
+
+.dash-map-widget__expanded-layer-col {
+  flex: 0 0 min(15rem, 28vw);
+  width: min(15rem, 28vw);
+  max-width: 100%;
+  min-width: min(12rem, 100%);
+  box-sizing: border-box;
+  border-left: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+  overflow: auto;
+  min-height: 0;
+}
+
+.dash-map-widget__layer-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.65rem 0.75rem 1rem;
+}
+
+.dash-map-layers {
+  margin: 0;
+  border: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--color-surface) 96%, transparent);
+  padding: 0.55rem 0.65rem 0.65rem;
+}
+
+.dash-map-layers__title {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.dash-map-layers__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.55rem;
+}
+
+.dash-map-layers__row,
+.dash-map-layers__radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  cursor: pointer;
+  color: color-mix(in oklab, var(--color-text) 92%, transparent);
+}
+
+.dash-map-layers__row input,
+.dash-map-layers__radio input {
+  margin-top: 0.12rem;
+  flex-shrink: 0;
+}
+
+.dash-map-layers__fieldset {
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0.5rem 0.5rem;
+  border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.dash-map-layers__fieldset:first-of-type {
+  margin-top: 0.35rem;
+}
+
+.dash-map-layers__legend {
+  padding: 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in oklab, var(--color-text) 72%, transparent);
+}
+
+.dash-map-layers__radio + .dash-map-layers__radio {
+  margin-top: 0.25rem;
+}
+
+.dash-map-legend-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.dash-map-legend {
+  margin: 0;
+  padding: 0.55rem 0.65rem 0.65rem;
+  border: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in oklab, var(--color-surface) 96%, transparent);
+}
+
+.dash-map-legend__title {
+  margin: 0 0 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.dash-map-legend__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.dash-map-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.dash-map-legend__swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in oklab, var(--color-border) 60%, transparent);
 }
 
 .dash-map-widget__single-map-wrap--expanded-intel {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   width: 100%;
+  max-width: 100%;
   aspect-ratio: unset;
   max-height: none;
   display: flex;
   flex-direction: column;
+  position: relative;
+  overflow: visible;
 }
 
 .dash-map-intel {
@@ -3913,6 +4192,15 @@ a:hover {
     flex-direction: column;
   }
 
+  .dash-map-widget__expanded-layer-col {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    border-left: none;
+    border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+    max-height: min(36dvh, 18rem);
+  }
+
   .dash-map-intel {
     flex: 0 0 auto;
     width: 100%;
@@ -4044,32 +4332,100 @@ a:hover {
 
 /* —— Dashboard map widget: modern basemap chrome + asset popup (MapLibre) —— */
 .dash-widget--map .dash-map-widget__map {
+  position: relative;
+  z-index: 0;
+  border-radius: inherit;
   box-shadow:
     inset 0 0 0 1px color-mix(in oklab, var(--color-border) 75%, transparent),
     0 4px 28px color-mix(in oklab, #000 16%, transparent);
 }
 
-.dash-widget--map .maplibregl-ctrl-group {
+/* Anchor controls + scale to the map surface only (not the whole widget / intel column). */
+.dash-widget--map .dash-map-widget__map .maplibregl-control-container {
+  z-index: 30;
+}
+
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-top-right {
+  top: 6px;
+  right: 6px;
+}
+
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-bottom-left {
+  bottom: 6px;
+  left: 6px;
+}
+
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group {
   border-radius: 10px !important;
   overflow: hidden;
   box-shadow: 0 2px 14px color-mix(in oklab, #000 20%, transparent) !important;
   border: 1px solid color-mix(in oklab, var(--color-border) 65%, transparent) !important;
-  background: color-mix(in oklab, var(--color-surface-elevated) 96%, transparent) !important;
+  background: color-mix(in oklab, var(--color-surface-elevated) 96%, #f8fafc 4%) !important;
 }
 
-.dash-widget--map .maplibregl-ctrl-group button {
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group button {
   width: 34px !important;
   height: 34px !important;
+  background-color: color-mix(in oklab, var(--color-surface-elevated) 92%, #f1f5f9 8%) !important;
+  color: var(--color-text) !important;
 }
 
-.dash-widget--map .maplibregl-ctrl-scale {
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group button:hover {
+  background-color: color-mix(in oklab, var(--color-accent) 10%, var(--color-surface-elevated) 90%) !important;
+}
+
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group button + button {
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 55%, transparent) !important;
+}
+
+/* MapLibre zoom icons are bitmap/SVG backgrounds — normalize contrast vs dark basemaps */
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: brightness(0);
+  opacity: 0.78;
+}
+
+:root[data-theme="dark"] .dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: brightness(0) invert(1);
+  opacity: 0.88;
+}
+
+.dash-widget--map .dash-map-widget__map .maplibregl-ctrl-scale {
   border-radius: 8px !important;
   padding: 2px 8px !important;
   font-size: 0.72rem !important;
   font-variant-numeric: tabular-nums;
+  color: var(--color-text) !important;
   border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent) !important;
-  background: color-mix(in oklab, var(--color-surface-elevated) 94%, transparent) !important;
+  background: color-mix(in oklab, var(--color-surface-elevated) 94%, #f1f5f9 6%) !important;
   box-shadow: 0 2px 10px color-mix(in oklab, #000 14%, transparent) !important;
+}
+
+.dash-map-popup-shell.maplibregl-popup .maplibregl-popup-close-button {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-text) !important;
+  background: color-mix(in oklab, var(--color-surface-elevated) 96%, transparent) !important;
+  border: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent) !important;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px color-mix(in oklab, #000 12%, transparent);
+  opacity: 1;
+  cursor: pointer;
+}
+
+.dash-map-popup-shell.maplibregl-popup .maplibregl-popup-close-button:hover {
+  background: color-mix(in oklab, var(--color-accent) 14%, var(--color-surface-elevated) 86%) !important;
 }
 
 .dash-map-popup-shell .maplibregl-popup-content {
@@ -4078,13 +4434,61 @@ a:hover {
   overflow: hidden;
 }
 
+/* Map marker popups must escape the widget frame (dash-wf overflow) and sit above deck/intel. */
+.dash-widget--map.dash-wf {
+  overflow: visible !important;
+}
+
+.dash-widget--map .dash-wf__body.dash-wf__body--fill {
+  overflow: visible !important;
+}
+
+.dash-live .dash-col:has(.dash-widget--map) {
+  overflow: visible !important;
+}
+
+.dash-live .dash-widget--map.dash-map-widget--expanded {
+  overflow: visible !important;
+}
+
+.dash-map-popup-shell--intel-view.maplibregl-popup {
+  z-index: 8500 !important;
+}
+
+.dash-map-popup-shell--grid.maplibregl-popup {
+  z-index: 40 !important;
+}
+
+/* Compact dashboard cell: smaller body + trend table, anchor opens above marker (see mountMapMarkerPopup). */
+.dash-map-popup-shell--grid .dash-map-popup {
+  max-width: min(380px, 92vw) !important;
+  font-size: 0.74rem;
+}
+
+.dash-map-popup-shell--grid .dash-map-popup__section-title {
+  font-size: 0.64rem;
+}
+
+.dash-map-popup-shell--grid .dash-map-popup__table--kpi-trend {
+  font-size: 0.68rem;
+}
+
+.dash-map-popup-shell--grid .dash-map-popup__table--kpi-trend thead th {
+  padding: 0.28rem 0.3rem !important;
+}
+
+.dash-map-popup-shell--grid .dash-map-popup__spark {
+  transform: scale(0.88);
+  transform-origin: center;
+}
+
 .dash-map-popup-shell .maplibregl-popup-tip {
   border-top-color: color-mix(in oklab, var(--color-surface-elevated) 98%, #000 2%);
 }
 
 .dash-map-popup {
   min-width: 240px;
-  max-width: 380px;
+  max-width: min(520px, 94vw);
   font-family: inherit;
   font-size: 0.82rem;
   line-height: 1.45;
@@ -4104,7 +4508,7 @@ a:hover {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.65rem 0.85rem;
+  padding: 0.65rem 2.5rem 0.65rem 0.85rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
   background: color-mix(in oklab, var(--color-surface-elevated) 88%, transparent);
 }
@@ -4161,6 +4565,10 @@ a:hover {
   animation: dash-map-popup-pulse 1.2s ease-in-out infinite;
 }
 
+.dash-map-popup__hint--static {
+  animation: none;
+}
+
 @keyframes dash-map-popup-pulse {
   0%,
   100% {
@@ -4173,6 +4581,7 @@ a:hover {
 
 .dash-map-popup__loading .dash-map-popup__head {
   border-bottom: none;
+  padding-right: 2.5rem;
 }
 
 .dash-map-popup__section {
@@ -4281,8 +4690,62 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.dash-map-popup__table-wrap--trend {
+  overflow-x: auto;
+  margin-top: 0.35rem;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dash-map-popup__table--kpi-trend {
+  min-width: 100%;
+  font-size: 0.76rem;
+}
+
+.dash-map-popup__table--kpi-trend thead th {
+  width: auto !important;
+  white-space: nowrap;
+  padding: 0.4rem 0.45rem !important;
+  text-align: left;
+  font-weight: 650;
+  color: var(--color-text-muted);
+  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+  border-bottom: 2px solid color-mix(in oklab, var(--color-border) 55%, transparent);
+}
+
+.dash-map-popup__table--kpi-trend tbody th[scope="row"] {
+  width: auto !important;
+  max-width: 7.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.dash-map-popup__table--kpi-trend tbody td {
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+
+.dash-map-popup__td--spark {
+  text-align: center;
+  vertical-align: middle;
+  padding-inline: 0.35rem !important;
+}
+
+.dash-map-popup__spark {
+  display: inline-block;
+  vertical-align: middle;
+  color: color-mix(in oklab, var(--color-accent) 55%, var(--color-text) 45%);
+}
+
+.dash-map-popup__spark-empty {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 .dash-map-popup--bare .dash-map-popup__head {
   border-bottom: none;
+  padding-right: 2.5rem;
 }
 
 .dash-widget--error {
@@ -4642,12 +5105,12 @@ a:hover {
   margin-bottom: 0.1em !important;
 }
 
-.page-card.dash-live-page .dash-widget--map .maplibregl-ctrl-group button {
+.page-card.dash-live-page .dash-widget--map .dash-map-widget__map .maplibregl-ctrl-group button {
   width: clamp(22px, 5.5cqh, 30px) !important;
   height: clamp(22px, 5.5cqh, 30px) !important;
 }
 
-.page-card.dash-live-page .dash-widget--map .maplibregl-ctrl-scale {
+.page-card.dash-live-page .dash-widget--map .dash-map-widget__map .maplibregl-ctrl-scale {
   font-size: 0.82em !important;
   padding: 1px 5px !important;
 }
@@ -4952,6 +5415,13 @@ a:hover {
   flex-direction: column;
 }
 
+.dash-live .dash-widget--map:not(.dash-map-widget--enterprise) .dash-map-widget__inline-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
 .dash-live .dash-widget--map .dash-map-widget__enterprise-grid {
   flex: 1 1 auto;
   min-height: min(26rem, 58dvh);
@@ -5007,8 +5477,10 @@ a:hover {
 .dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
   flex: 1 1 auto !important;
   min-height: 0 !important;
-  height: auto !important;
+  height: 100% !important;
   max-height: none !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 .dash-widget--map.dash-map-widget--expanded .dash-map-widget__single-map-wrap {

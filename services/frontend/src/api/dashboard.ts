@@ -302,6 +302,7 @@ export type MapMarkersQueryBody = {
   included_sources?: unknown[] | null;
   single_source_type?: string | null;
   single_source_id?: string | null;
+  aggregate_by_device?: boolean;
 };
 
 export type MapMarkersQueryResponse = {
@@ -324,6 +325,8 @@ export async function getMapObjectDetail(params: {
   displayFieldPaths?: string[];
   kpiKeys?: string[];
   trendScope?: "resolved_device" | "endpoint" | "site";
+  /** When true, loads Timescale KPI samples (slow). Default false for LDS popups. */
+  includeTimescaleHistory?: boolean;
 }) {
   const qs = new URLSearchParams();
   qs.set("site_id", params.siteId);
@@ -333,9 +336,32 @@ export async function getMapObjectDetail(params: {
   if (params.displayFieldPaths?.length)
     params.displayFieldPaths.forEach((k) => qs.append("displayFieldPaths", k));
   if (params.trendScope) qs.set("trendScope", params.trendScope);
+  if (params.includeTimescaleHistory === true) {
+    qs.set("includeTimescaleHistory", "true");
+  }
   return apiFetch<{ detail: Record<string, unknown> }>(`/dashboards/map-runtime/detail?${qs.toString()}`, {
     cache: "no-store",
   });
+}
+
+/** Deduped scrubbed-event locations for historical map overlay (all devices in site or endpoint). */
+export async function getMapIntelligenceHistoricalMarkers(params: {
+  siteId: string;
+  endpointId?: string | null;
+  from?: string;
+  to?: string;
+  maxPoints?: number;
+}) {
+  const qs = new URLSearchParams();
+  qs.set("site_id", params.siteId);
+  if (params.endpointId) qs.set("endpoint_id", params.endpointId);
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.maxPoints != null) qs.set("max_points", String(params.maxPoints));
+  return apiFetch<{ sample_points: [number, number][]; count: number; from: string; to: string }>(
+    `/dashboards/map-runtime/intelligence/historical-markers?${qs.toString()}`,
+    { cache: "no-store" },
+  );
 }
 
 /** Expanded map intelligence (devices, freshness, aggregates, trend_context). */

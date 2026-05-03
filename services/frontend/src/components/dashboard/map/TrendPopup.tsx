@@ -1,13 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { getTrendsWindow } from "@/api/trends";
 import { formatMetricValue } from "@/lib/formatMetricValue";
+import { formatTrendLocalTime, MapTrendSparkline } from "@/components/dashboard/map/MapTrendSparkline";
 import type { TrendBucketPointDTO, TrendPopupProps, TrendsWindowResponseDTO } from "@/types/trends";
 
 const floatMeta = { type: "float" as const, decimals: 2 };
-const intMeta = { type: "integer" as const };
+
+function totalSamples(points: TrendBucketPointDTO[]): number {
+  let s = 0;
+  for (const p of points) {
+    if (typeof p.n === "number" && Number.isFinite(p.n)) s += p.n;
+  }
+  return s > 0 ? s : points.length;
+}
 
 /**
- * Lazy-loaded map popup body: fetches GET /trends/window and shows compact bucket stats.
+ * Lazy-loaded map popup: GET /trends/window — same KPI table for 1h / 24h.
  */
 export default function TrendPopup(props: TrendPopupProps & { siteId: string }) {
   const { siteId, scope, entityId, metricKeys, defaultWindow, asOf } = props;
@@ -58,9 +66,6 @@ export default function TrendPopup(props: TrendPopupProps & { siteId: string }) 
     return <p className="dash-map-popup__hint">No metrics configured for trends.</p>;
   }
 
-  const allEmpty =
-    data != null && keys.every((k) => (data.series[k] ?? []).length === 0);
-
   return (
     <div className="dash-map-popup__section dash-map-popup__section--trend">
       <div className="dash-map-popup__section-title">Trends</div>
@@ -82,67 +87,52 @@ export default function TrendPopup(props: TrendPopupProps & { siteId: string }) 
       </div>
       {loading ? <p className="dash-map-popup__hint">Loading trend…</p> : null}
       {err ? <p className="dash-map-popup__msg">{err}</p> : null}
-      {!loading && !err && data && allEmpty ? (
-        <p className="dash-map-popup__hint" role="status">
-          No trend data available yet.
-        </p>
-      ) : null}
-      {!loading && !err && data && !allEmpty ? (
-        <div className="dash-map-popup__trend-metrics">
-          {keys.map((mk) => (
-            <TrendMetricBlock key={mk} metricKey={mk} points={data.series[mk] ?? []} />
-          ))}
+      {!loading && !err && data ? (
+        <div className="dash-map-popup__table-wrap dash-map-popup__table-wrap--trend">
+          <table className="dash-map-popup__table dash-map-popup__table--kpi-trend">
+            <thead>
+              <tr>
+                <th scope="col">KPI</th>
+                <th scope="col"># of samples</th>
+                <th scope="col">Latest</th>
+                <th scope="col">Local time</th>
+                <th scope="col">Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {keys.map((mk) => {
+                const points = data.series[mk] ?? [];
+                if (!points.length) {
+                  return (
+                    <tr key={mk}>
+                      <th scope="row">{mk}</th>
+                      <td>—</td>
+                      <td>—</td>
+                      <td>—</td>
+                      <td className="dash-map-popup__td--spark">
+                        <span className="dash-map-popup__spark-empty">—</span>
+                      </td>
+                    </tr>
+                  );
+                }
+                const last = points[points.length - 1]!;
+                const sparkVals = points.map((p) => p.avg);
+                return (
+                  <tr key={mk}>
+                    <th scope="row">{mk}</th>
+                    <td>{totalSamples(points)}</td>
+                    <td>{formatMetricValue(last.avg, floatMeta)}</td>
+                    <td>{formatTrendLocalTime(last.ts)}</td>
+                    <td className="dash-map-popup__td--spark">
+                      <MapTrendSparkline values={sparkVals} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function TrendMetricBlock({ metricKey, points }: { metricKey: string; points: TrendBucketPointDTO[] }) {
-  if (!points.length) {
-    return (
-      <div className="dash-map-popup__trend-metric">
-        <div className="dash-map-popup__trend-metric-name">{metricKey}</div>
-        <p className="dash-map-popup__hint">No trend data available yet.</p>
-      </div>
-    );
-  }
-  const last = points[points.length - 1];
-  return (
-    <div className="dash-map-popup__trend-metric">
-      <div className="dash-map-popup__trend-metric-name">{metricKey}</div>
-      <table className="dash-map-popup__table dash-map-popup__table--compact">
-        <tbody>
-          <tr>
-            <th scope="row">Last bucket</th>
-            <td>{last.ts}</td>
-          </tr>
-          <tr>
-            <th scope="row">avg</th>
-            <td>{formatMetricValue(last.avg, floatMeta)}</td>
-          </tr>
-          <tr>
-            <th scope="row">min</th>
-            <td>{formatMetricValue(last.min, floatMeta)}</td>
-          </tr>
-          <tr>
-            <th scope="row">max</th>
-            <td>{formatMetricValue(last.max, floatMeta)}</td>
-          </tr>
-          <tr>
-            <th scope="row">stddev</th>
-            <td>{formatMetricValue(last.stddev, floatMeta)}</td>
-          </tr>
-          <tr>
-            <th scope="row">n</th>
-            <td>{formatMetricValue(last.n, intMeta)}</td>
-          </tr>
-          <tr>
-            <th scope="row">partial</th>
-            <td>{last.is_partial ? "yes" : "no"}</td>
-          </tr>
-        </tbody>
-      </table>
     </div>
   );
 }

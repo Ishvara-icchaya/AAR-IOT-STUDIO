@@ -19,6 +19,9 @@ export type MarkerRec = {
   endpoint_id?: string;
   heading_deg?: number;
   mobility_type?: string;
+  marker_hue?: number;
+  marker_group_index?: number;
+  device_id?: string;
 };
 
 export function apiMarkersToMarkerRecs(markers: Record<string, unknown>[]): MarkerRec[] {
@@ -46,6 +49,12 @@ export function apiMarkersToMarkerRecs(markers: Record<string, unknown>[]): Mark
       endpoint_id: typeof raw.endpoint_id === "string" ? raw.endpoint_id : undefined,
       heading_deg: typeof raw.heading_deg === "number" ? raw.heading_deg : undefined,
       mobility_type: typeof raw.mobility_type === "string" ? raw.mobility_type : undefined,
+      marker_hue: typeof raw.marker_hue === "number" && Number.isFinite(raw.marker_hue) ? raw.marker_hue : undefined,
+      marker_group_index:
+        typeof raw.marker_group_index === "number" && Number.isFinite(raw.marker_group_index)
+          ? raw.marker_group_index
+          : undefined,
+      device_id: typeof raw.device_id === "string" ? raw.device_id : undefined,
     });
   }
   return out;

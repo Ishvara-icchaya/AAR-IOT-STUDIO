@@ -94,6 +94,7 @@ function exportDevicesCsv(rows: DeviceRead[], sitesById: Record<string, string>)
     "activation",
     "connectivity",
     "liveness",
+    "operational_footprint",
     "last_data",
   ];
   const lines = [header.join(",")];
@@ -103,6 +104,7 @@ function exportDevicesCsv(rows: DeviceRead[], sitesById: Record<string, string>)
     const act = d.endpoint?.activation_status ?? "";
     const conn = d.endpoint?.validation_status ?? "";
     const live = displayLivenessState(d);
+    const footprint = d.footprint_operational_status ?? "";
     const lastMs = lastDataReceivedMs(d);
     const last = lastMs != null ? new Date(lastMs).toISOString() : "";
     lines.push(
@@ -114,6 +116,7 @@ function exportDevicesCsv(rows: DeviceRead[], sitesById: Record<string, string>)
         esc(act),
         esc(conn),
         esc(live),
+        esc(footprint),
         esc(last),
       ].join(","),
     );
@@ -173,6 +176,28 @@ function connectivityBucket(d: DeviceRead): string {
 
 function livenessBucket(d: DeviceRead): string {
   return displayLivenessState(d);
+}
+
+/** API lineage footprint_operational_status → OpsStatusPill variant (display only; no evaluation). */
+function operationalFootprintLabel(d: DeviceRead): string {
+  const s = d.footprint_operational_status?.trim();
+  if (!s) return "—";
+  if (s === "ready") return "Ready";
+  if (s === "stale") return "Stale";
+  if (s === "incomplete") return "Incomplete";
+  if (s === "broken") return "Broken";
+  if (s === "unknown") return "Unknown";
+  return s;
+}
+
+function operationalFootprintPillVariant(d: DeviceRead): "online" | "degraded" | "offline" | "error" | "muted" {
+  const s = d.footprint_operational_status?.trim();
+  if (!s) return "muted";
+  if (s === "ready") return "online";
+  if (s === "stale") return "degraded";
+  if (s === "incomplete") return "offline";
+  if (s === "broken") return "error";
+  return "muted";
 }
 
 function protocolBucket(d: DeviceRead): string {
@@ -259,6 +284,9 @@ const HIDE_CONNECTIVITY_OPTIONS: { key: string; label: string }[] = [
 ];
 
 const DEVICE_TABLE_PAGE_SIZE = 25;
+
+/** Operational lineage (`footprint_*`); set true to show the table column again. */
+const SHOW_DEVICE_OPERATIONAL_FOOTPRINT_COLUMN = false;
 
 const HIDE_STATUS_OPTIONS: { key: string; label: string }[] = [
   { key: "inactive", label: "Inactive" },
@@ -923,6 +951,11 @@ export function DeviceRegisterPage() {
                       <th className="dm-data-table__th dm-data-table__th--center" scope="col">
                         Status
                       </th>
+                      {SHOW_DEVICE_OPERATIONAL_FOOTPRINT_COLUMN ? (
+                        <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                          Operational
+                        </th>
+                      ) : null}
                       <th className="dm-data-table__th" scope="col">
                         Last data
                       </th>
@@ -969,6 +1002,16 @@ export function DeviceRegisterPage() {
                           <td className="dm-data-table__td dm-data-table__td--center">
                             <OpsStatusPill status={statusLabel(d)} variant={kind} />
                           </td>
+                          {SHOW_DEVICE_OPERATIONAL_FOOTPRINT_COLUMN ? (
+                            <td className="dm-data-table__td dm-data-table__td--center">
+                              <span title={d.footprint_recommendation_message ?? undefined}>
+                                <OpsStatusPill
+                                  status={operationalFootprintLabel(d)}
+                                  variant={operationalFootprintPillVariant(d)}
+                                />
+                              </span>
+                            </td>
+                          ) : null}
                           <td className="dm-data-table__td dm-data-table__td--muted">{lastDataSummary(d)}</td>
                           <td className="dm-data-table__td dm-data-table__td--actions">
                             <div className="dm-act-grid">

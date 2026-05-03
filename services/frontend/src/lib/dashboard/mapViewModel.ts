@@ -20,6 +20,9 @@ export type MapPointVM = {
   speed?: number | null;
   /** From map intelligence / LDS marker payload */
   mobility_type?: string | null;
+  /** Server palette (0–360); when set, map uses hue instead of health-only fill. */
+  marker_hue?: number | null;
+  device_id?: string;
 };
 
 export type MapProfile = "site" | "fleet";
@@ -47,6 +50,8 @@ export type MarkerLike = {
   speed_ms?: number;
   speed?: number;
   mobility_type?: string;
+  marker_hue?: number;
+  device_id?: string;
 };
 
 export function toMapPointVM(m: MarkerLike, fallbackId: string): MapPointVM {
@@ -73,6 +78,8 @@ export function toMapPointVM(m: MarkerLike, fallbackId: string): MapPointVM {
       typeof m.mobility_type === "string" && m.mobility_type.trim()
         ? m.mobility_type.trim().toLowerCase()
         : null,
+    marker_hue: typeof m.marker_hue === "number" && Number.isFinite(m.marker_hue) ? m.marker_hue : null,
+    device_id: typeof m.device_id === "string" && m.device_id.trim() ? m.device_id : undefined,
   };
 }
 

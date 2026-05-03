@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -219,7 +219,7 @@ def build_expanded_intelligence(
     devices_full.sort(key=lambda x: str(x.get("display_name") or "").lower())
     total = len(devices_full)
     page = max(1, page)
-    limit = max(1, min(limit, 100))
+    limit = max(1, min(limit, 200))
     start = (page - 1) * limit
     devices_page = devices_full[start : start + limit]
 
@@ -364,4 +364,55 @@ def build_device_path(
         "first_observed_at": first_observed_at,
         "last_observed_at": last_observed_at,
         "expected_frequency_sec": expected_frequency_sec,
+    }
+
+
+def build_site_historical_sample_points(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    site_id: uuid.UUID,
+    endpoint_id: uuid.UUID | None,
+    from_ts: datetime | None,
+    to_ts: datetime | None,
+    max_points: int = 400,
+) -> dict[str, Any]:
+    """Deduped scrubbed-event coordinates for a time window (site or single endpoint)."""
+    to = to_ts or utc_now()
+    from_ = from_ts or (to - timedelta(hours=24))
+    conds = [
+        ScrubbedEvent.customer_id == customer_id,
+        ScrubbedEvent.site_id == site_id,
+        ScrubbedEvent.event_ts >= from_,
+        ScrubbedEvent.event_ts <= to,
+    ]
+    if endpoint_id is not None:
+        rd_ids = select(ResolvedDevice.id).where(
+            ResolvedDevice.endpoint_id == endpoint_id,
+            ResolvedDevice.site_id == site_id,
+            ResolvedDevice.customer_id == customer_id,
+        )
+        conds.append(ScrubbedEvent.resolved_device_id.in_(rd_ids))
+    cap = max(200, min(int(max_points) * 6, 4000))
+    stmt = select(ScrubbedEvent).where(*conds).order_by(ScrubbedEvent.event_ts.desc()).limit(cap)
+    rows = list(db.scalars(stmt).all())
+    seen: set[tuple[float, float]] = set()
+    poly: list[list[float]] = []
+    for r in rows:
+        loc = r.location_json if isinstance(r.location_json, dict) else {}
+        lat, lon = _lat_lon_from_location(loc)
+        if lat is None or lon is None:
+            continue
+        key = (round(float(lat), 4), round(float(lon), 4))
+        if key in seen:
+            continue
+        seen.add(key)
+        poly.append([float(lon), float(lat)])
+        if len(poly) >= max(50, min(int(max_points), 2000)):
+            break
+    return {
+        "sample_points": poly,
+        "count": len(poly),
+        "from": from_.isoformat().replace("+00:00", "Z"),
+        "to": to.isoformat().replace("+00:00", "Z"),
     }

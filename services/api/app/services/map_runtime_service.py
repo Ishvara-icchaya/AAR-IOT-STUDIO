@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from typing import Any, Callable
+
+log = logging.getLogger(__name__)
+
+# Batched GETs per pipeline.execute to avoid oversized single writes (Redis socket timeouts).
+_REDIS_MARKER_GET_CHUNK = 200
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,8 +23,13 @@ from app.services.workflow_result_query import (
     order_by_metadata_recency as order_result_objects_by_recency,
 )
 from app.models.workflow_result_object import WorkflowResultObject
-from app.services.map_eligibility import map_eligible_data_object, map_eligible_result_object
-from app.services.map_object_kpi_timescale import query_map_kpi_recent
+from app.services.map_eligibility import (
+    lat_lon_from_lds_row_fragments,
+    map_eligible_data_object,
+    map_eligible_result_object,
+)
+from app.models.resolved_device import ResolvedDevice
+from app.services.map_object_kpi_timescale import query_map_kpi_recent_pair
 from app.services.map_runtime_redis import (
     aggregator_stats,
     kpi_series_key_1h,
@@ -46,13 +57,12 @@ def list_eligible_map_objects(
         LatestDeviceState.site_id == site_id,
     )
     for row in db.scalars(stmt_lds).all():
-        loc = row.location_json if isinstance(row.location_json, dict) else {}
-        try:
-            lat_f = float(loc.get("lat"))
-            lon_f = float(loc.get("lon"))
-        except (TypeError, ValueError):
-            continue
-        if abs(lat_f) > 90 or abs(lon_f) > 180:
+        lat_f, lon_f = lat_lon_from_lds_row_fragments(
+            location_json=row.location_json if isinstance(row.location_json, dict) else None,
+            display_json=row.display_json if isinstance(row.display_json, dict) else None,
+            kpi_json=row.kpi_json if isinstance(row.kpi_json, dict) else None,
+        )
+        if lat_f is None or lon_f is None:
             continue
         label = ""
         disp = row.display_json if isinstance(row.display_json, dict) else {}
@@ -98,6 +108,64 @@ def list_eligible_map_objects(
     return out
 
 
+def _stable_hue_deg(token: str) -> int:
+    h = 2166136261
+    for ch in token:
+        h = (h ^ ord(ch)) * 16777619 & 0xFFFFFFFF
+    return int(h % 360)
+
+
+def _marker_hue(marker: dict[str, Any]) -> int:
+    gix = marker.get("marker_group_index")
+    base = str(
+        marker.get("resolved_device_id")
+        or marker.get("device_id")
+        or marker.get("endpoint_id")
+        or marker.get("source_id")
+        or marker.get("display_name")
+        or "x"
+    )
+    hue = _stable_hue_deg(base)
+    if gix is not None:
+        try:
+            hue = (int(gix) * 37 + hue) % 360
+        except (TypeError, ValueError):
+            pass
+    return hue
+
+
+def aggregate_data_object_markers_by_device(markers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One map marker per physical device when multiple data_object rows share device_id (fleet feeds)."""
+    from collections import defaultdict
+
+    passthrough: list[dict[str, Any]] = []
+    buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for m in markers:
+        if m.get("source_type") != "data_object":
+            passthrough.append(m)
+            continue
+        did = m.get("device_id")
+        if not did:
+            passthrough.append(m)
+            continue
+        buckets[str(did)].append(m)
+    merged: list[dict[str, Any]] = []
+    for _did, group in buckets.items():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        lats = [float(x["latitude"]) for x in group]
+        lons = [float(x["longitude"]) for x in group]
+        newest = max(group, key=lambda x: str(x.get("updated_at") or x.get("latest_seen_at") or ""))
+        m2 = dict(newest)
+        m2["latitude"] = sum(lats) / len(lats)
+        m2["longitude"] = sum(lons) / len(lons)
+        base_name = m2.get("device_name") or m2.get("display_name") or "Device"
+        m2["display_name"] = f"{base_name} ({len(group)} feeds)"
+        merged.append(m2)
+    return merged + passthrough
+
+
 def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
     """Strip heavy fields (KPI blobs, long messages) for list/preview payloads; detail comes from /detail."""
     out: dict[str, Any] = {
@@ -109,6 +177,7 @@ def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
         "health_status": marker.get("health_status"),
         "blink_mode": marker.get("blink_mode"),
         "updated_at": marker.get("updated_at"),
+        "marker_hue": _marker_hue(marker),
     }
     st = marker.get("source_type")
     sid = marker.get("source_id")
@@ -130,6 +199,17 @@ def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
         out["has_heading"] = marker.get("has_heading")
     if marker.get("expected_frequency_sec") is not None:
         out["expected_frequency_sec"] = marker.get("expected_frequency_sec")
+    did = marker.get("device_id")
+    if did is not None:
+        out["device_id"] = str(did)
+    gix_out = marker.get("marker_group_index")
+    if gix_out is None:
+        gix_out = marker.get("markerGroupIndex")
+    if gix_out is not None:
+        try:
+            out["marker_group_index"] = int(gix_out)
+        except (TypeError, ValueError):
+            pass
     return out
 
 
@@ -178,6 +258,34 @@ def _apply_kpi_fields(marker: dict[str, Any], kpi_fields: list[str]) -> dict[str
     return marker
 
 
+def _marker_identity_key(marker: dict[str, Any]) -> tuple[str, str]:
+    return (str(marker.get("source_type") or "").lower(), str(marker.get("source_id") or ""))
+
+
+def _merge_pg_markers_over_redis(
+    pg_markers: list[dict[str, Any]],
+    redis_markers: list[dict[str, Any]],
+    kpi_fields: list[str],
+) -> list[dict[str, Any]]:
+    """Prefer DB-built markers; keep Redis-only entries (e.g. not yet visible in PG) as fallback.
+
+    Redis snapshots are written on create-style events and are not refreshed on every row update,
+    so returning Redis alone would show stale positions while ``latest_device_state`` / payloads are new.
+    """
+    seen: set[tuple[str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for m in pg_markers:
+        k = _marker_identity_key(m)
+        seen.add(k)
+        out.append(_apply_kpi_fields(dict(m), kpi_fields))
+    for m in redis_markers:
+        k = _marker_identity_key(m)
+        if k in seen:
+            continue
+        out.append(_apply_kpi_fields(dict(m), kpi_fields))
+    return out
+
+
 def _marker_passes_device_filter(
     st_raw: dict[str, Any],
     source_type: str,
@@ -209,7 +317,23 @@ def markers_with_redis_first(
     allowed_device_ids: set[uuid.UUID] | None = None,
     pg_markers_fn: Callable[..., list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
-    """Try Redis snapshot markers (batched GET); fall back to PG builder (must return same marker shape)."""
+    """Load Postgres markers, then overlay Redis-only keys.
+
+    Redis holds aggregator snapshots (often create-time); PG reflects current payloads and
+    ``latest_device_state``. Returning Redis alone caused stale map positions after ingest updates.
+    """
+    pg = pg_markers_fn(
+        db,
+        customer_id=customer_id,
+        site_id=site_id,
+        latf=lat_field,
+        lonf=lon_field,
+        kpi_fields=kpi_fields,
+        excluded=excluded,
+        title_field=title_field,
+        health_field=health_field,
+        allowed_device_ids=allowed_device_ids,
+    )
     r = redis_client()
     if r is not None:
         try:
@@ -226,45 +350,50 @@ def markers_with_redis_first(
                         continue
                     pending.append((st, sid_s, state_key(customer_id, st, sid_s)))
                 if pending:
-                    pipe = r.pipeline()
-                    for _, _, rk in pending:
-                        pipe.get(rk)
-                    raw_vals = pipe.execute()
-                    markers: list[dict[str, Any]] = []
-                    for (st, _sid_s, _), raw in zip(pending, raw_vals):
-                        if not raw:
-                            continue
-                        try:
-                            st_raw = json.loads(raw)
-                        except Exception:
-                            continue
-                        if not isinstance(st_raw, dict):
-                            continue
-                        if not _marker_passes_device_filter(st_raw, st, allowed_device_ids):
-                            continue
-                        mk = dict(st_raw)
-                        mk = _apply_kpi_fields(mk, kpi_fields)
-                        markers.append(mk)
-                    if markers:
-                        return markers
+                    if len(pending) > 400:
+                        log.warning(
+                            "map redis overlay skipped (too many site members=%s); using Postgres only site_id=%s",
+                            len(pending),
+                            site_id,
+                        )
+                        return pg
+                    redis_markers: list[dict[str, Any]] = []
+                    try:
+                        for off in range(0, len(pending), _REDIS_MARKER_GET_CHUNK):
+                            chunk = pending[off : off + _REDIS_MARKER_GET_CHUNK]
+                            pipe = r.pipeline()
+                            for _, _, rk in chunk:
+                                pipe.get(rk)
+                            raw_vals = pipe.execute()
+                            for (st, _sid_s, _), raw in zip(chunk, raw_vals):
+                                if not raw:
+                                    continue
+                                try:
+                                    st_raw = json.loads(raw)
+                                except Exception:
+                                    continue
+                                if not isinstance(st_raw, dict):
+                                    continue
+                                if not _marker_passes_device_filter(st_raw, st, allowed_device_ids):
+                                    continue
+                                redis_markers.append(dict(st_raw))
+                    except Exception as exc:
+                        log.warning(
+                            "map redis marker batch read failed site_id=%s pending=%s: %s",
+                            site_id,
+                            len(pending),
+                            exc,
+                        )
+                        return pg
+                    if redis_markers:
+                        return _merge_pg_markers_over_redis(pg, redis_markers, kpi_fields)
         finally:
             try:
                 r.close()
             except Exception:
                 pass
 
-    return pg_markers_fn(
-        db,
-        customer_id=customer_id,
-        site_id=site_id,
-        latf=lat_field,
-        lonf=lon_field,
-        kpi_fields=kpi_fields,
-        excluded=excluded,
-        title_field=title_field,
-        health_field=health_field,
-        allowed_device_ids=allowed_device_ids,
-    )
+    return pg
 
 
 def markers_manual_sources(
@@ -280,7 +409,7 @@ def markers_manual_sources(
     health_field: str | None,
     pg_single_marker_fn,
 ) -> list[dict[str, Any]]:
-    """Resolve one marker per included source (Redis first per id)."""
+    """Resolve one marker per included source (Postgres authoritative; Redis only if PG has no marker)."""
     r = redis_client()
     markers: list[dict[str, Any]] = []
     try:
@@ -294,12 +423,6 @@ def markers_manual_sources(
             except ValueError:
                 continue
             sid_s = str(sid)
-            if r is not None:
-                st_raw = load_state_json(r, state_key(customer_id, st, sid_s))
-                if st_raw:
-                    mk = dict(st_raw)
-                    markers.append(_apply_kpi_fields(mk, kpi_fields))
-                    continue
             m = pg_single_marker_fn(
                 db,
                 customer_id=customer_id,
@@ -312,8 +435,27 @@ def markers_manual_sources(
                 title_field=title_field,
                 health_field=health_field,
             )
+            gix = entry.get("marker_group_index")
+            if gix is None:
+                gix = entry.get("markerGroupIndex")
             if m:
-                markers.append(m)
+                if gix is not None:
+                    try:
+                        m["marker_group_index"] = int(gix)
+                    except (TypeError, ValueError):
+                        pass
+                markers.append(_apply_kpi_fields(dict(m), kpi_fields))
+                continue
+            if r is not None:
+                st_raw = load_state_json(r, state_key(customer_id, st, sid_s))
+                if st_raw:
+                    mk = dict(st_raw)
+                    if gix is not None:
+                        try:
+                            mk["marker_group_index"] = int(gix)
+                        except (TypeError, ValueError):
+                            pass
+                    markers.append(_apply_kpi_fields(mk, kpi_fields))
     finally:
         if r is not None:
             try:
@@ -333,6 +475,7 @@ def map_marker_detail(
     display_field_paths: list[str] | None,
     kpi_keys: list[str] | None,
     trend_scope: str | None = None,
+    include_timescale_history: bool = False,
 ) -> dict[str, Any] | None:
     """Full detail for popup: display fields, health, KPI latest, Redis windows, Timescale samples."""
     r = redis_client()
@@ -381,7 +524,7 @@ def map_marker_detail(
     else:
         return None
 
-    from app.services.dashboard_live import _get_path
+    from app.services.dashboard_live import _get_path, _resolve_kpi_metric_value
 
     display_fields: dict[str, Any] = {}
     paths = display_field_paths or []
@@ -409,28 +552,22 @@ def map_marker_detail(
     keys = filter_metric_keys_for_site(db, site_id=site_id, keys=keys)[:24]
 
     for k in keys:
-        k_latest[str(k)] = _get_path(merged, str(k))
+        k_latest[str(k)] = _resolve_kpi_metric_value(merged, str(k))
 
     if st_lower in ("data_object", "result_object"):
-        if not keys:
-            ts_1h, ts_24h = [], []
-        else:
-            ts_1h = query_map_kpi_recent(
-                customer_id=customer_id,
-                object_kind=st_lower,
-                object_id=source_id,
-                hours=1.0,
-                kpi_keys=keys,
-                row_limit=120,
-            )
-            ts_24h = query_map_kpi_recent(
-                customer_id=customer_id,
-                object_kind=st_lower,
-                object_id=source_id,
-                hours=24.0,
-                kpi_keys=keys,
-                row_limit=240,
-            )
+        ts_kind = st_lower
+    elif st_lower in ("latest_device_state", "device_state"):
+        ts_kind = "latest_device_state"
+    else:
+        ts_kind = ""
+
+    if include_timescale_history and ts_kind and keys:
+        ts_1h, ts_24h = query_map_kpi_recent_pair(
+            customer_id=customer_id,
+            object_kind=ts_kind,
+            object_id=source_id,
+            kpi_keys=keys,
+        )
     else:
         ts_1h, ts_24h = [], []
 
@@ -475,10 +612,23 @@ def map_marker_detail(
             "metricKeys": list(k_latest.keys())[:24],
         }
 
+    device_display_name: str | None = None
+    if st_lower in ("latest_device_state", "device_state"):
+        lab = merged.get("device_label")
+        if isinstance(lab, str) and lab.strip():
+            device_display_name = lab.strip()
+        else:
+            rd = db.get(ResolvedDevice, row.resolved_device_id)
+            if rd and isinstance(rd.device_label, str) and rd.device_label.strip():
+                device_display_name = rd.device_label.strip()
+            elif getattr(row, "object_name", None):
+                device_display_name = str(row.object_name).strip()
+
     return {
         "source_type": st_lower,
         "source_id": str(source_id),
         "site_id": str(site_id),
+        "device_display_name": device_display_name,
         "display_fields": display_fields,
         "health": health,
         "kpi_latest": k_latest,

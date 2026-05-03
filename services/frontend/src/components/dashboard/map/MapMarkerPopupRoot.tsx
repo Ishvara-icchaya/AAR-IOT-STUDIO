@@ -1,6 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getMapObjectDetail } from "@/api/dashboard";
 import type { TrendScope, TrendPopupProps } from "@/types/trends";
+import { DashboardLiveContext } from "@/components/dashboard/DashboardLiveContext";
 
 const TrendPopup = lazy(() => import("./TrendPopup"));
 const MapObjectKpiTrendPopup = lazy(() => import("./MapObjectKpiTrendPopup"));
@@ -16,6 +17,9 @@ type Props = {
   trendScope?: "resolved_device" | "endpoint" | "site";
   /** Align detail KPI keys with dashboard map widget ``kpi_fields`` binding. */
   kpiKeys?: string[];
+  /** Overrides context when this root is mounted in a MapLibre popup (outside DashboardLiveProvider). */
+  detailRefreshIntervalSec?: number;
+  detailRenderEpoch?: string;
 };
 
 function healthBadgeClass(status: string | undefined): string {
@@ -28,35 +32,109 @@ function healthBadgeClass(status: string | undefined): string {
 }
 
 export function MapMarkerPopupRoot(props: Props) {
-  const { siteId, sourceType, sourceId, title, blockedMessage, trendScope, kpiKeys } = props;
+  const {
+    siteId,
+    sourceType,
+    sourceId,
+    title,
+    blockedMessage,
+    trendScope,
+    kpiKeys,
+    detailRefreshIntervalSec: propRefreshSec,
+    detailRenderEpoch: propEpoch,
+  } = props;
+  const liveCtx = useContext(DashboardLiveContext);
+  const refreshIntervalSec = propRefreshSec ?? liveCtx?.refreshIntervalSec;
+  const renderEpoch = propEpoch ?? liveCtx?.renderedAt;
+
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(!blockedMessage);
 
+  const identityKey = useMemo(
+    () =>
+      `${siteId}|${sourceType}|${sourceId}|${trendScope ?? ""}|${JSON.stringify(kpiKeys ?? [])}`,
+    [siteId, sourceType, sourceId, trendScope, kpiKeys],
+  );
+
+  const prevEpochRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (blockedMessage) return;
     let cancelled = false;
-    setLoading(true);
-    setErr(null);
-    void (async () => {
+    const load = async (initial: boolean) => {
+      if (initial) {
+        setLoading(true);
+        setErr(null);
+      }
       try {
-        const r = await getMapObjectDetail({ siteId, sourceType, sourceId, trendScope, kpiKeys });
+        const includeTimescaleHistory =
+          sourceType === "data_object" || sourceType === "result_object";
+        const r = await getMapObjectDetail({
+          siteId,
+          sourceType,
+          sourceId,
+          trendScope,
+          kpiKeys,
+          includeTimescaleHistory,
+        });
         if (!cancelled) {
           setDetail((r?.detail as Record<string, unknown>) ?? null);
-          setLoading(false);
+          if (initial) setLoading(false);
         }
       } catch (e) {
         if (!cancelled) {
-          setErr(e instanceof Error ? e.message : "Failed to load detail");
-          setDetail(null);
-          setLoading(false);
+          if (initial) {
+            setErr(e instanceof Error ? e.message : "Failed to load detail");
+            setDetail(null);
+            setLoading(false);
+          }
         }
+      }
+    };
+    void load(true);
+    const sec =
+      typeof refreshIntervalSec === "number" &&
+      Number.isFinite(refreshIntervalSec) &&
+      refreshIntervalSec >= 5
+        ? refreshIntervalSec
+        : undefined;
+    const pollId =
+      sec !== undefined ? window.setInterval(() => void load(false), sec * 1000) : undefined;
+    return () => {
+      cancelled = true;
+      if (pollId !== undefined) window.clearInterval(pollId);
+    };
+  }, [identityKey, blockedMessage, refreshIntervalSec, siteId, sourceType, sourceId, trendScope, kpiKeys]);
+
+  useEffect(() => {
+    if (blockedMessage || renderEpoch === undefined) return;
+    const prev = prevEpochRef.current;
+    prevEpochRef.current = renderEpoch;
+    if (prev === undefined) return;
+    if (prev === renderEpoch) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const includeTimescaleHistory =
+          sourceType === "data_object" || sourceType === "result_object";
+        const r = await getMapObjectDetail({
+          siteId,
+          sourceType,
+          sourceId,
+          trendScope,
+          kpiKeys,
+          includeTimescaleHistory,
+        });
+        if (!cancelled) setDetail((r?.detail as Record<string, unknown>) ?? null);
+      } catch {
+        /* keep existing detail */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [siteId, sourceType, sourceId, blockedMessage, trendScope, kpiKeys]);
+  }, [renderEpoch, siteId, sourceType, sourceId, blockedMessage, trendScope, kpiKeys]);
 
   if (blockedMessage) {
     return (
@@ -96,6 +174,10 @@ export function MapMarkerPopupRoot(props: Props) {
   const h = (detail.health as Record<string, unknown> | undefined) || {};
   const kl = (detail.kpi_latest as Record<string, unknown> | undefined) || {};
   const df = (detail.display_fields as Record<string, unknown> | undefined) || {};
+  const deviceDisplay =
+    typeof detail.device_display_name === "string" && detail.device_display_name.trim()
+      ? detail.device_display_name.trim()
+      : null;
   const tc = (detail.trend_context ?? (detail as { trendContext?: unknown }).trendContext) as
     | Record<string, unknown>
     | undefined;
@@ -131,6 +213,9 @@ export function MapMarkerPopupRoot(props: Props) {
         <span className="dash-map-popup__title">{title}</span>
         {hs ? <span className={healthBadgeClass(hs)}>{hs}</span> : null}
       </div>
+      {deviceDisplay ? (
+        <p className="dash-map-popup__hint dash-map-popup__device-line">{deviceDisplay}</p>
+      ) : null}
       {typeof h.health_message === "string" && h.health_message ? (
         <p className="dash-map-popup__msg">{h.health_message}</p>
       ) : null}

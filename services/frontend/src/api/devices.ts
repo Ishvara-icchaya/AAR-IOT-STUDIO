@@ -33,10 +33,51 @@ export type DeviceRead = {
   late_threshold_seconds?: number;
   offline_threshold_seconds?: number;
   endpoint: DeviceEndpointList;
+  /** Operational lineage (API-evaluated); not lifecycle operational_status. */
+  footprint_operational_status?: string | null;
+  footprint_recommendation_code?: string | null;
+  footprint_recommendation_message?: string | null;
+};
+
+/** Mirrors GET /devices/{id}/footprint JSON (v1). */
+export type DeviceFootprintRead = {
+  device: {
+    device_id: string;
+    resolved_device_id: string | null;
+    site_id: string;
+    activation_status: string | null;
+  };
+  endpoint: {
+    endpoint_id: string;
+    name: string;
+    status: string | null;
+    expected_frequency_sec: number;
+  } | null;
+  ingestion: {
+    last_ingested_at: string | null;
+    ingest_age_sec: number | null;
+    expected_frequency_sec: number;
+    stale_after_sec: number;
+  };
+  scrubber: { associated: boolean; last_output_at: string | null; status: string };
+  workflow: { associated: boolean; workflows: unknown[] };
+  dashboard: { count: number; dashboards: unknown[] };
+  trends: {
+    device_trend_available?: boolean;
+    endpoint_rollup_available?: boolean;
+    records_1h?: unknown;
+    records_24h?: unknown;
+  };
+  status: string;
+  recommendation: { code: string; message: string };
 };
 
 export async function getDevice(deviceId: string) {
   return apiFetch<DeviceRead>(`/devices/${encodeURIComponent(deviceId)}`);
+}
+
+export async function getDeviceFootprint(deviceId: string) {
+  return apiFetch<DeviceFootprintRead>(`/devices/${encodeURIComponent(deviceId)}/footprint`);
 }
 
 export async function listDevices(params?: { q?: string; site_id?: string }): Promise<DeviceRead[]> {

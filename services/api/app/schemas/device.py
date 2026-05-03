@@ -59,6 +59,10 @@ class DeviceRead(BaseModel):
     late_threshold_seconds: int = 120
     offline_threshold_seconds: int = 300
     endpoint: DeviceEndpointNested | None = None
+    # Operational lineage (ingest / activation / scrubber / dashboards) — not lifecycle operational_status.
+    footprint_operational_status: str | None = None
+    footprint_recommendation_code: str | None = None
+    footprint_recommendation_message: str | None = None
 
 
 class DeviceListResponse(BaseModel):

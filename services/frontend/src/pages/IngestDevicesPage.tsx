@@ -3,6 +3,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
+  Braces,
   ChevronLeft,
   ChevronRight,
   GitBranch,
@@ -28,6 +29,7 @@ import { AarButton } from "@/components/system/AarButton";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
+import { ScrubbedEventsSelectModal } from "@/pages/scrubber2/ScrubbedEventsSelectModal";
 import {
   DEVICE_LABEL_PATH_OPTIONS,
   ENDPOINT_LIFECYCLE_FILTERS,
@@ -93,8 +95,23 @@ export function IngestDevicesPage() {
   const [editing, setEditing] = useState<EndpointRead | null>(null);
   const [endpointModalOpen, setEndpointModalOpen] = useState(false);
   const [identityModalId, setIdentityModalId] = useState<string | null>(null);
+  const [scrubbedModalOpen, setScrubbedModalOpen] = useState(false);
+  const [scrubbedEndpointId, setScrubbedEndpointId] = useState("");
+  const [scrubbedEndpointLabel, setScrubbedEndpointLabel] = useState("");
 
   useShellFeedback(err, ok);
+
+  const openScrubbedEventsModal = useCallback((ep: EndpointRead) => {
+    setScrubbedEndpointId(ep.id);
+    setScrubbedEndpointLabel(ep.endpoint_name);
+    setScrubbedModalOpen(true);
+  }, []);
+
+  const closeScrubbedEventsModal = useCallback(() => {
+    setScrubbedModalOpen(false);
+    setScrubbedEndpointId("");
+    setScrubbedEndpointLabel("");
+  }, []);
 
   useEffect(() => {
     const id = searchParams.get("identity")?.trim();
@@ -609,6 +626,18 @@ export function IngestDevicesPage() {
 
             <section className="ingest-ept-panel ingest-ept-panel--fullbleed">
               <h2 className="ingest-ept-table-title">Endpoints</h2>
+              <p
+                style={{
+                  margin: "0.2rem 0 0.55rem",
+                  fontSize: "0.78rem",
+                  color: "var(--color-text-muted)",
+                  lineHeight: 1.4,
+                }}
+              >
+                Scrubbed event history (Timescale) for each ingest stream: use the <strong>braces</strong>{" "}
+                <Braces size={12} strokeWidth={2} aria-hidden style={{ verticalAlign: "text-bottom" }} /> action in
+                each row (same pattern as raw samples on Register devices).
+              </p>
               <OpsDataTable id="v2-ingest-endpoints-table">
                 {loading && filteredItems.length === 0 ? (
                   <p className="dm-empty">Loading…</p>
@@ -708,6 +737,14 @@ export function IngestDevicesPage() {
                                     <OpsActionButton type="button" title="Edit endpoint" aria-label={`Edit ${ep.endpoint_name}`} onClick={() => startEdit(ep)}>
                                       <Pencil size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                                     </OpsActionButton>
+                                    <OpsActionButton
+                                      type="button"
+                                      title="View scrubbed events and payload samples (Timescale)"
+                                      aria-label={`Scrubbed events for ${ep.endpoint_name}`}
+                                      onClick={() => openScrubbedEventsModal(ep)}
+                                    >
+                                      <Braces size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                                    </OpsActionButton>
                                   </div>
                                 </td>
                               </tr>
@@ -762,6 +799,13 @@ export function IngestDevicesPage() {
         >
           {identityModalId ? <EndpointIdentityPanel embedded endpointId={identityModalId} /> : null}
         </AppModalShell>
+
+        <ScrubbedEventsSelectModal
+          open={scrubbedModalOpen && Boolean(scrubbedEndpointId)}
+          onClose={closeScrubbedEventsModal}
+          endpointId={scrubbedEndpointId}
+          deviceName={scrubbedEndpointLabel}
+        />
       </div>
     </PageShell>
   );

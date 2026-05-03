@@ -442,7 +442,7 @@ def _process_result_object(r: Any, data: dict[str, Any]) -> None:
 
 
 def _process_latest_device_state_trends(r: Any, data: dict[str, Any]) -> None:
-    """Populate trend:window:rdev:* and trend:window:endpoint:* from LDS KPIs (see trend_window_rollup)."""
+    """Trend rollups (rdev/endpoint/site) + Redis KPI windows + Timescale map_object_kpi_history for LDS map detail."""
     lds_id = str(data.get("latest_device_state_id") or "")
     if not lds_id:
         return
@@ -454,9 +454,52 @@ def _process_latest_device_state_trends(r: Any, data: dict[str, Any]) -> None:
     if not rd or not ep:
         return
     numerics = extract_numerics_from_lds_row(row)
+    apply_trend_rollups_from_lds_row(r, row=row, numerics=numerics)
     if not numerics:
         return
-    apply_trend_rollups_from_lds_row(r, row=row, numerics=numerics)
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat().replace("+00:00", "Z")
+    cid = str(row["customer_id"])
+
+    for window_key, sec, _ in (
+        (KPI_1H, 3600, "1h"),
+        (KPI_24H, 86400, "24h"),
+    ):
+        rkey = f"{window_key}{cid}:latest_device_state:{lds_id}"
+        raw_prev = r.get(rkey)
+        prev_obj: dict[str, list] = {}
+        if raw_prev:
+            try:
+                prev_obj = json.loads(raw_prev)
+                if not isinstance(prev_obj, dict):
+                    prev_obj = {}
+            except Exception:
+                prev_obj = {}
+        for metric_key, val in numerics.items():
+            pts = prev_obj.get(metric_key) if isinstance(prev_obj.get(metric_key), list) else []
+            pts = _trim_series(pts + [{"t": now_iso, "v": val}], window_sec=sec)
+            prev_obj[metric_key] = pts
+        r.set(rkey, json.dumps(prev_obj, default=str))
+        r.expire(rkey, 30 * 24 * 3600)
+
+    for metric_key, val in numerics.items():
+        insert_map_kpi_history(
+            time_iso=now_iso,
+            customer_id=cid,
+            object_kind="latest_device_state",
+            object_id=lds_id,
+            kpi_key=metric_key,
+            value=val,
+            record={"source": "map_aggregator_lds"},
+        )
+
+    try:
+        r.hincrby(AGG, "events_latest_device_state", 1)
+        r.hset(AGG, "last_event_at", now_iso)
+        r.hset(AGG, "last_latest_device_state_id", lds_id)
+    except Exception:
+        log.debug("map aggregator LDS stats hash update failed", exc_info=True)
 
 
 def _handle(r: Any, data: dict[str, Any]) -> None:

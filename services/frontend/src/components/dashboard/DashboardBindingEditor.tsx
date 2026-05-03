@@ -7,6 +7,7 @@ import {
 import type { DashboardWidgetModel } from "@/types/dashboardLayout";
 import * as dashApi from "@/api/dashboard";
 import { listDevices, type DeviceRead } from "@/api/devices";
+import { listEndpoints, type EndpointRead } from "@/api/endpoints";
 
 type FieldPathPickerProps = {
   label: string;
@@ -87,9 +88,11 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
 
   const needsSource = !["text", "health_summary", "alert_summary", "site_summary"].includes(widget.type);
   const mapAuto = widget.type === "map" && (c.autoIncludeGpsObjects !== false);
+  const mapTrackMode = String(c.mapTrackMode ?? "site").trim() || "site";
 
   const [eligibleMap, setEligibleMap] = useState<dashApi.MapEligibleItem[]>([]);
   const [mapSiteDevices, setMapSiteDevices] = useState<DeviceRead[]>([]);
+  const [mapSiteEndpoints, setMapSiteEndpoints] = useState<EndpointRead[]>([]);
   const sourceIdBind = String(b.sourceId ?? "").trim();
   const sourceTypeBind = (b.sourceType as string) || "latest_device_state";
   const [fieldMeta, setFieldMeta] = useState<PayloadFieldEntry[]>([]);
@@ -144,6 +147,24 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
       cancelled = true;
     };
   }, [widget.type, mapAuto, siteId]);
+
+  useEffect(() => {
+    if (widget.type !== "map" || !siteId) {
+      setMapSiteEndpoints([]);
+      return;
+    }
+    let cancelled = false;
+    void listEndpoints({ site_id: siteId })
+      .then((r) => {
+        if (!cancelled) setMapSiteEndpoints(r?.items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setMapSiteEndpoints([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [widget.type, siteId]);
 
   useEffect(() => {
     if (widget.type !== "map" || !mapAuto || !siteId) {
@@ -226,7 +247,7 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
             </label>
           )}
 
-          {widget.type === "map" && mapAuto && siteId && (
+          {widget.type === "map" && mapAuto && siteId && mapTrackMode !== "endpoint_groups" && (
             <div className="dash-drawer__label">
               <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
                 Devices on map — leave all unchecked to include every device at this site; check specific devices to
@@ -292,7 +313,7 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
             </div>
           )}
 
-          {widget.type === "map" && !mapAuto && siteId && (
+          {widget.type === "map" && !mapAuto && siteId && mapTrackMode !== "endpoint_groups" && (
             <div className="dash-drawer__label">
               <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
                 Map objects (eligible for this site — multiselect)
@@ -472,6 +493,161 @@ export function DashboardBindingEditor({ widget, onChange, disabled, siteId }: P
 
       {widget.type === "map" && (
         <>
+          {siteId ? (
+            <label className="dash-drawer__label">
+              Map tracks
+              <select
+                className="dash-drawer__input"
+                disabled={disabled}
+                value={mapTrackMode}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  patchConfig({ mapTrackMode: v });
+                  if (v === "endpoint_groups") {
+                    patchConfig({
+                      autoIncludeGpsObjects: false,
+                      mapEndpointGroupEntries:
+                        Array.isArray(c.mapEndpointGroupEntries) && (c.mapEndpointGroupEntries as unknown[]).length
+                          ? c.mapEndpointGroupEntries
+                          : [{ endpointId: "", objectName: "" }],
+                    });
+                  } else if (v === "site") {
+                    patchConfig({ mapEndpointGroupEntries: [], autoIncludeGpsObjects: true });
+                  } else {
+                    patchConfig({ mapEndpointGroupEntries: [], autoIncludeGpsObjects: true });
+                  }
+                }}
+              >
+                <option value="site">Site — all GPS data objects (auto)</option>
+                <option value="devices">Selected devices (filter)</option>
+                <option value="endpoint_groups">Endpoint group(s) — fleet / LDS positions</option>
+              </select>
+              <span className="dash-widget__muted" style={{ display: "block", marginTop: "0.25rem", fontSize: "0.78rem" }}>
+                Endpoint groups use live resolved-device positions; each group gets a distinct marker color. Devices
+                mode filters site auto-map to checked devices only.
+              </span>
+            </label>
+          ) : null}
+          {mapTrackMode === "endpoint_groups" && siteId ? (
+            <div className="dash-drawer__label">
+              <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                Endpoint groups (one or more)
+              </span>
+              {(Array.isArray(c.mapEndpointGroupEntries) ? (c.mapEndpointGroupEntries as Record<string, unknown>[]) : []).map(
+                (row, idx) => {
+                  const eid = String(row.endpointId ?? row.endpoint_id ?? "");
+                  const oname = String(row.objectName ?? row.object_name ?? "");
+                  return (
+                    <div
+                      key={`meg-${idx}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr auto",
+                        gap: "0.35rem",
+                        marginBottom: "0.35rem",
+                        alignItems: "end",
+                      }}
+                    >
+                      <label style={{ fontSize: "0.8rem" }}>
+                        Endpoint
+                        <select
+                          className="dash-drawer__input"
+                          disabled={disabled}
+                          value={eid}
+                          onChange={(ev) => {
+                            const rows = [
+                              ...(Array.isArray(c.mapEndpointGroupEntries)
+                                ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                                : []),
+                            ];
+                            rows[idx] = { ...rows[idx], endpointId: ev.target.value };
+                            patchConfig({ mapEndpointGroupEntries: rows });
+                          }}
+                        >
+                          <option value="">Select…</option>
+                          {mapSiteEndpoints.map((ep) => (
+                            <option key={ep.id} value={ep.id}>
+                              {ep.endpoint_name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ fontSize: "0.8rem" }}>
+                        Object name
+                        <input
+                          className="dash-drawer__input"
+                          disabled={disabled}
+                          value={oname}
+                          placeholder="e.g. vehicle"
+                          onChange={(ev) => {
+                            const rows = [
+                              ...(Array.isArray(c.mapEndpointGroupEntries)
+                                ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                                : []),
+                            ];
+                            rows[idx] = { ...rows[idx], objectName: ev.target.value };
+                            patchConfig({ mapEndpointGroupEntries: rows });
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="dash-drawer__input"
+                        style={{ padding: "0.15rem 0.35rem", cursor: "pointer" }}
+                        disabled={disabled}
+                        title="Remove group"
+                        onClick={() => {
+                          const rows = [
+                            ...(Array.isArray(c.mapEndpointGroupEntries)
+                              ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                              : []),
+                          ];
+                          rows.splice(idx, 1);
+                          patchConfig({ mapEndpointGroupEntries: rows.length ? rows : [{ endpointId: "", objectName: "" }] });
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                },
+              )}
+              <button
+                type="button"
+                className="dash-drawer__input"
+                style={{ marginTop: "0.25rem", padding: "0.25rem 0.5rem", cursor: "pointer" }}
+                disabled={disabled}
+                onClick={() => {
+                  const rows = [
+                    ...(Array.isArray(c.mapEndpointGroupEntries)
+                      ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                      : []),
+                  ];
+                  patchConfig({ mapEndpointGroupEntries: [...rows, { endpointId: "", objectName: "" }] });
+                }}
+              >
+                + Add group
+              </button>
+            </div>
+          ) : null}
+          <label className="dash-drawer__label dash-drawer__check">
+            <input
+              type="checkbox"
+              checked={c.mapAggregateByDevice === true}
+              disabled={disabled}
+              onChange={(e) => patchConfig({ mapAggregateByDevice: e.target.checked })}
+            />
+            One marker per device (centroid when multiple GPS feeds per device)
+          </label>
+          <label className="dash-drawer__label dash-drawer__check">
+            <input
+              type="checkbox"
+              checked={c.mapSmoothMarkers !== false}
+              disabled={disabled}
+              onChange={(e) => patchConfig({ mapSmoothMarkers: e.target.checked })}
+            />
+            Smooth marker motion on refresh (realtime)
+          </label>
           <FieldPathPicker
             label="Latitude field"
             value={String(b.latitudeField ?? "gps.lat")}
