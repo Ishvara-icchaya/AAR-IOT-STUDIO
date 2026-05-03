@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# AAR-IoT-Studio — orchestration: shutdown, compile, Docker build, start stack.
+# AAR-IoT-Studio — orchestration: shutdown, build.sh (npm + Docker), start stack.
 # Usage:
-#   ./run.sh debug [all]   — full stack, DEBUG + structured logs (see docker-compose.debug.yml)
+#   ./run.sh debug [all]   — full stack: build.sh debug, DEBUG + structured logs (see docker-compose.debug.yml)
 #   ./run.sh debug api     — infra + api + frontend only
-#   ./run.sh debug workers — infra + api + all workers + scheduler (no frontend)
+#   ./run.sh debug workers — same build.sh debug (no npm) + workers stack (no frontend container)
 #   ./run.sh debug ai      — infra + api + frontend + worker-ai + scheduler
 #   ./run.sh debug ingest  — infra + api + worker-rest-poller + worker-ingest + worker-scrubber
 #   ./run.sh up | all      — full default stack: build.sh (npm + docker build), then compose up -d; optional COMPOSE_PROFILES
@@ -102,29 +102,23 @@ shutdown_all() {
   echo "[run.sh] Shutdown complete."
 }
 
-compile_frontend() {
-  echo "[run.sh] Compiling frontend (npm ci + tsc + vite build)..."
-  (cd "${ROOT}/services/frontend" && npm ci && npm run build)
-}
-
 cmd_debug() {
   local mode="${1:-all}"
   shutdown_all
 
   case "$mode" in
     workers|ingest)
-      echo "[run.sh] Skipping frontend production build (mode: $mode)."
+      echo "[run.sh] Skipping frontend build for mode: $mode (SKIP_FRONTEND_BUILD=1 + build.sh debug)."
+      SKIP_FRONTEND_BUILD=1 "${ROOT}/build.sh" debug
       ;;
     *)
-      compile_frontend
+      echo "[run.sh] Rebuild via build.sh debug (npm + docker compose with debug overlay)..."
+      "${ROOT}/build.sh" debug
       ;;
   esac
 
   export_aar_debug_env
   echo "[run.sh] Debug env: AAR_DEBUG AAR_LOG_LEVEL=debug AAR_TRACE_PIPELINE AAR_LOG_JSON LOG_LEVEL=DEBUG"
-  echo "[run.sh] docker compose build (debug profile)..."
-  "${COMPOSE_DEBUG[@]}" build
-
   echo "[run.sh] docker compose up — logs attached; Ctrl+C stops containers."
   echo "[run.sh] Tip: in another terminal, tail MQTT bridge with the same compose files (no --profile needed):"
   echo "       docker compose -f docker-compose.yml -f docker-compose.debug.yml logs -f worker-mqtt-bridge"
@@ -200,19 +194,20 @@ usage() {
   cat <<'EOF'
 Usage: ./run.sh <command> [args]
 
-  debug [all]     Stop everything, compile frontend (except workers/ingest modes), rebuild,
-                  start stack in foreground with debug profile:
+  debug [all]     Stop everything, ./build.sh debug (npm unless workers|ingest or SKIP_FRONTEND_BUILD=1),
+                  docker compose debug build, then start stack in foreground with debug profile:
                   AAR_DEBUG=true AAR_LOG_LEVEL=debug AAR_TRACE_PIPELINE=true AAR_LOG_JSON=true
                   API logs as JSON lines (aar.* fields); uvicorn --log-level debug; Vite --debug.
 
   debug api       Same as debug but only infra + api + frontend (no workers — no data_objects pipeline).
 
-  debug workers   Infra + api + mosquitto + worker-mqtt-bridge + other workers + scheduler (no frontend).
+  debug workers   Infra + api + mosquitto + worker-mqtt-bridge + other workers + scheduler (no frontend;
+                  SKIP_FRONTEND_BUILD=1 for build.sh debug — Docker debug images still built).
 
   debug ai        Infra + api + frontend + worker-ai + scheduler.
 
-  debug ingest    Infra + api + worker-rest-poller + worker-ingest + worker-scrubber
-                  (REST polling → raw.ingest → data_objects).
+  debug ingest    Infra + api + worker-rest-poller + worker-device-liveness + worker-ingest + worker-scrubber
+                  (REST polling → raw.ingest → data_objects). Skips npm like debug workers.
 
   up | all        Same: stop everything, ./build.sh (npm + docker build; SKIP_FRONTEND_BUILD=1 skips npm),
                   docker compose up -d — full default stack (api, frontend, workers, infra, etc.).
