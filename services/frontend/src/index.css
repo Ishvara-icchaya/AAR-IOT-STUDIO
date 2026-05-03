@@ -3764,10 +3764,10 @@ a:hover {
   outline-offset: -4px;
 }
 
-/* Expanded map intelligence: map left, panel right (Phase 1 shell). */
+/* Expanded map intelligence: map + intel row on top, layers/legend bar at bottom. */
 .dash-map-widget__expanded-split {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   flex: 1 1 auto;
   align-items: stretch;
   min-height: 0;
@@ -3775,6 +3775,16 @@ a:hover {
   max-width: 100%;
   overflow-x: hidden;
   gap: 0;
+}
+
+.dash-map-widget__expanded-main-row {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  align-items: stretch;
 }
 
 .dash-map-widget__expanded-map-col {
@@ -3790,21 +3800,24 @@ a:hover {
 }
 
 .dash-map-widget__expanded-layer-col {
-  flex: 0 0 min(15rem, 28vw);
-  width: min(15rem, 28vw);
+  flex: 0 0 auto;
+  width: 100%;
   max-width: 100%;
-  min-width: min(12rem, 100%);
+  min-width: 0;
   box-sizing: border-box;
-  border-left: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+  border-left: none;
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
   background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
   overflow: auto;
-  min-height: 0;
+  max-height: min(34dvh, 17rem);
 }
 
 .dash-map-widget__layer-tools {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem 1.5rem;
   padding: 0.65rem 0.75rem 1rem;
 }
 
@@ -4188,17 +4201,8 @@ a:hover {
 }
 
 @media (max-width: 720px) {
-  .dash-map-widget__expanded-split {
+  .dash-map-widget__expanded-main-row {
     flex-direction: column;
-  }
-
-  .dash-map-widget__expanded-layer-col {
-    flex: 0 0 auto;
-    width: 100%;
-    min-width: 0;
-    border-left: none;
-    border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
-    max-height: min(36dvh, 18rem);
   }
 
   .dash-map-intel {
@@ -4208,6 +4212,10 @@ a:hover {
     border-left: none;
     border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
     max-height: min(42dvh, 22rem);
+  }
+
+  .dash-map-widget__expanded-layer-col {
+    max-height: min(40dvh, 20rem);
   }
 }
 

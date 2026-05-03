@@ -919,10 +919,20 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         ) : null}
         {expanded ? (
           <div className="dash-map-widget__expanded-split">
-            <div className="dash-map-widget__expanded-map-col">
-              <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--expanded-intel">
-                {mapEl}
+            <div className="dash-map-widget__expanded-main-row">
+              <div className="dash-map-widget__expanded-map-col">
+                <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--expanded-intel">
+                  {mapEl}
+                </div>
               </div>
+              <MapIntelligencePanel
+                siteId={intelSiteId}
+                blockTitle={block.title?.trim() || "Map"}
+                kpiKeys={chrome.kpiFields ?? []}
+                endpointId={intelEndpointId}
+                expanded={expanded}
+                onIntelOverlay={setIntelOverlay}
+              />
             </div>
             <aside className="dash-map-widget__expanded-layer-col" aria-label="Map layers and legend">
               <div className="dash-map-widget__layer-tools">
@@ -930,14 +940,6 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
                 <MapLayerLegend layerControls={layerControls} markers={filteredMarkers} intelOverlay={intelOverlay} />
               </div>
             </aside>
-            <MapIntelligencePanel
-              siteId={intelSiteId}
-              blockTitle={block.title?.trim() || "Map"}
-              kpiKeys={chrome.kpiFields ?? []}
-              endpointId={intelEndpointId}
-              expanded={expanded}
-              onIntelOverlay={setIntelOverlay}
-            />
           </div>
         ) : isEnterprise ? (
           <div className="dash-map-widget__enterprise-grid">

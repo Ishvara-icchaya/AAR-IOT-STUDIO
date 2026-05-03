@@ -88,7 +88,7 @@ export function MapLayerLegend({ layerControls: lc, markers, intelOverlay }: Pro
 
   const routeRows: { key: string; label: string; rgba: [number, number, number, number] }[] = [];
   if (intelOverlay?.footprint?.length && intelOverlay.footprint.length >= 2) {
-    routeRows.push({ key: "path", label: "Historical path", rgba: [59, 130, 246, 220] });
+    routeRows.push({ key: "path", label: "Trace", rgba: [59, 130, 246, 220] });
     if (intelOverlay.gapPoints?.length) {
       routeRows.push({ key: "gap", label: "Stale gap", rgba: [251, 146, 60, 230] });
     }
@@ -117,8 +117,8 @@ export function MapLayerLegend({ layerControls: lc, markers, intelOverlay }: Pro
         </ul>
       </section>
       {routeRows.length ? (
-        <section className="dash-map-legend dash-map-legend--route" aria-label="Route legend">
-          <h4 className="dash-map-legend__title">Route</h4>
+        <section className="dash-map-legend dash-map-legend--route" aria-label="Trace legend">
+          <h4 className="dash-map-legend__title">Trace</h4>
           <ul className="dash-map-legend__list">
             {routeRows.map((r) => (
               <li key={r.key} className="dash-map-legend__item">

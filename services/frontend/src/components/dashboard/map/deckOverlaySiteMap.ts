@@ -195,7 +195,7 @@ export function attachDeckSiteMapOverlay(
     }
 
     if (
-      layerControls.showHistoricalPath &&
+      layerControls.showTraceRoute &&
       intelOverlay?.footprint &&
       intelOverlay.footprint.length >= 2
     ) {

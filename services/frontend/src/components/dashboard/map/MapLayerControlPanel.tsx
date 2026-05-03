@@ -43,10 +43,10 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
         <label className="dash-map-layers__row">
           <input
             type="checkbox"
-            checked={lc.showHistoricalPath}
-            onChange={(e) => onChange(patch(lc, "showHistoricalPath", e.target.checked))}
+            checked={lc.showTraceRoute}
+            onChange={(e) => onChange(patch(lc, "showTraceRoute", e.target.checked))}
           />
-          <span>Historical footprint</span>
+          <span>Trace</span>
         </label>
         <label className="dash-map-layers__row">
           <input

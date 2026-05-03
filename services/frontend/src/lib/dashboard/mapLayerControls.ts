@@ -13,7 +13,8 @@ export type MapLayerControls = {
   showLiveMarkers: boolean;
   showAggregatedDeviceMarkers: boolean;
   showEndpointGroups: boolean;
-  showHistoricalPath: boolean;
+  /** Intelligence device route / footprint polyline on the map. */
+  showTraceRoute: boolean;
   showReplayHead: boolean;
   showGapPoints: boolean;
   showStartEndAnchors: boolean;
@@ -26,7 +27,7 @@ export const DEFAULT_MAP_LAYER_CONTROLS: MapLayerControls = {
   showLiveMarkers: true,
   showAggregatedDeviceMarkers: true,
   showEndpointGroups: true,
-  showHistoricalPath: true,
+  showTraceRoute: true,
   showReplayHead: true,
   showGapPoints: true,
   showStartEndAnchors: true,
@@ -70,7 +71,13 @@ export function mergeMapLayerControls(partial: unknown): MapLayerControls {
       base.showAggregatedDeviceMarkers,
     ),
     showEndpointGroups: readBool(p.showEndpointGroups ?? p.show_endpoint_groups, base.showEndpointGroups),
-    showHistoricalPath: readBool(p.showHistoricalPath ?? p.show_historical_path, base.showHistoricalPath),
+    showTraceRoute: readBool(
+      p.showTraceRoute ??
+        p.show_trace_route ??
+        p.showHistoricalPath ??
+        p.show_historical_path,
+      base.showTraceRoute,
+    ),
     showReplayHead: readBool(p.showReplayHead ?? p.show_replay_head, base.showReplayHead),
     showGapPoints: readBool(p.showGapPoints ?? p.show_gap_points, base.showGapPoints),
     showStartEndAnchors: readBool(p.showStartEndAnchors ?? p.show_start_end_anchors, base.showStartEndAnchors),
