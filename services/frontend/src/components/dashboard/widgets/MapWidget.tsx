@@ -139,6 +139,8 @@ function applyViewport(
   init: MapInitVM | undefined,
   controls: MapControlsVM,
   firstFitDoneRef: { current: boolean },
+  /** When true, first load ignores saved map_init and fits every marker (typical device-aggregate live map). */
+  aggregateByDevice?: boolean,
 ) {
   if (list.length === 0) return;
 
@@ -146,7 +148,15 @@ function applyViewport(
 
   if (isFirstFitWindow) {
     if (controls.auto_fit_on_first_load !== false) {
-      if (init?.bounds && init.bounds[0] && init.bounds[1]) {
+      if (aggregateByDevice) {
+        if (list.length >= 2) {
+          const bounds = new maplibregl.LngLatBounds();
+          for (const m of list) bounds.extend([m.longitude, m.latitude]);
+          map.fitBounds(bounds, { padding: 56, maxZoom: 14, duration: 0 });
+        } else {
+          map.jumpTo({ center: [list[0].longitude, list[0].latitude], zoom: 11 });
+        }
+      } else if (init?.bounds && init.bounds[0] && init.bounds[1]) {
         const b = new maplibregl.LngLatBounds(init.bounds[0], init.bounds[1]);
         map.fitBounds(b, { padding: 48, maxZoom: 14, duration: 0 });
       } else if (init?.center) {
@@ -350,13 +360,18 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   useEffect(() => {
     const ch = adaptMapChrome(block);
-    if (!ch.mapSmoothMarkers) {
+    if (!ch.mapSmoothMarkers || expandedRef.current) {
       setSmoothMarkers(filteredMarkers);
       return;
     }
     const start = smoothMarkersRef.current;
     let step = 0;
     const id = window.setInterval(() => {
+      if (expandedRef.current) {
+        window.clearInterval(id);
+        setSmoothMarkers(filteredMarkers);
+        return;
+      }
       step += 1;
       const u = Math.min(1, step / 14);
       const s = u * u * (3 - 2 * u);
@@ -374,7 +389,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       if (step >= 14) window.clearInterval(id);
     }, 32);
     return () => window.clearInterval(id);
-  }, [filteredMarkers, block]);
+  }, [filteredMarkers, block, expanded]);
 
   useEffect(() => {
     if (d.error) return;
@@ -475,7 +490,18 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       }
     });
 
-    const ro = new ResizeObserver(() => map.resize());
+    let resizeRaf: number | null = null;
+    const ro = new ResizeObserver(() => {
+      if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        try {
+          map.resize();
+        } catch {
+          /* map may be removing */
+        }
+      });
+    });
     ro.observe(container);
 
     const onMapClick = () => {
@@ -487,6 +513,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     map.on("click", onMapClick);
 
     return () => {
+      if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
       map.off("click", onMapClick);
       ro.disconnect();
       deckHandleRef.current?.dispose();
@@ -658,7 +685,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       }
       deckHandleRef.current.updatePoints(vms, useCluster);
       deckHandleRef.current.applyLayerControls(layerControlsRef.current);
-      applyViewport(map, list, init, ctrl, firstFitDoneRef);
+      applyViewport(map, list, init, ctrl, firstFitDoneRef, chromeNow.aggregateByDevice);
     };
 
     if (map.isStyleLoaded()) {
@@ -935,8 +962,10 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               />
             </div>
             <aside className="dash-map-widget__expanded-layer-col" aria-label="Map layers and legend">
-              <div className="dash-map-widget__layer-tools">
+              <div className="dash-map-widget__layer-tools dash-map-widget__layer-tools--row1">
                 <MapLayerControlPanel value={layerControls} onChange={setLayerControls} />
+              </div>
+              <div className="dash-map-widget__legend-row" aria-label="Map legend">
                 <MapLayerLegend layerControls={layerControls} markers={filteredMarkers} intelOverlay={intelOverlay} />
               </div>
             </aside>

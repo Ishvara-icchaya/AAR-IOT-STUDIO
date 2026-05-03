@@ -119,3 +119,79 @@ def aggregator_stats() -> dict[str, Any]:
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+# Read-through cache for POST /map-runtime/markers/query (shared by duplicate map widgets).
+MARKERS_QUERY_CACHE_PREFIX = f"{PREFIX}:markers_query:v1:"
+
+
+def markers_query_body_digest(body: Any) -> str:
+    import hashlib
+
+    try:
+        p = body.model_dump(mode="json", exclude_none=True)
+    except Exception:
+        p = {}
+    sid = p.get("site_id")
+    if sid is not None:
+        p["site_id"] = str(sid)
+    raw = json.dumps(p, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:48]
+
+
+def markers_query_cache_key(customer_id: uuid.UUID, body: Any) -> str:
+    return f"{MARKERS_QUERY_CACHE_PREFIX}{customer_id}:{body.site_id}:{markers_query_body_digest(body)}"
+
+
+def cache_get_markers_query(cache_key: str) -> dict[str, Any] | None:
+    r = _client()
+    if r is None:
+        return None
+    try:
+        raw = r.get(cache_key)
+        if not raw:
+            return None
+        out = json.loads(raw)
+        return out if isinstance(out, dict) else None
+    except Exception:
+        log.debug("map markers query cache get failed key=%s", cache_key, exc_info=True)
+        return None
+    finally:
+        try:
+            r.close()
+        except Exception:
+            pass
+
+
+def cache_set_markers_query(cache_key: str, payload: dict[str, Any], *, ttl_sec: int = 30) -> None:
+    r = _client()
+    if r is None:
+        return
+    try:
+        raw = json.dumps(payload, default=str)
+        if len(raw.encode("utf-8")) > 1_800_000:
+            return
+        r.setex(cache_key, ttl_sec, raw)
+    except Exception:
+        log.debug("map markers query cache set failed key=%s", cache_key, exc_info=True)
+    finally:
+        try:
+            r.close()
+        except Exception:
+            pass
+
+
+def cache_delete_markers_query_key(cache_key: str) -> bool:
+    """Used by optional lazy worker to drop one cached markers response."""
+    r = _client()
+    if r is None:
+        return False
+    try:
+        return bool(r.delete(cache_key))
+    except Exception:
+        return False
+    finally:
+        try:
+            r.close()
+        except Exception:
+            pass

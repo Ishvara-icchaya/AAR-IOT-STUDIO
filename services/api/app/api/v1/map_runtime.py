@@ -27,6 +27,11 @@ from app.services.map_intelligence_service import (
     build_expanded_intelligence,
     build_site_historical_sample_points,
 )
+from app.services.map_runtime_redis import (
+    cache_get_markers_query,
+    cache_set_markers_query,
+    markers_query_cache_key,
+)
 from app.services.map_runtime_service import (
     aggregate_data_object_markers_by_device,
     compute_map_init_from_markers,
@@ -197,6 +202,14 @@ def map_markers_query(
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
 
+    cache_key = markers_query_cache_key(user.customer_id, body)
+    cached = cache_get_markers_query(cache_key)
+    if cached is not None:
+        try:
+            return MapMarkersQueryResponse.model_validate(cached)
+        except Exception:
+            pass
+
     mode = (body.mode or "auto").strip().lower()
     excluded = {str(x).strip() for x in body.excluded_source_ids if str(x).strip()}
     kpi_list = [str(k) for k in body.kpi_fields]
@@ -301,7 +314,13 @@ def map_markers_query(
             "latest_device_states": 20_000,
             "note": "Oldest rows beyond these caps are omitted from the site map list (recency order).",
         }
-    return MapMarkersQueryResponse(markers=markers, map_init=mi, load_meta=load_meta)
+    resp = MapMarkersQueryResponse(markers=markers, map_init=mi, load_meta=load_meta)
+    if len(markers) <= 2000:
+        try:
+            cache_set_markers_query(cache_key, resp.model_dump(mode="json"))
+        except Exception:
+            pass
+    return resp
 
 
 @router.get("/detail", response_model=MapDetailResponse)

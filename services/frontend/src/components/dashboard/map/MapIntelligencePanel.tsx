@@ -6,8 +6,24 @@ import {
   getMapObjectDetail,
 } from "@/api/dashboard";
 import { getTrendsWindow } from "@/api/trends";
-import type { IntelOverlayState } from "@/components/dashboard/map/deckOverlaySiteMap";
+import type { IntelOverlayState, IntelTraceRoute } from "@/components/dashboard/map/deckOverlaySiteMap";
+import { stableHueFromString } from "@/lib/dashboard/mapLayerControls";
 import { parseRichMapPointsFromApi } from "@/types/mapTransport";
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h * 12) % 12;
+    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+  };
+  return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+}
+
+function traceColorForRouteId(routeId: string): [number, number, number, number] {
+  const h = stableHueFromString(routeId) / 360;
+  const rgb = hslToRgb(h, 0.68, 0.52);
+  return [...rgb, 228] as [number, number, number, number];
+}
 
 type Freshness = "active" | "stale" | "offline" | "unknown";
 
@@ -57,6 +73,8 @@ export function MapIntelligencePanel({
 }: MapIntelligencePanelProps) {
   const searchId = useId();
   const [mode, setMode] = useState<"runtime" | "historical">("runtime");
+  const [listKind, setListKind] = useState<"devices" | "endpoint">("devices");
+  const [devicePage, setDevicePage] = useState(1);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -68,6 +86,13 @@ export function MapIntelligencePanel({
   const [pathErr, setPathErr] = useState<string | null>(null);
   const [pathPolyline, setPathPolyline] = useState<[number, number][] | null>(null);
   const [replayFrame, setReplayFrame] = useState<number | null>(null);
+  const [traceRoutes, setTraceRoutes] = useState<IntelTraceRoute[]>([]);
+  const [pathExtras, setPathExtras] = useState<{
+    gapPoints?: [number, number][];
+    start?: [number, number];
+    end?: [number, number];
+  } | null>(null);
+  const [samplesEpoch, setSamplesEpoch] = useState(0);
   const [showEndpointTrend, setShowEndpointTrend] = useState(false);
   const [showDeviceTrend, setShowDeviceTrend] = useState(false);
   const [trendSummary, setTrendSummary] = useState<string | null>(null);
@@ -115,12 +140,23 @@ export function MapIntelligencePanel({
     if (mode === "runtime") {
       histSamplesRef.current = null;
       histRichRef.current = null;
+      setTraceRoutes([]);
+      setPathExtras(null);
+      setSamplesEpoch((n) => n + 1);
       onIntelOverlay(null);
       setPathErr(null);
       setPathPolyline(null);
       setReplayFrame(null);
     }
   }, [mode, onIntelOverlay]);
+
+  useEffect(() => {
+    setTraceRoutes([]);
+    setPathExtras(null);
+    setPathPolyline(null);
+    setReplayFrame(null);
+    setPathErr(null);
+  }, [siteId, endpointId]);
 
   useEffect(() => {
     if (mode !== "historical" || !expanded || !siteId) return;
@@ -141,51 +177,56 @@ export function MapIntelligencePanel({
         const rich = parseRichMapPointsFromApi(r?.rich_sample_points);
         histSamplesRef.current = pts.length ? pts : null;
         histRichRef.current = rich.length ? rich : null;
-        const overlay: IntelOverlayState | null =
-          histSamplesRef.current || histRichRef.current
-            ? {
-                samplePoints: histSamplesRef.current ?? undefined,
-                richSamplePoints: histRichRef.current ?? undefined,
-              }
-            : null;
-        onIntelOverlay(overlay);
+        if (!cancelled) setSamplesEpoch((n) => n + 1);
       } catch {
         histSamplesRef.current = null;
         histRichRef.current = null;
-        if (!cancelled) onIntelOverlay(null);
+        if (!cancelled) setSamplesEpoch((n) => n + 1);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [mode, expanded, siteId, endpointId, onIntelOverlay]);
+  }, [mode, expanded, siteId, endpointId]);
 
   useEffect(() => {
-    if (replayFrame === null || !pathPolyline?.length) return;
-    const poly = pathPolyline;
-    const len = poly.length;
+    if (!expanded || mode !== "historical") return;
     const samples = histSamplesRef.current ?? undefined;
     const rich = histRichRef.current ?? undefined;
-    if (replayFrame >= len) {
-      onIntelOverlay({
-        footprint: poly,
-        start: poly[0],
-        end: poly[len - 1],
-        movingLngLat: poly[len - 1],
-        samplePoints: samples,
-        richSamplePoints: rich,
-      });
+    const hasRoutes = traceRoutes.some((r) => r.path.length >= 2);
+    const hasSamples = (samples?.length ?? 0) > 0 || (rich?.length ?? 0) > 0;
+    if (!hasRoutes && !hasSamples) {
+      onIntelOverlay(null);
       return;
     }
-    onIntelOverlay({
-      footprint: poly.slice(0, replayFrame + 1),
-      start: poly[0],
-      end: poly[len - 1],
-      movingLngLat: poly[replayFrame],
-      samplePoints: samples,
-      richSamplePoints: rich,
-    });
-  }, [replayFrame, pathPolyline, onIntelOverlay]);
+    const poly = pathPolyline;
+    let movingLngLat: [number, number] | undefined;
+    if (replayFrame != null && poly?.length) {
+      const len = poly.length;
+      const i = Math.min(Math.max(0, replayFrame), len - 1);
+      movingLngLat = poly[i];
+    }
+    const overlay: IntelOverlayState = {
+      ...(hasRoutes ? { traceRoutes } : {}),
+      ...(poly && poly.length >= 2 ? { footprint: poly } : {}),
+      ...(pathExtras?.gapPoints?.length ? { gapPoints: pathExtras.gapPoints } : {}),
+      ...(pathExtras?.start ? { start: pathExtras.start } : {}),
+      ...(pathExtras?.end ? { end: pathExtras.end } : {}),
+      ...(movingLngLat ? { movingLngLat } : {}),
+      ...(samples?.length ? { samplePoints: samples } : {}),
+      ...(rich?.length ? { richSamplePoints: rich } : {}),
+    };
+    onIntelOverlay(overlay);
+  }, [
+    expanded,
+    mode,
+    traceRoutes,
+    pathExtras,
+    pathPolyline,
+    replayFrame,
+    samplesEpoch,
+    onIntelOverlay,
+  ]);
 
   useEffect(() => {
     if (replayFrame === null || pathPolyline === null) return;
@@ -205,6 +246,32 @@ export function MapIntelligencePanel({
     if (!q) return devices;
     return devices.filter((d) => (d.display_name ?? "").toLowerCase().includes(q) || d.entityId.includes(q));
   }, [devices, search]);
+
+  const PAGE_SIZE = 5;
+  const sortedDevices = useMemo(() => {
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      const ta = a.last_observed_at ? new Date(a.last_observed_at).getTime() : 0;
+      const tb = b.last_observed_at ? new Date(b.last_observed_at).getTime() : 0;
+      return tb - ta;
+    });
+    return arr;
+  }, [filtered]);
+
+  const deviceTotalPages = Math.max(1, Math.ceil(sortedDevices.length / PAGE_SIZE));
+  const devicePageClamped = Math.min(devicePage, deviceTotalPages);
+  const pageSlice = useMemo(
+    () => sortedDevices.slice((devicePageClamped - 1) * PAGE_SIZE, devicePageClamped * PAGE_SIZE),
+    [sortedDevices, devicePageClamped],
+  );
+
+  useEffect(() => {
+    setDevicePage(1);
+  }, [search, listKind, devices.length, mode]);
+
+  useEffect(() => {
+    setDevicePage((p) => Math.min(p, deviceTotalPages));
+  }, [deviceTotalPages]);
 
   const ep = payload?.endpoint as Record<string, unknown> | undefined;
 
@@ -232,6 +299,8 @@ export function MapIntelligencePanel({
 
   const loadPath = useCallback(async () => {
     if (!selected?.entityId || mode !== "historical") return;
+    const entityId = selected.entityId;
+    const routeLabel = selected.display_name?.trim() ? selected.display_name : undefined;
     setPathLoading(true);
     setPathErr(null);
     try {
@@ -240,15 +309,17 @@ export function MapIntelligencePanel({
       const exp = selected.expected_frequency_sec ?? 15;
       const path = await getMapIntelligencePath({
         siteId,
-        entityId: selected.entityId,
+        entityId,
         from: from.toISOString(),
         to: to.toISOString(),
         expectedFrequencySec: exp,
       });
       if (!path) {
         setPathPolyline(null);
+        setPathExtras(null);
+        setReplayFrame(null);
+        setTraceRoutes((prev) => prev.filter((r) => r.routeId !== entityId));
         setPathErr("Empty path response");
-        onIntelOverlay(null);
         return;
       }
       const poly = path.polyline as [number, number][] | undefined;
@@ -258,27 +329,40 @@ export function MapIntelligencePanel({
         const gapPoints = (path.gaps as { lng: number; lat: number }[] | undefined)?.map(
           (g) => [g.lng, g.lat] as [number, number],
         );
-        onIntelOverlay({
-          footprint: poly,
+        setPathExtras({
           gapPoints: gapPoints?.length ? gapPoints : undefined,
           start: poly[0],
           end: poly[poly.length - 1],
-          samplePoints: histSamplesRef.current ?? undefined,
-          richSamplePoints: histRichRef.current ?? undefined,
+        });
+        setTraceRoutes((prev) => {
+          const next = [
+            ...prev.filter((r) => r.routeId !== entityId),
+            {
+              routeId: entityId,
+              path: poly,
+              color: traceColorForRouteId(entityId),
+              label: routeLabel,
+            },
+          ];
+          return next.slice(-8);
         });
       } else {
         setPathPolyline(null);
-        onIntelOverlay(null);
+        setPathExtras(null);
+        setReplayFrame(null);
+        setTraceRoutes((prev) => prev.filter((r) => r.routeId !== entityId));
         setPathErr("No scrubbed path points in this window (ingest history may be empty).");
       }
     } catch (e) {
       setPathPolyline(null);
+      setPathExtras(null);
+      setReplayFrame(null);
+      setTraceRoutes((prev) => prev.filter((r) => r.routeId !== entityId));
       setPathErr(e instanceof Error ? e.message : "Path load failed");
-      onIntelOverlay(null);
     } finally {
       setPathLoading(false);
     }
-  }, [selected, mode, siteId, onIntelOverlay]);
+  }, [selected, mode, siteId]);
 
   const payloadRef = useRef(payload);
   payloadRef.current = payload;
@@ -341,25 +425,66 @@ export function MapIntelligencePanel({
   return (
     <aside className="dash-map-intel" aria-label="Map intelligence">
       <div className="dash-map-intel__head">
-        <h4 className="dash-map-intel__title">Intelligence</h4>
-        <p className="dash-map-intel__subtitle">{blockTitle}</p>
-        <div className="dash-map-intel__mode-row" role="group" aria-label="Map mode">
-          <button
-            type="button"
-            className={`dash-map-intel__mode-btn ${mode === "runtime" ? "dash-map-intel__mode-btn--on" : ""}`}
-            onClick={() => setMode("runtime")}
-          >
-            Runtime
-          </button>
-          <button
-            type="button"
-            className={`dash-map-intel__mode-btn ${mode === "historical" ? "dash-map-intel__mode-btn--on" : ""}`}
-            onClick={() => setMode("historical")}
-          >
-            Historical
-          </button>
-        </div>
+        <table className="dash-map-intel__head-table">
+          <tbody>
+            <tr>
+              <th scope="row" className="dash-map-intel__head-th">
+                Panel
+              </th>
+              <td className="dash-map-intel__head-td dash-map-intel__head-td--text">
+                <h4 className="dash-map-intel__title">Intelligence</h4>
+                <p className="dash-map-intel__subtitle">{blockTitle}</p>
+              </td>
+              <th scope="row" className="dash-map-intel__head-th">
+                Mode
+              </th>
+              <td className="dash-map-intel__head-td dash-map-intel__head-td--modes">
+                <div className="dash-map-intel__mode-row" role="group" aria-label="Map mode">
+                  <button
+                    type="button"
+                    className={`dash-map-intel__mode-btn ${mode === "runtime" ? "dash-map-intel__mode-btn--on" : ""}`}
+                    onClick={() => setMode("runtime")}
+                  >
+                    Runtime
+                  </button>
+                  <button
+                    type="button"
+                    className={`dash-map-intel__mode-btn ${mode === "historical" ? "dash-map-intel__mode-btn--on" : ""}`}
+                    onClick={() => setMode("historical")}
+                  >
+                    Historical
+                  </button>
+                </div>
+                <p className="dash-map-intel__hint dash-map-intel__hint--under-mode">
+                  Select a row in the devices table below for detail and historical path.
+                </p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      <section className="dash-map-intel__section dash-map-intel__section--trends" aria-labelledby="dash-map-intel-trends">
+        <h5 id="dash-map-intel-trends" className="dash-map-intel__section-title">
+          Trends (diagnostics)
+        </h5>
+        <div className="dash-map-intel__trend-row">
+          <label className="dash-map-intel__chk">
+            <input type="checkbox" checked={showEndpointTrend} onChange={(e) => setShowEndpointTrend(e.target.checked)} />
+            Endpoint (1h)
+          </label>
+          <label className="dash-map-intel__chk">
+            <input
+              type="checkbox"
+              checked={showDeviceTrend}
+              onChange={(e) => setShowDeviceTrend(e.target.checked)}
+              disabled={!selected?.entityId}
+            />
+            Device (1h)
+          </label>
+        </div>
+        {trendSummary ? <p className="dash-map-intel__muted dash-map-intel__muted--tight">{trendSummary}</p> : null}
+      </section>
 
       <section className="dash-map-intel__section" aria-labelledby="dash-map-intel-endpoint">
         <h5 id="dash-map-intel-endpoint" className="dash-map-intel__section-title">
@@ -415,38 +540,140 @@ export function MapIntelligencePanel({
 
       <section className="dash-map-intel__section" aria-labelledby="dash-map-intel-devices">
         <h5 id="dash-map-intel-devices" className="dash-map-intel__section-title">
-          Devices
+          Roster
         </h5>
-        <label className="dash-map-intel__search-label" htmlFor={searchId}>
-          Search
-        </label>
-        <input
-          id={searchId}
-          type="search"
-          className="dash-map-intel__search"
-          placeholder="Filter by name or id…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <ul className="dash-map-intel__device-list" role="listbox" aria-label="Devices">
-          {filtered.map((d) => (
-            <li key={d.source_id}>
-              <button
-                type="button"
-                className={`dash-map-intel__device-row ${selected?.source_id === d.source_id ? "dash-map-intel__device-row--sel" : ""}`}
-                onClick={() => void loadDetail(d)}
-              >
-                <span className="dash-map-intel__device-name">{d.display_name ?? d.entityId}</span>
-                <span className={`dash-map-intel__pill ${freshnessClass(d.freshness_status)}`}>
-                  {d.freshness_status ?? "—"}
+        <div className="dash-map-intel__list-kind" role="group" aria-label="Roster source: devices or endpoint summary">
+          <button
+            type="button"
+            className={`dash-map-intel__tab ${listKind === "devices" ? "dash-map-intel__tab--on" : ""}`}
+            onClick={() => setListKind("devices")}
+          >
+            Devices
+          </button>
+          <button
+            type="button"
+            className={`dash-map-intel__tab ${listKind === "endpoint" ? "dash-map-intel__tab--on" : ""}`}
+            onClick={() => setListKind("endpoint")}
+          >
+            Endpoint
+          </button>
+        </div>
+        {listKind === "devices" ? (
+          <>
+            <label className="dash-map-intel__search-label" htmlFor={searchId}>
+              Filter devices
+            </label>
+            <input
+              id={searchId}
+              type="search"
+              className="dash-map-intel__search"
+              placeholder="Name or id…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="dash-map-intel__table-wrap">
+              <table className="dash-map-intel__data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Device</th>
+                    <th scope="col">State</th>
+                    <th scope="col">Mobility</th>
+                    <th scope="col">Last seen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageSlice.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="dash-map-intel__td-empty">
+                        {loading && !payload
+                          ? "Loading…"
+                          : err
+                            ? String(err)
+                            : devices.length === 0
+                              ? "No devices in this scope. Check map binding or refresh."
+                              : "No matches. Clear the filter."}
+                      </td>
+                    </tr>
+                  ) : (
+                    pageSlice.map((d) => (
+                      <tr
+                        key={d.source_id}
+                        className={selected?.source_id === d.source_id ? "dash-map-intel__tr--sel" : undefined}
+                      >
+                        <td className="dash-map-intel__td-wrap">
+                          <button
+                            type="button"
+                            className="dash-map-intel__row-btn"
+                            onClick={() => void loadDetail(d)}
+                          >
+                            {d.display_name ?? d.entityId}
+                          </button>
+                        </td>
+                        <td>
+                          <span className={`dash-map-intel__pill ${freshnessClass(d.freshness_status)}`}>
+                            {d.freshness_status ?? "—"}
+                          </span>
+                        </td>
+                        <td className="dash-map-intel__td-wrap">{d.mobility_type ?? "—"}</td>
+                        <td className="dash-map-intel__td-nowrap">
+                          {d.last_observed_at ? new Date(d.last_observed_at).toLocaleString() : "—"}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {sortedDevices.length > PAGE_SIZE ? (
+              <div className="dash-map-intel__pager">
+                <button
+                  type="button"
+                  className="dash-map-intel__pager-btn"
+                  disabled={devicePageClamped <= 1}
+                  onClick={() => setDevicePage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </button>
+                <span className="dash-map-intel__pager-meta">
+                  Page {devicePageClamped} / {deviceTotalPages} · {sortedDevices.length} devices (newest first)
                 </span>
-                <span className="dash-map-intel__device-meta">
-                  {d.mobility_type ?? "?"} · {d.last_observed_at ? new Date(d.last_observed_at).toLocaleString() : "—"}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                <button
+                  type="button"
+                  className="dash-map-intel__pager-btn"
+                  disabled={devicePageClamped >= deviceTotalPages}
+                  onClick={() => setDevicePage((p) => Math.min(deviceTotalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="dash-map-intel__table-wrap">
+            <table className="dash-map-intel__data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Endpoint</th>
+                  <th scope="col">Devices</th>
+                  <th scope="col">Active / stale / off / ?</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="dash-map-intel__td-wrap">{ep?.name ? String(ep.name) : "—"}</td>
+                  <td>{typeof ep?.device_count === "number" ? ep.device_count : devices.length}</td>
+                  <td className="dash-map-intel__td-wrap">
+                    {typeof ep?.active_count === "number" ? ep.active_count : "—"} /{" "}
+                    {typeof ep?.stale_count === "number" ? ep.stale_count : "—"} /{" "}
+                    {typeof ep?.offline_count === "number" ? ep.offline_count : "—"} /{" "}
+                    {typeof ep?.unknown_count === "number" ? ep.unknown_count : "—"}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="dash-map-intel__hint">Use the Devices tab to pick a row for detail and path tools.</p>
+          </div>
+        )}
         {mode === "historical" && selected ? (
           <div className="dash-map-intel__path-actions">
             <button type="button" className="dash-map-intel__btn" disabled={pathLoading} onClick={() => void loadPath()}>
@@ -456,7 +683,7 @@ export function MapIntelligencePanel({
               type="button"
               className="dash-map-intel__btn"
               disabled={!pathPolyline || pathPolyline.length < 2 || pathLoading}
-              title="Replay route: growing line with moving head, then full path"
+              title="Replay: moving head along the selected route; all loaded traces stay full length"
               onClick={() => setReplayFrame(0)}
             >
               Replay path
@@ -471,7 +698,7 @@ export function MapIntelligencePanel({
           Selected device
         </h5>
         {!selected ? (
-          <p className="dash-map-intel__muted">Choose a device from the list.</p>
+          <p className="dash-map-intel__muted">No row selected — use the Devices table above.</p>
         ) : detailLoading ? (
           <p className="dash-map-intel__muted">Loading detail…</p>
         ) : (
@@ -487,26 +714,6 @@ export function MapIntelligencePanel({
             )}
           </>
         )}
-      </section>
-
-      <section className="dash-map-intel__section" aria-labelledby="dash-map-intel-trends">
-        <h5 id="dash-map-intel-trends" className="dash-map-intel__section-title">
-          Trends (diagnostics)
-        </h5>
-        <label className="dash-map-intel__chk">
-          <input type="checkbox" checked={showEndpointTrend} onChange={(e) => setShowEndpointTrend(e.target.checked)} />
-          Endpoint window (1h)
-        </label>
-        <label className="dash-map-intel__chk">
-          <input
-            type="checkbox"
-            checked={showDeviceTrend}
-            onChange={(e) => setShowDeviceTrend(e.target.checked)}
-            disabled={!selected?.entityId}
-          />
-          Device window (1h)
-        </label>
-        {trendSummary ? <p className="dash-map-intel__muted">{trendSummary}</p> : null}
       </section>
     </aside>
   );

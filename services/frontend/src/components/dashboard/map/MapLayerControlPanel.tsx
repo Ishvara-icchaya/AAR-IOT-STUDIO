@@ -13,12 +13,15 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
   return (
     <section className="dash-map-layers" aria-labelledby="dash-map-layers-title">
       <h4 id="dash-map-layers-title" className="dash-map-layers__title">
-        Layers
+        Map display
       </h4>
-      <div className="dash-map-layers__bands">
-        <div className="dash-map-layers__band" role="group" aria-labelledby="dash-map-layers-title">
-          <div className="dash-map-layers__band-cols dash-map-layers__band-cols--layers">
-            <label className="dash-map-layers__row dash-map-layers__cell">
+      <div
+        className="dash-map-layers__single-line"
+        role="group"
+        aria-label="Layers and marker filter (one row)"
+      >
+        <span className="dash-map-layers__inline-tag">Layers</span>
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showLiveMarkers}
@@ -26,7 +29,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Live devices</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showAggregatedDeviceMarkers}
@@ -34,7 +37,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Aggregated device markers</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showEndpointGroups}
@@ -42,7 +45,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Endpoint groups</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showTraceRoute}
@@ -50,7 +53,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Trace</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showReplayHead}
@@ -58,7 +61,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Replay head</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showGapPoints}
@@ -66,7 +69,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Stale / gap points</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showStartEndAnchors}
@@ -74,7 +77,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Start / end anchors</span>
             </label>
-            <label className="dash-map-layers__row dash-map-layers__cell">
+            <label className="dash-map-layers__row dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="checkbox"
                 checked={lc.showLabels}
@@ -82,13 +85,10 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Labels</span>
             </label>
-          </div>
-        </div>
 
-        <fieldset className="dash-map-layers__fieldset dash-map-layers__band">
-          <legend className="dash-map-layers__legend">Filter</legend>
-          <div className="dash-map-layers__band-cols dash-map-layers__band-cols--tight">
-            <label className="dash-map-layers__radio dash-map-layers__cell">
+        <span className="dash-map-layers__inline-sep" aria-hidden />
+        <span className="dash-map-layers__inline-tag">Filter</span>
+            <label className="dash-map-layers__radio dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="radio"
                 name="map-layer-filter"
@@ -97,7 +97,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>All</span>
             </label>
-            <label className="dash-map-layers__radio dash-map-layers__cell">
+            <label className="dash-map-layers__radio dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="radio"
                 name="map-layer-filter"
@@ -106,7 +106,7 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Stale only</span>
             </label>
-            <label className="dash-map-layers__radio dash-map-layers__cell">
+            <label className="dash-map-layers__radio dash-map-layers__cell dash-map-layers__cell--inline">
               <input
                 type="radio"
                 name="map-layer-filter"
@@ -115,32 +115,30 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               />
               <span>Offline only</span>
             </label>
-          </div>
-        </fieldset>
-
-        <fieldset className="dash-map-layers__fieldset dash-map-layers__band">
-          <legend className="dash-map-layers__legend">Color by</legend>
-          <div className="dash-map-layers__band-cols dash-map-layers__band-cols--tight">
-            {(
-              [
-                ["health", "Health"],
-                ["group", "Endpoint group"],
-                ["device", "Device"],
-              ] as const
-            ).map(([mode, label]) => (
-              <label key={mode} className="dash-map-layers__radio dash-map-layers__cell">
-                <input
-                  type="radio"
-                  name="map-layer-color"
-                  checked={lc.colorMode === mode}
-                  onChange={() => onChange(patch(lc, "colorMode", mode as MapLayerColorMode))}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
       </div>
+
+      <fieldset className="dash-map-layers__fieldset dash-map-layers__fieldset--color-below">
+        <legend className="dash-map-layers__legend">Color by</legend>
+        <div className="dash-map-layers__band-cols dash-map-layers__band-cols--tight dash-map-layers__band-cols--color-row">
+          {(
+            [
+              ["health", "Health"],
+              ["group", "Endpoint group"],
+              ["device", "Device"],
+            ] as const
+          ).map(([mode, label]) => (
+            <label key={mode} className="dash-map-layers__radio dash-map-layers__cell">
+              <input
+                type="radio"
+                name="map-layer-color"
+                checked={lc.colorMode === mode}
+                onChange={() => onChange(patch(lc, "colorMode", mode as MapLayerColorMode))}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
     </section>
   );
 }

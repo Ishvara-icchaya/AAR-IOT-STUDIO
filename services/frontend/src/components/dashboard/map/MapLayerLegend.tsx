@@ -87,18 +87,29 @@ export function MapLayerLegend({ layerControls: lc, markers, intelOverlay }: Pro
   }
 
   const routeRows: { key: string; label: string; rgba: [number, number, number, number] }[] = [];
-  if (intelOverlay?.footprint?.length && intelOverlay.footprint.length >= 2) {
+  const traces = intelOverlay?.traceRoutes?.filter((r) => r.path.length >= 2) ?? [];
+  if (traces.length) {
+    for (const r of traces) {
+      routeRows.push({
+        key: `tr-${r.routeId}`,
+        label: r.label?.trim() ? String(r.label).slice(0, 28) : r.routeId.length > 12 ? `${r.routeId.slice(0, 10)}…` : r.routeId,
+        rgba: r.color,
+      });
+    }
+  } else if (intelOverlay?.footprint?.length && intelOverlay.footprint.length >= 2) {
     routeRows.push({ key: "path", label: "Trace", rgba: [59, 130, 246, 220] });
-    if (intelOverlay.gapPoints?.length) {
+  }
+  if (routeRows.length || intelOverlay?.gapPoints?.length) {
+    if (intelOverlay?.gapPoints?.length) {
       routeRows.push({ key: "gap", label: "Stale gap", rgba: [251, 146, 60, 230] });
     }
-    if (intelOverlay.start) {
+    if (intelOverlay?.start) {
       routeRows.push({ key: "start", label: "Start", rgba: [34, 197, 94, 240] });
     }
-    if (intelOverlay.end) {
+    if (intelOverlay?.end) {
       routeRows.push({ key: "end", label: "End", rgba: [239, 68, 68, 240] });
     }
-    if (intelOverlay.movingLngLat) {
+    if (intelOverlay?.movingLngLat) {
       routeRows.push({ key: "head", label: "Replay head", rgba: [250, 204, 21, 240] });
     }
   }

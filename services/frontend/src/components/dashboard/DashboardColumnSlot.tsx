@@ -17,7 +17,6 @@ export function DashboardColumnSlot({ rowId, column, readOnly }: { rowId: string
   });
 
   const w = column.widget;
-  const mapLocked = w?.type === "map";
   const {
     attributes,
     listeners,
@@ -29,13 +28,11 @@ export function DashboardColumnSlot({ rowId, column, readOnly }: { rowId: string
     disabled: !w || readOnly || frozen,
   });
 
-  const gridSpan = mapLocked ? 12 : column.span;
-
   return (
     <div
       ref={setDropRef}
       className={`dash-slot${isOver ? " dash-slot--over" : ""}`}
-      style={{ gridColumn: `span ${Math.min(12, Math.max(1, gridSpan))}` }}
+      style={{ gridColumn: `span ${Math.min(12, Math.max(1, column.span))}` }}
     >
       <div className="dash-slot__toolbar">
         <label className="dash-slot__span">
@@ -44,9 +41,9 @@ export function DashboardColumnSlot({ rowId, column, readOnly }: { rowId: string
             type="number"
             min={1}
             max={12}
-            value={mapLocked ? 12 : column.span}
-            disabled={frozen || readOnly || mapLocked}
-            title={mapLocked ? "Map widgets always use full width (12)." : undefined}
+            value={column.span}
+            disabled={frozen || readOnly}
+            title="Grid width on the 12-column dashboard layout (1–12)."
             onChange={(e) => setColumnSpan(rowId, column.columnId, Number(e.target.value) || 1)}
           />
         </label>
@@ -54,12 +51,7 @@ export function DashboardColumnSlot({ rowId, column, readOnly }: { rowId: string
           <button
             type="button"
             className="dash-slot__x"
-            disabled={mapLocked}
-            title={
-              mapLocked
-                ? "Map rows are a single full-width column — remove the widget or delete the row."
-                : "Remove column"
-            }
+            title="Remove column"
             onClick={() => removeColumn(rowId, column.columnId)}
           >
             ×

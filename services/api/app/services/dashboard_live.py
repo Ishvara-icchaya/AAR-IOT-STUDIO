@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.alert import Alert
 from app.models.data_object import DataObject
 from app.models.device import Device
+from app.models.device_endpoint import DeviceEndpoint
 from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
@@ -45,6 +46,8 @@ from app.services.map_intelligence_service import (
 )
 
 # Bounded scans for site-wide map markers (dashboard /map-runtime); keeps list endpoints fast.
+# When ``allowed_device_ids`` is set, data objects and LDS rows are filtered in SQL (not only in Python),
+# so endpoint/device-scoped maps avoid reading up to these caps for unrelated devices.
 _MAP_MARKERS_DATA_OBJECT_LIMIT = 10_000
 _MAP_MARKERS_RESULT_OBJECT_LIMIT = 5000
 _MAP_MARKERS_LDS_LIMIT = 20_000
@@ -787,6 +790,8 @@ def _map_markers_site(
         .order_by(order_by_metadata_recency())
         .limit(_MAP_MARKERS_DATA_OBJECT_LIMIT)
     )
+    if allowed_device_ids:
+        stmt_do = stmt_do.where(DataObject.device_id.in_(allowed_device_ids))
     do_rows = list(db.scalars(stmt_do).all())
     dev_ids = {r.device_id for r in do_rows if r.device_id}
     devices_by_id: dict[uuid.UUID, Device] = {}
@@ -869,6 +874,17 @@ def _map_markers_site(
         .order_by(desc(LatestDeviceState.updated_at))
         .limit(_MAP_MARKERS_LDS_LIMIT)
     )
+    if allowed_device_ids:
+        ep_for_devices = (
+            select(Endpoint.id)
+            .join(DeviceEndpoint, Endpoint.device_endpoint_id == DeviceEndpoint.id)
+            .where(
+                Endpoint.customer_id == customer_id,
+                Endpoint.site_id == site_id,
+                DeviceEndpoint.device_id.in_(allowed_device_ids),
+            )
+        )
+        stmt_lds = stmt_lds.where(LatestDeviceState.endpoint_id.in_(ep_for_devices))
     lds_rows = list(db.scalars(stmt_lds).all())
     rd_ids = {r.resolved_device_id for r in lds_rows}
     ep_ids = {r.endpoint_id for r in lds_rows}

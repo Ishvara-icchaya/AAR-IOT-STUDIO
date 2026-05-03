@@ -20,8 +20,18 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
 }
 
+/** One captured route (full polyline) for historical trace; color is RGBA 0–255. */
+export type IntelTraceRoute = {
+  routeId: string;
+  path: [number, number][];
+  color: [number, number, number, number];
+  label?: string;
+};
+
 /** Historical footprint + gap markers (expanded map intelligence). */
 export type IntelOverlayState = {
+  /** Multiple device routes (each drawn in its own color when trace is enabled). */
+  traceRoutes?: IntelTraceRoute[];
   /** Polyline for one device path (optional when only site samples are shown). */
   footprint?: [number, number][];
   gapPoints?: [number, number][];
@@ -194,17 +204,30 @@ export function attachDeckSiteMapOverlay(
       );
     }
 
-    if (
-      layerControls.showTraceRoute &&
+    const traceRows =
+      (intelOverlay?.traceRoutes ?? []).filter((r) => r.path && r.path.length >= 2);
+    const legacyTrace =
+      !traceRows.length &&
       intelOverlay?.footprint &&
       intelOverlay.footprint.length >= 2
-    ) {
+        ? [
+            {
+              path: intelOverlay.footprint,
+              color: [59, 130, 246, 220] as [number, number, number, number],
+            },
+          ]
+        : [];
+    const pathTraceData: Array<{ path: [number, number][]; color: [number, number, number, number] }> =
+      traceRows.length > 0
+        ? traceRows.map((r) => ({ path: r.path, color: r.color }))
+        : legacyTrace;
+    if (layerControls.showTraceRoute && pathTraceData.length) {
       layers.push(
         new PathLayer({
-          id: "dash-intel-footprint",
-          data: [{ path: intelOverlay.footprint }],
+          id: "dash-intel-traces",
+          data: pathTraceData,
           getPath: (d: { path: [number, number][] }) => d.path,
-          getColor: [59, 130, 246, 220],
+          getColor: (d: { color: [number, number, number, number] }) => d.color,
           getWidth: 4,
           widthUnits: "pixels",
           pickable: false,
