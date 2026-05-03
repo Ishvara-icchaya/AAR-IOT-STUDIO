@@ -21,7 +21,6 @@ from app.models.user import User
 from app.services.dashboard_live import (
     _map_markers_site,
     build_map_marker_for_source,
-    merge_latest_device_state_map_markers,
 )
 from app.services.map_intelligence_service import (
     build_device_path,
@@ -176,18 +175,7 @@ def map_markers(
         health_field=None,
         allowed_device_ids=allowed_devices,
         pg_markers_fn=_map_markers_site,
-    )
-    markers = merge_latest_device_state_map_markers(
-        markers,
-        db,
-        customer_id=user.customer_id,
-        site_id=site_id,
-        latf=latitude_field,
-        lonf=longitude_field,
-        kpi_fields=kpi_list,
-        excluded=excluded,
-        title_field=None,
-        health_field=None,
+        pg_light=light,
     )
     if light:
         markers = [map_marker_to_light(m) for m in markers]
@@ -273,18 +261,7 @@ def map_markers_query(
             health_field=body.health_field,
             allowed_device_ids=allowed_devices,
             pg_markers_fn=_map_markers_site,
-        )
-        markers = merge_latest_device_state_map_markers(
-            markers,
-            db,
-            customer_id=user.customer_id,
-            site_id=body.site_id,
-            latf=body.latitude_field,
-            lonf=body.longitude_field,
-            kpi_fields=kpi_list,
-            excluded=excluded,
-            title_field=body.title_field,
-            health_field=body.health_field,
+            pg_light=bool(body.light),
         )
 
     if mode != "single" and body.aggregate_by_device:
@@ -295,8 +272,17 @@ def map_markers_query(
 
     mi = compute_map_init_from_markers(markers) if markers else None
     elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
+    marker_bytes = 0
     try:
-        marker_bytes = len(json.dumps(markers, default=str).encode("utf-8"))
+        n = len(markers)
+        if n <= 800:
+            marker_bytes = len(json.dumps(markers, default=str).encode("utf-8"))
+        elif n <= 8000:
+            sample = markers[: min(80, n)]
+            b = len(json.dumps(sample, default=str).encode("utf-8"))
+            marker_bytes = int(b * (n / len(sample)))
+        else:
+            marker_bytes = -1
     except (TypeError, ValueError, RecursionError):
         marker_bytes = 0
     fp = (body.binding_fingerprint or "").strip()
@@ -308,6 +294,13 @@ def map_markers_query(
         "marker_bytes": marker_bytes,
         "api_total_ms": elapsed_ms,
     }
+    if mode == "auto":
+        load_meta["marker_row_limits"] = {
+            "data_objects": 10_000,
+            "result_objects": 5_000,
+            "latest_device_states": 20_000,
+            "note": "Oldest rows beyond these caps are omitted from the site map list (recency order).",
+        }
     return MapMarkersQueryResponse(markers=markers, map_init=mi, load_meta=load_meta)
 
 

@@ -316,6 +316,7 @@ def markers_with_redis_first(
     health_field: str | None,
     allowed_device_ids: set[uuid.UUID] | None = None,
     pg_markers_fn: Callable[..., list[dict[str, Any]]],
+    pg_light: bool = False,
 ) -> list[dict[str, Any]]:
     """Load Postgres markers, then overlay Redis-only keys.
 
@@ -333,6 +334,7 @@ def markers_with_redis_first(
         title_field=title_field,
         health_field=health_field,
         allowed_device_ids=allowed_device_ids,
+        light=pg_light,
     )
     r = redis_client()
     if r is not None:

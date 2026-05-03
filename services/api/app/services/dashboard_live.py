@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.alert import Alert
@@ -25,8 +25,11 @@ from app.services.map_eligibility import (
     map_eligible_data_object,
     map_eligible_result_object,
 )
-from app.services.data_object_query import as_of_timestamp
-from app.services.workflow_result_query import as_of_timestamp as result_object_as_of_timestamp
+from app.services.data_object_query import as_of_timestamp, order_by_metadata_recency
+from app.services.workflow_result_query import (
+    as_of_timestamp as result_object_as_of_timestamp,
+    order_by_metadata_recency as order_result_objects_by_recency,
+)
 from app.services.map_runtime_service import (
     compute_map_init_from_markers,
     lighten_map_markers,
@@ -40,6 +43,11 @@ from app.services.map_intelligence_service import (
     read_display_mobility,
     read_endpoint_intelligence_defaults,
 )
+
+# Bounded scans for site-wide map markers (dashboard /map-runtime); keeps list endpoints fast.
+_MAP_MARKERS_DATA_OBJECT_LIMIT = 10_000
+_MAP_MARKERS_RESULT_OBJECT_LIMIT = 5000
+_MAP_MARKERS_LDS_LIMIT = 20_000
 
 
 def _bget(b: dict[str, Any], snake: str, camel: str) -> Any:
@@ -763,14 +771,21 @@ def _map_markers_site(
     title_field: str | None,
     health_field: str | None,
     allowed_device_ids: set[uuid.UUID] | None = None,
+    light: bool = False,
 ) -> list[dict[str, Any]]:
     markers: list[dict[str, Any]] = []
     site_row = db.get(Site, site_id)
     site_name = site_row.name if site_row else None
+    kpi_for_marker: list[str] = [] if light else kpi_fields
 
-    stmt_do = select(DataObject).where(
-        DataObject.customer_id == customer_id,
-        DataObject.site_id == site_id,
+    stmt_do = (
+        select(DataObject)
+        .where(
+            DataObject.customer_id == customer_id,
+            DataObject.site_id == site_id,
+        )
+        .order_by(order_by_metadata_recency())
+        .limit(_MAP_MARKERS_DATA_OBJECT_LIMIT)
     )
     do_rows = list(db.scalars(stmt_do).all())
     dev_ids = {r.device_id for r in do_rows if r.device_id}
@@ -818,7 +833,7 @@ def _map_markers_site(
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
         merged = {**payload, **payload.get("_kpi", {})}
-        kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
+        kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_for_marker}
         title = row.name
         if title_field:
             tv = _get_path(payload, title_field)
@@ -845,9 +860,14 @@ def _map_markers_site(
             }
         )
 
-    stmt_lds = select(LatestDeviceState).where(
-        LatestDeviceState.customer_id == customer_id,
-        LatestDeviceState.site_id == site_id,
+    stmt_lds = (
+        select(LatestDeviceState)
+        .where(
+            LatestDeviceState.customer_id == customer_id,
+            LatestDeviceState.site_id == site_id,
+        )
+        .order_by(desc(LatestDeviceState.updated_at))
+        .limit(_MAP_MARKERS_LDS_LIMIT)
     )
     lds_rows = list(db.scalars(stmt_lds).all())
     rd_ids = {r.resolved_device_id for r in lds_rows}
@@ -869,7 +889,7 @@ def _map_markers_site(
             row,
             latf=latf,
             lonf=lonf,
-            kpi_fields=kpi_fields,
+            kpi_fields=kpi_for_marker,
             title_field=title_field,
             health_field=health_field,
             site_name=site_name,
@@ -879,9 +899,14 @@ def _map_markers_site(
         if m:
             markers.append(m)
 
-    stmt_ro = select(WorkflowResultObject).where(
-        WorkflowResultObject.customer_id == customer_id,
-        WorkflowResultObject.site_id == site_id,
+    stmt_ro = (
+        select(WorkflowResultObject)
+        .where(
+            WorkflowResultObject.customer_id == customer_id,
+            WorkflowResultObject.site_id == site_id,
+        )
+        .order_by(order_result_objects_by_recency())
+        .limit(_MAP_MARKERS_RESULT_OBJECT_LIMIT)
     )
     for row in db.scalars(stmt_ro).all():
         sid = str(row.id)
@@ -903,7 +928,7 @@ def _map_markers_site(
             offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
         )
         ro_merged = dict(payload)
-        kpis = {str(k): _resolve_kpi_metric_value(ro_merged, str(k)) for k in kpi_fields}
+        kpis = {str(k): _resolve_kpi_metric_value(ro_merged, str(k)) for k in kpi_for_marker}
         title = row.result_object_name
         if title_field:
             tv = _get_path(payload, title_field)
@@ -927,65 +952,6 @@ def _map_markers_site(
             }
         )
     return markers
-
-
-def merge_latest_device_state_map_markers(
-    markers: list[dict[str, Any]],
-    db: Session,
-    *,
-    customer_id: uuid.UUID,
-    site_id: uuid.UUID,
-    latf: str,
-    lonf: str,
-    kpi_fields: list[str],
-    excluded: set[str],
-    title_field: str | None,
-    health_field: str | None,
-) -> list[dict[str, Any]]:
-    """Append v2 ingest markers (latest_device_state) not already present — Redis may only hold legacy data_objects."""
-    existing = {(str(m.get("source_type") or ""), str(m.get("source_id") or "")) for m in markers}
-    out = list(markers)
-    stmt_lds = select(LatestDeviceState).where(
-        LatestDeviceState.customer_id == customer_id,
-        LatestDeviceState.site_id == site_id,
-    )
-    lds_rows = list(db.scalars(stmt_lds).all())
-    pending = [
-        row
-        for row in lds_rows
-        if str(row.id) not in excluded and ("latest_device_state", str(row.id)) not in existing
-    ]
-    if not pending:
-        return out
-    site_row = db.get(Site, site_id)
-    site_name = site_row.name if site_row else None
-    rd_ids = {r.resolved_device_id for r in pending}
-    ep_ids = {r.endpoint_id for r in pending}
-    rd_by_id: dict[uuid.UUID, ResolvedDevice] = {}
-    if rd_ids:
-        for r in db.scalars(select(ResolvedDevice).where(ResolvedDevice.id.in_(rd_ids))):
-            rd_by_id[r.id] = r
-    ep_by_id: dict[uuid.UUID, Endpoint] = {}
-    if ep_ids:
-        for e in db.scalars(select(Endpoint).where(Endpoint.id.in_(ep_ids))):
-            ep_by_id[e.id] = e
-    for row in pending:
-        sid = str(row.id)
-        m = _marker_dict_from_lds_row(
-            row,
-            latf=latf,
-            lonf=lonf,
-            kpi_fields=kpi_fields,
-            title_field=title_field,
-            health_field=health_field,
-            site_name=site_name,
-            rd=rd_by_id.get(row.resolved_device_id),
-            ep_row=ep_by_id.get(row.endpoint_id),
-        )
-        if m:
-            out.append(m)
-            existing.add(("latest_device_state", sid))
-    return out
 
 
 def build_map_marker_for_source(
@@ -1445,18 +1411,7 @@ def resolve_widget_data(
                 health_field=health_field,
                 allowed_device_ids=allowed_devices,
                 pg_markers_fn=_map_markers_site,
-            )
-            markers = merge_latest_device_state_map_markers(
-                markers,
-                db,
-                customer_id=customer_id,
-                site_id=dashboard_site_id,
-                latf=latf,
-                lonf=lonf,
-                kpi_fields=kpi_fields,
-                excluded=excluded,
-                title_field=title_field,
-                health_field=health_field,
+                pg_light=True,
             )
             light = lighten_map_markers(markers)
             mi = compute_map_init_from_markers(light)
