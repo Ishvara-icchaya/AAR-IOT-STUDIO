@@ -6,7 +6,7 @@
 #   ./run.sh debug workers — infra + api + all workers + scheduler (no frontend)
 #   ./run.sh debug ai      — infra + api + frontend + worker-ai + scheduler
 #   ./run.sh debug ingest  — infra + api + worker-rest-poller + worker-ingest + worker-scrubber
-#   ./run.sh up | all      — same: full default stack (compose up -d), INFO logging; optional profiles via COMPOSE_PROFILES
+#   ./run.sh up | all      — full default stack: build.sh (npm + docker build), then compose up -d; optional COMPOSE_PROFILES
 #   ./run.sh rest-poller   — rebuild + start worker-rest-poller; follow logs (outbound HTTP polling for Manage Devices REST)
 #   ./run.sh down          — stop compose and free published host ports (see free_stack_host_ports)
 
@@ -171,15 +171,9 @@ cmd_debug() {
 
 cmd_up() {
   shutdown_all
-  echo "[run.sh] Optional: compile frontend (set SKIP_FRONTEND_BUILD=1 to skip)..."
-  if [[ "${SKIP_FRONTEND_BUILD:-0}" != "1" ]]; then
-    compile_frontend
-  else
-    echo "[run.sh] SKIP_FRONTEND_BUILD=1 — skipping npm ci / npm run build"
-  fi
+  echo "[run.sh] Rebuild via build.sh (npm + docker compose build; SKIP_FRONTEND_BUILD=1 skips npm only)..."
+  "${ROOT}/build.sh"
   export LOG_LEVEL="${LOG_LEVEL:-INFO}"
-  echo "[run.sh] docker compose build..."
-  "${COMPOSE_BASE[@]}" build
   echo "[run.sh] docker compose up -d (all services in docker-compose.yml default project)"
   if [[ -n "${COMPOSE_PROFILES:-}" ]]; then
     echo "[run.sh] COMPOSE_PROFILES=${COMPOSE_PROFILES} (ingress / llm extras)"
@@ -220,7 +214,7 @@ Usage: ./run.sh <command> [args]
   debug ingest    Infra + api + worker-rest-poller + worker-ingest + worker-scrubber
                   (REST polling → raw.ingest → data_objects).
 
-  up | all        Same: stop everything, compile frontend (unless SKIP_FRONTEND_BUILD=1), rebuild,
+  up | all        Same: stop everything, ./build.sh (npm + docker build; SKIP_FRONTEND_BUILD=1 skips npm),
                   docker compose up -d — full default stack (api, frontend, workers, infra, etc.).
                   Alias `all` is for convenience. Optional: COMPOSE_PROFILES=ingress,llm to add CoAP/WebSocket
                   ingress workers (REST poller is in the default stack) and Ollama (see docker-compose.yml profiles).
