@@ -4,6 +4,7 @@ import type { IControl, Map as MaplibreMap } from "maplibre-gl";
 import Supercluster from "supercluster";
 import type { MapPointVM } from "@/lib/dashboard/mapViewModel";
 import { healthToRgb } from "@/lib/dashboard/mapViewModel";
+import type { RichMapPoint } from "@/types/mapTransport";
 import {
   DEFAULT_MAP_LAYER_CONTROLS,
   type MapLayerControls,
@@ -30,6 +31,8 @@ export type IntelOverlayState = {
   movingLngLat?: [number, number];
   /** Deduped scrubbed-event samples (site or endpoint) for historical mode. */
   samplePoints?: [number, number][];
+  /** Full transport points for historical pick → detail (preferred over `samplePoints` alone). */
+  richSamplePoints?: RichMapPoint[];
 };
 
 type PointFeat = GeoJSON.Feature<GeoJSON.Point, Record<string, unknown>>;
@@ -78,6 +81,7 @@ function buildClusterData(index: Supercluster, map: MaplibreMap): PointFeat[] {
 export type DeckSiteMapHandle = {
   updatePoints: (points: MapPointVM[], useCluster: boolean) => void;
   setIntelligenceOverlay: (state: IntelOverlayState | null) => void;
+  setIntelRichSamplePick: (handler: ((p: RichMapPoint) => void) | undefined) => void;
   applyLayerControls: (next: MapLayerControls) => void;
   getClusterExpansionZoom: (clusterId: number) => number;
   /** Supercluster leaves for a cluster id (empty if not in cluster mode). */
@@ -96,10 +100,15 @@ export function attachDeckSiteMapOverlay(
     onPointPick: (vm: MapPointVM, lngLat: [number, number]) => void;
     onClusterPick: (clusterId: number, lngLat: [number, number], expansionZoom: number) => void;
     initialLayerControls?: MapLayerControls;
+    onIntelRichSamplePick?: (p: RichMapPoint) => void;
   },
 ): DeckSiteMapHandle {
   const overlay = new MapboxOverlay({ interleaved: true, layers: [] });
   map.addControl(overlay as unknown as IControl);
+
+  const intelRichPickHandlers: { onPick?: (p: RichMapPoint) => void } = {
+    onPick: options.onIntelRichSamplePick,
+  };
 
   let lastPoints: MapPointVM[] = [];
   let intelOverlay: IntelOverlayState | null = null;
@@ -185,22 +194,6 @@ export function attachDeckSiteMapOverlay(
       );
     }
 
-    if (intelOverlay?.samplePoints?.length) {
-      layers.push(
-        new ScatterplotLayer({
-          id: "dash-intel-hist-samples",
-          data: intelOverlay.samplePoints.map((p) => ({ position: p as [number, number] })),
-          getPosition: (d: { position: [number, number] }) => d.position,
-          getRadius: 6,
-          radiusUnits: "pixels",
-          getFillColor: [96, 165, 250, 210],
-          stroked: true,
-          getLineColor: [15, 23, 42, 160],
-          lineWidthMinPixels: 1,
-          pickable: false,
-        }),
-      );
-    }
     if (
       layerControls.showHistoricalPath &&
       intelOverlay?.footprint &&
@@ -274,6 +267,45 @@ export function attachDeckSiteMapOverlay(
       );
     }
 
+    if (intelOverlay?.richSamplePoints?.length) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "dash-intel-hist-samples",
+          data: intelOverlay.richSamplePoints.map((r) => ({
+            position: [r.lng, r.lat] as [number, number],
+            rich: r,
+          })),
+          getPosition: (d: { position: [number, number] }) => d.position,
+          getRadius: 8,
+          radiusUnits: "pixels",
+          getFillColor: [96, 165, 250, 210],
+          stroked: true,
+          getLineColor: [15, 23, 42, 160],
+          lineWidthMinPixels: 1,
+          pickable: Boolean(intelRichPickHandlers.onPick),
+          onClick: (info) => {
+            const row = info.object as { rich?: RichMapPoint } | undefined;
+            if (row?.rich) intelRichPickHandlers.onPick?.(row.rich);
+          },
+        }),
+      );
+    } else if (intelOverlay?.samplePoints?.length) {
+      layers.push(
+        new ScatterplotLayer({
+          id: "dash-intel-hist-samples",
+          data: intelOverlay.samplePoints.map((p) => ({ position: p as [number, number] })),
+          getPosition: (d: { position: [number, number] }) => d.position,
+          getRadius: 6,
+          radiusUnits: "pixels",
+          getFillColor: [96, 165, 250, 210],
+          stroked: true,
+          getLineColor: [15, 23, 42, 160],
+          lineWidthMinPixels: 1,
+          pickable: false,
+        }),
+      );
+    }
+
     if (layerControls.showLabels && lastPoints.length) {
       const labelRows = lastPoints.map((p) => ({
         position: [p.longitude, p.latitude] as [number, number],
@@ -323,6 +355,10 @@ export function attachDeckSiteMapOverlay(
     updatePoints,
     applyLayerControls: (next: MapLayerControls) => {
       layerControls = { ...DEFAULT_MAP_LAYER_CONTROLS, ...next };
+      refresh();
+    },
+    setIntelRichSamplePick: (handler) => {
+      intelRichPickHandlers.onPick = handler;
       refresh();
     },
     setIntelligenceOverlay: (state: IntelOverlayState | null) => {

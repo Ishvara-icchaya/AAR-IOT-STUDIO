@@ -16,12 +16,14 @@ import {
 } from "@/components/dashboard/map/deckOverlaySiteMap";
 import {
   adaptMapChrome,
+  bindingFingerprintFromKey,
   buildMarkersQueryBody,
   mapChromeFetchKey,
   parseMapInit,
   type MapControlsVM,
   type MapInitVM,
 } from "@/lib/dashboard/adapters/mapChromeAdapter";
+import type { RichMapPoint } from "@/types/mapTransport";
 import type { MarkerRec } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { apiMarkersToMarkerRecs } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { markersToViewModels, type MapPointVM, type MapProfile } from "@/lib/dashboard/mapViewModel";
@@ -301,6 +303,10 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   const chrome = adaptMapChrome(block);
   const fetchKey = mapChromeFetchKey(chrome);
+  const markerBindingFingerprint = useMemo(
+    () => bindingFingerprintFromKey(`${fetchKey}|wid:${block.widget_id}`),
+    [fetchKey, block.widget_id],
+  );
 
   const [markerList, setMarkerList] = useState<MarkerRec[]>([]);
   const [layerControls, setLayerControls] = useState<MapLayerControls>(() => parseMapLayerControlsFromBlock(block));
@@ -372,7 +378,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   useEffect(() => {
     if (d.error) return;
-    const body = buildMarkersQueryBody(chrome);
+    const body = buildMarkersQueryBody(chrome, { bindingFingerprint: markerBindingFingerprint });
     if (!body) {
       setMarkerList([]);
       setMapInitApi(undefined);
@@ -402,7 +408,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     return () => {
       cancelled = true;
     };
-  }, [fetchKey, block.widget_id, d.error, renderedAt]);
+  }, [fetchKey, block.widget_id, d.error, renderedAt, markerBindingFingerprint]);
 
   /** Fleet / MQTT: soft poll between dashboard resolves (capped to limit API load). */
   useEffect(() => {
@@ -413,7 +419,9 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         : null;
     if (sec === null) return;
     const id = window.setInterval(() => {
-      const body = buildMarkersQueryBody(adaptMapChrome(latestBlockRef.current));
+      const ch = adaptMapChrome(latestBlockRef.current);
+      const fp = bindingFingerprintFromKey(`${mapChromeFetchKey(ch)}|wid:${latestBlockRef.current.widget_id}`);
+      const body = buildMarkersQueryBody(ch, { bindingFingerprint: fp });
       if (!body) return;
       void postMapMarkersQuery(body)
         .then((r) => {
@@ -426,7 +434,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         });
     }, sec * 1000);
     return () => window.clearInterval(id);
-  }, [d.error, refreshIntervalSec, fetchKey, block.widget_id]);
+  }, [d.error, refreshIntervalSec, fetchKey, block.widget_id, markerBindingFingerprint]);
 
   useEffect(() => {
     firstFitDoneRef.current = false;
@@ -664,6 +672,64 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       map.off("load", run);
     };
   }, [syncKey, mapStyleUrl, block.widget_id, markerFetch]);
+
+  useEffect(() => {
+    const deck = deckHandleRef.current;
+    if (!deck) return;
+    deck.setIntelRichSamplePick((p: RichMapPoint) => {
+      markerPickTsRef.current = Date.now();
+      const siteRaw = latestBlockRef.current.data?.site_id;
+      const siteId = typeof siteRaw === "string" ? siteRaw : undefined;
+      const ldsId = p.latestDeviceStateId;
+      if (!siteId || !ldsId) return;
+      const map = mapRef.current;
+      if (!map) return;
+      const ch = adaptMapChrome(latestBlockRef.current);
+      const titleBase = p.label?.trim() || "Device";
+      const title = `${titleBase} · ${p.eventTs}`;
+      const popExtra = {
+        kpiKeys: ch.kpiFields?.length ? ch.kpiFields : undefined,
+        trendScope: ch.mapDefaultTrendScope ?? undefined,
+        detailRefreshIntervalSec: livePopupMetaRef.current.refreshIntervalSec,
+        detailRenderEpoch: livePopupMetaRef.current.renderedAt,
+      };
+      if (expandedRef.current) {
+        openDashboardMapMarkerPopup(map, {
+          lngLat: [p.lng, p.lat],
+          title,
+          siteId,
+          sourceType: "latest_device_state",
+          sourceId: ldsId,
+          expandedMapIntel: true,
+          ...popExtra,
+        });
+        return;
+      }
+      if (enterpriseModeRef.current) {
+        openDashboardMapMarkerPopup(map, {
+          lngLat: [p.lng, p.lat],
+          title,
+          siteId,
+          sourceType: "latest_device_state",
+          sourceId: ldsId,
+          expandedMapIntel: false,
+          ...popExtra,
+        });
+        return;
+      }
+      setInlineMarkerDetail({
+        siteId,
+        sourceType: "latest_device_state",
+        sourceId: ldsId,
+        title,
+        kpiKeys: popExtra.kpiKeys,
+        trendScope: popExtra.trendScope,
+      });
+    });
+    return () => {
+      deck.setIntelRichSamplePick(undefined);
+    };
+  }, [markerFetch, syncKey, expanded, enterpriseMode, block.widget_id]);
 
   useLayoutEffect(() => {
     const map = mapRef.current;

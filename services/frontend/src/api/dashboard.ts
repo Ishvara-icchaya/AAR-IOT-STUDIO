@@ -303,11 +303,13 @@ export type MapMarkersQueryBody = {
   single_source_type?: string | null;
   single_source_id?: string | null;
   aggregate_by_device?: boolean;
+  binding_fingerprint?: string | null;
 };
 
 export type MapMarkersQueryResponse = {
   markers: Record<string, unknown>[];
   map_init: Record<string, unknown> | null;
+  load_meta?: Record<string, unknown> | null;
 };
 
 export async function postMapMarkersQuery(body: MapMarkersQueryBody) {
@@ -358,10 +360,13 @@ export async function getMapIntelligenceHistoricalMarkers(params: {
   if (params.from) qs.set("from", params.from);
   if (params.to) qs.set("to", params.to);
   if (params.maxPoints != null) qs.set("max_points", String(params.maxPoints));
-  return apiFetch<{ sample_points: [number, number][]; count: number; from: string; to: string }>(
-    `/dashboards/map-runtime/intelligence/historical-markers?${qs.toString()}`,
-    { cache: "no-store" },
-  );
+  return apiFetch<{
+    sample_points: [number, number][];
+    rich_sample_points?: Record<string, unknown>[];
+    count: number;
+    from: string;
+    to: string;
+  }>(`/dashboards/map-runtime/intelligence/historical-markers?${qs.toString()}`, { cache: "no-store" });
 }
 
 /** Expanded map intelligence (devices, freshness, aggregates, trend_context). */

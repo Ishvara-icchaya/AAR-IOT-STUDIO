@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from app.models.endpoint import Endpoint
@@ -397,7 +397,7 @@ def build_site_historical_sample_points(
     stmt = select(ScrubbedEvent).where(*conds).order_by(ScrubbedEvent.event_ts.desc()).limit(cap)
     rows = list(db.scalars(stmt).all())
     seen: set[tuple[float, float]] = set()
-    poly: list[list[float]] = []
+    kept: list[tuple[ScrubbedEvent, float, float, float | None]] = []
     for r in rows:
         loc = r.location_json if isinstance(r.location_json, dict) else {}
         lat, lon = _lat_lon_from_location(loc)
@@ -407,11 +407,64 @@ def build_site_historical_sample_points(
         if key in seen:
             continue
         seen.add(key)
-        poly.append([float(lon), float(lat)])
-        if len(poly) >= max(50, min(int(max_points), 2000)):
+        h = extract_heading_deg(loc)
+        kept.append((r, float(lat), float(lon), h))
+        if len(kept) >= max(50, min(int(max_points), 2000)):
             break
+
+    pair_set: set[tuple[uuid.UUID, str]] = {(r.resolved_device_id, r.object_name) for r, _, _, _ in kept}
+    lds_map: dict[tuple[uuid.UUID, str], uuid.UUID] = {}
+    if pair_set:
+        pairs = list(pair_set)
+        base_lds = select(
+            LatestDeviceState.id,
+            LatestDeviceState.resolved_device_id,
+            LatestDeviceState.object_name,
+        ).where(
+            LatestDeviceState.customer_id == customer_id,
+            LatestDeviceState.site_id == site_id,
+        )
+        chunk_size = 400
+        for i in range(0, len(pairs), chunk_size):
+            chunk = pairs[i : i + chunk_size]
+            q = base_lds.where(tuple_(LatestDeviceState.resolved_device_id, LatestDeviceState.object_name).in_(chunk))
+            res = db.execute(q)
+            for lid, rdid, oname in res:
+                lds_map[(rdid, oname)] = lid
+
+    rich_sample_points: list[dict[str, Any]] = []
+    poly: list[list[float]] = []
+    for r, lat, lon, h in kept:
+        pair_key = (r.resolved_device_id, r.object_name)
+        lid = lds_map.get(pair_key)
+        ident = r.identity_json if isinstance(r.identity_json, dict) else {}
+        lab: str | None = None
+        dl = ident.get("device_label")
+        if isinstance(dl, str) and dl.strip():
+            lab = dl.strip()
+        elif isinstance(r.object_name, str) and r.object_name.strip():
+            lab = r.object_name.strip()
+        rp: dict[str, Any] = {
+            "scrubbed_event_id": str(r.id),
+            "resolved_device_id": str(r.resolved_device_id),
+            "endpoint_id": str(r.endpoint_id),
+            "event_ts": r.event_ts.isoformat().replace("+00:00", "Z"),
+            "ingested_at": r.ingested_at.isoformat().replace("+00:00", "Z"),
+            "lat": lat,
+            "lng": lon,
+            "heading_deg": h,
+            "label": lab,
+            "object_name": r.object_name,
+            "source": "historical",
+        }
+        if lid is not None:
+            rp["latest_device_state_id"] = str(lid)
+        rich_sample_points.append(rp)
+        poly.append([float(lon), float(lat)])
+
     return {
         "sample_points": poly,
+        "rich_sample_points": rich_sample_points,
         "count": len(poly),
         "from": from_.isoformat().replace("+00:00", "Z"),
         "to": to.isoformat().replace("+00:00", "Z"),

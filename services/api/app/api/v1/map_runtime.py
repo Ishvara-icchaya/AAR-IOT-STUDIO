@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 import uuid
 from datetime import datetime
 from typing import Any
@@ -73,11 +75,13 @@ class MapMarkersQueryBody(BaseModel):
     single_source_type: str | None = None
     single_source_id: uuid.UUID | None = None
     aggregate_by_device: bool = False
+    binding_fingerprint: str | None = None
 
 
 class MapMarkersQueryResponse(BaseModel):
     markers: list[dict]
     map_init: dict | None = None
+    load_meta: dict | None = None
 
 
 class MapDetailResponse(BaseModel):
@@ -197,6 +201,7 @@ def map_markers_query(
     db: Session = Depends(get_db),
 ):
     """Resolve markers for dashboard map widgets without embedding large arrays in live widget payloads."""
+    t0 = time.perf_counter()
     allowed = allowed_site_ids_for_user(db, user)
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
@@ -289,7 +294,21 @@ def map_markers_query(
         markers = [map_marker_to_light(m) for m in markers]
 
     mi = compute_map_init_from_markers(markers) if markers else None
-    return MapMarkersQueryResponse(markers=markers, map_init=mi)
+    elapsed_ms = round((time.perf_counter() - t0) * 1000, 3)
+    try:
+        marker_bytes = len(json.dumps(markers, default=str).encode("utf-8"))
+    except (TypeError, ValueError, RecursionError):
+        marker_bytes = 0
+    fp = (body.binding_fingerprint or "").strip()
+    load_meta: dict[str, Any] = {
+        "site_id": str(body.site_id),
+        "mode": mode,
+        "binding_fingerprint": fp,
+        "marker_count": len(markers),
+        "marker_bytes": marker_bytes,
+        "api_total_ms": elapsed_ms,
+    }
+    return MapMarkersQueryResponse(markers=markers, map_init=mi, load_meta=load_meta)
 
 
 @router.get("/detail", response_model=MapDetailResponse)

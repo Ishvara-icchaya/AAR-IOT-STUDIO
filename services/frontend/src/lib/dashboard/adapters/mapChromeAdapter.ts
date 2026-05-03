@@ -182,6 +182,16 @@ export function adaptMapChrome(block: DashboardLiveWidgetDTO): MapChromeVM {
   };
 }
 
+/** Deterministic short fingerprint for marker binding (sent as `binding_fingerprint` on marker query). */
+export function bindingFingerprintFromKey(key: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `bf_${(h >>> 0).toString(16)}`;
+}
+
 /** Stable key for refetching markers when live payload metadata changes (excludes markers). */
 export function mapChromeFetchKey(chrome: MapChromeVM): string {
   return JSON.stringify({
@@ -205,7 +215,10 @@ export function mapChromeFetchKey(chrome: MapChromeVM): string {
 }
 
 /** Build POST /markers/query body from chrome VM. Returns null if required fields are missing. */
-export function buildMarkersQueryBody(chrome: MapChromeVM): MapMarkersQueryBody | null {
+export function buildMarkersQueryBody(
+  chrome: MapChromeVM,
+  opts?: { bindingFingerprint?: string },
+): MapMarkersQueryBody | null {
   if (!chrome.siteId) return null;
   const base: MapMarkersQueryBody = {
     site_id: chrome.siteId,
@@ -219,6 +232,9 @@ export function buildMarkersQueryBody(chrome: MapChromeVM): MapMarkersQueryBody 
     mode: "auto",
     aggregate_by_device: chrome.aggregateByDevice,
   };
+  if (opts?.bindingFingerprint) {
+    base.binding_fingerprint = opts.bindingFingerprint;
+  }
   if (chrome.deviceIds?.length) {
     base.device_ids = chrome.deviceIds;
   }

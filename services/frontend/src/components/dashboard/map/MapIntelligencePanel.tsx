@@ -7,6 +7,7 @@ import {
 } from "@/api/dashboard";
 import { getTrendsWindow } from "@/api/trends";
 import type { IntelOverlayState } from "@/components/dashboard/map/deckOverlaySiteMap";
+import { parseRichMapPointsFromApi } from "@/types/mapTransport";
 
 type Freshness = "active" | "stale" | "offline" | "unknown";
 
@@ -71,6 +72,7 @@ export function MapIntelligencePanel({
   const [showDeviceTrend, setShowDeviceTrend] = useState(false);
   const [trendSummary, setTrendSummary] = useState<string | null>(null);
   const histSamplesRef = useRef<[number, number][] | null>(null);
+  const histRichRef = useRef<ReturnType<typeof parseRichMapPointsFromApi> | null>(null);
 
   const refreshSec = useMemo(() => {
     const n = Number(payload?.refresh_interval_sec);
@@ -112,6 +114,7 @@ export function MapIntelligencePanel({
   useEffect(() => {
     if (mode === "runtime") {
       histSamplesRef.current = null;
+      histRichRef.current = null;
       onIntelOverlay(null);
       setPathErr(null);
       setPathPolyline(null);
@@ -135,10 +138,20 @@ export function MapIntelligencePanel({
         });
         if (cancelled) return;
         const pts = Array.isArray(r?.sample_points) ? (r.sample_points as [number, number][]) : [];
+        const rich = parseRichMapPointsFromApi(r?.rich_sample_points);
         histSamplesRef.current = pts.length ? pts : null;
-        onIntelOverlay(histSamplesRef.current ? { samplePoints: histSamplesRef.current } : null);
+        histRichRef.current = rich.length ? rich : null;
+        const overlay: IntelOverlayState | null =
+          histSamplesRef.current || histRichRef.current
+            ? {
+                samplePoints: histSamplesRef.current ?? undefined,
+                richSamplePoints: histRichRef.current ?? undefined,
+              }
+            : null;
+        onIntelOverlay(overlay);
       } catch {
         histSamplesRef.current = null;
+        histRichRef.current = null;
         if (!cancelled) onIntelOverlay(null);
       }
     })();
@@ -152,6 +165,7 @@ export function MapIntelligencePanel({
     const poly = pathPolyline;
     const len = poly.length;
     const samples = histSamplesRef.current ?? undefined;
+    const rich = histRichRef.current ?? undefined;
     if (replayFrame >= len) {
       onIntelOverlay({
         footprint: poly,
@@ -159,6 +173,7 @@ export function MapIntelligencePanel({
         end: poly[len - 1],
         movingLngLat: poly[len - 1],
         samplePoints: samples,
+        richSamplePoints: rich,
       });
       return;
     }
@@ -168,6 +183,7 @@ export function MapIntelligencePanel({
       end: poly[len - 1],
       movingLngLat: poly[replayFrame],
       samplePoints: samples,
+      richSamplePoints: rich,
     });
   }, [replayFrame, pathPolyline, onIntelOverlay]);
 
@@ -248,6 +264,7 @@ export function MapIntelligencePanel({
           start: poly[0],
           end: poly[poly.length - 1],
           samplePoints: histSamplesRef.current ?? undefined,
+          richSamplePoints: histRichRef.current ?? undefined,
         });
       } else {
         setPathPolyline(null);
