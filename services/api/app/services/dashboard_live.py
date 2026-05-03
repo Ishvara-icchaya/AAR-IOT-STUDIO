@@ -671,6 +671,86 @@ def _site_summary(
     }
 
 
+def _marker_dict_from_lds_row(
+    row: LatestDeviceState,
+    *,
+    latf: str,
+    lonf: str,
+    kpi_fields: list[str],
+    title_field: str | None,
+    health_field: str | None,
+    site_name: str | None,
+    rd: ResolvedDevice | None,
+    ep_row: Endpoint | None,
+) -> dict[str, Any] | None:
+    """Build one latest_device_state marker dict from an ORM row + preloaded joins (no extra DB round-trips)."""
+    loc_json = row.location_json if isinstance(row.location_json, dict) else {}
+    payload = dict(row.display_json or {})
+    payload["_kpi"] = dict(row.kpi_json or {})
+    if row.health_status:
+        payload["health_status"] = row.health_status
+    lat_canon, lon_canon = lat_lon_from_lds_row_fragments(
+        location_json=loc_json if loc_json else None,
+        display_json=row.display_json if isinstance(row.display_json, dict) else None,
+        kpi_json=row.kpi_json if isinstance(row.kpi_json, dict) else None,
+    )
+    if lat_canon is not None and lon_canon is not None:
+        gps = payload.get("gps")
+        if not isinstance(gps, dict):
+            payload["gps"] = {}
+            gps = payload["gps"]
+        if "lat" not in gps:
+            gps["lat"] = lat_canon
+        if "lon" not in gps:
+            gps["lon"] = lon_canon
+    lat, lon = _extract_lat_lon(payload, latf, lonf)
+    if lat is None or lon is None:
+        return None
+    device_name = (rd.device_label if rd and rd.device_label else None) or row.object_name
+    hf_source = payload
+    if health_field and health_field != "health_status":
+        hf_source = {**payload, "health_status": _get_path(payload, health_field)}
+    hf = extract_health_fields(hf_source)
+    blink = derive_blink_mode(
+        health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
+        health_blink=hf.get("health_blink") if isinstance(hf.get("health_blink"), bool) else None,
+        health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
+        offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
+    )
+    merged = {**payload, **payload.get("_kpi", {})}
+    kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
+    title = row.object_name
+    if title_field:
+        tv = _get_path(payload, title_field)
+        if tv is not None:
+            title = str(tv)
+    hmsg = payload.get("health_message")
+    hdeg = extract_heading_deg(loc_json)
+    exp_sec, ep_mob = read_endpoint_intelligence_defaults(ep_row) if ep_row else (15, None)
+    disp_for_mob = dict(row.display_json) if isinstance(row.display_json, dict) else {}
+    mob, has_h = infer_mobility(ep_mob, read_display_mobility(disp_for_mob), hdeg, str(row.object_name or ""))
+    return {
+        "source_type": "latest_device_state",
+        "source_id": str(row.id),
+        "resolved_device_id": str(row.resolved_device_id),
+        "endpoint_id": str(row.endpoint_id),
+        "display_name": title,
+        "device_name": device_name,
+        "site_name": site_name,
+        "latitude": lat,
+        "longitude": lon,
+        "kpis": kpis,
+        "health_status": hf.get("health_status") or row.health_status,
+        "health_message": str(hmsg) if hmsg else None,
+        "blink_mode": blink,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "heading_deg": hdeg,
+        "mobility_type": mob,
+        "has_heading": has_h,
+        "expected_frequency_sec": exp_sec,
+    }
+
+
 def _map_markers_site(
     db: Session,
     *,
@@ -685,11 +765,21 @@ def _map_markers_site(
     allowed_device_ids: set[uuid.UUID] | None = None,
 ) -> list[dict[str, Any]]:
     markers: list[dict[str, Any]] = []
+    site_row = db.get(Site, site_id)
+    site_name = site_row.name if site_row else None
+
     stmt_do = select(DataObject).where(
         DataObject.customer_id == customer_id,
         DataObject.site_id == site_id,
     )
-    for row in db.scalars(stmt_do).all():
+    do_rows = list(db.scalars(stmt_do).all())
+    dev_ids = {r.device_id for r in do_rows if r.device_id}
+    devices_by_id: dict[uuid.UUID, Device] = {}
+    if dev_ids:
+        for d in db.scalars(select(Device).where(Device.id.in_(dev_ids))):
+            devices_by_id[d.id] = d
+
+    for row in do_rows:
         sid = str(row.id)
         if sid in excluded:
             continue
@@ -713,10 +803,8 @@ def _map_markers_site(
         lat, lon = _extract_lat_lon(payload, latf, lonf)
         if lat is None or lon is None:
             continue
-        device = db.get(Device, row.device_id)
+        device = devices_by_id.get(row.device_id)
         device_name = device.name if device else None
-        site = db.get(Site, row.site_id)
-        site_name = site.name if site else None
         hf_source = payload
         if health_field and health_field != "health_status":
             hf_source = {**payload, "health_status": _get_path(payload, health_field)}
@@ -761,21 +849,32 @@ def _map_markers_site(
         LatestDeviceState.customer_id == customer_id,
         LatestDeviceState.site_id == site_id,
     )
-    for row in db.scalars(stmt_lds).all():
+    lds_rows = list(db.scalars(stmt_lds).all())
+    rd_ids = {r.resolved_device_id for r in lds_rows}
+    ep_ids = {r.endpoint_id for r in lds_rows}
+    rd_by_id: dict[uuid.UUID, ResolvedDevice] = {}
+    if rd_ids:
+        for r in db.scalars(select(ResolvedDevice).where(ResolvedDevice.id.in_(rd_ids))):
+            rd_by_id[r.id] = r
+    ep_by_id: dict[uuid.UUID, Endpoint] = {}
+    if ep_ids:
+        for e in db.scalars(select(Endpoint).where(Endpoint.id.in_(ep_ids))):
+            ep_by_id[e.id] = e
+
+    for row in lds_rows:
         sid = str(row.id)
         if sid in excluded:
             continue
-        m = build_map_marker_for_source(
-            db,
-            customer_id=customer_id,
-            site_id=site_id,
-            source_type="latest_device_state",
-            source_id=row.id,
+        m = _marker_dict_from_lds_row(
+            row,
             latf=latf,
             lonf=lonf,
             kpi_fields=kpi_fields,
             title_field=title_field,
             health_field=health_field,
+            site_name=site_name,
+            rd=rd_by_id.get(row.resolved_device_id),
+            ep_row=ep_by_id.get(row.endpoint_id),
         )
         if m:
             markers.append(m)
@@ -796,8 +895,6 @@ def _map_markers_site(
         lat, lon = _extract_lat_lon(payload, latf, lonf)
         if lat is None or lon is None:
             continue
-        site = db.get(Site, row.site_id)
-        site_name = site.name if site else None
         hf = extract_health_fields(payload)
         blink = derive_blink_mode(
             health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
@@ -852,21 +949,38 @@ def merge_latest_device_state_map_markers(
         LatestDeviceState.customer_id == customer_id,
         LatestDeviceState.site_id == site_id,
     )
-    for row in db.scalars(stmt_lds).all():
+    lds_rows = list(db.scalars(stmt_lds).all())
+    pending = [
+        row
+        for row in lds_rows
+        if str(row.id) not in excluded and ("latest_device_state", str(row.id)) not in existing
+    ]
+    if not pending:
+        return out
+    site_row = db.get(Site, site_id)
+    site_name = site_row.name if site_row else None
+    rd_ids = {r.resolved_device_id for r in pending}
+    ep_ids = {r.endpoint_id for r in pending}
+    rd_by_id: dict[uuid.UUID, ResolvedDevice] = {}
+    if rd_ids:
+        for r in db.scalars(select(ResolvedDevice).where(ResolvedDevice.id.in_(rd_ids))):
+            rd_by_id[r.id] = r
+    ep_by_id: dict[uuid.UUID, Endpoint] = {}
+    if ep_ids:
+        for e in db.scalars(select(Endpoint).where(Endpoint.id.in_(ep_ids))):
+            ep_by_id[e.id] = e
+    for row in pending:
         sid = str(row.id)
-        if sid in excluded or ("latest_device_state", sid) in existing:
-            continue
-        m = build_map_marker_for_source(
-            db,
-            customer_id=customer_id,
-            site_id=site_id,
-            source_type="latest_device_state",
-            source_id=row.id,
+        m = _marker_dict_from_lds_row(
+            row,
             latf=latf,
             lonf=lonf,
             kpi_fields=kpi_fields,
             title_field=title_field,
             health_field=health_field,
+            site_name=site_name,
+            rd=rd_by_id.get(row.resolved_device_id),
+            ep_row=ep_by_id.get(row.endpoint_id),
         )
         if m:
             out.append(m)
@@ -957,75 +1071,20 @@ def build_map_marker_for_source(
         row = db.get(LatestDeviceState, source_id)
         if not row or row.customer_id != customer_id or row.site_id != site_id:
             return None
-        loc_json = row.location_json if isinstance(row.location_json, dict) else {}
-        payload = dict(row.display_json or {})
-        payload["_kpi"] = dict(row.kpi_json or {})
-        if row.health_status:
-            payload["health_status"] = row.health_status
-        lat_canon, lon_canon = lat_lon_from_lds_row_fragments(
-            location_json=loc_json if loc_json else None,
-            display_json=row.display_json if isinstance(row.display_json, dict) else None,
-            kpi_json=row.kpi_json if isinstance(row.kpi_json, dict) else None,
-        )
-        if lat_canon is not None and lon_canon is not None:
-            gps = payload.get("gps")
-            if not isinstance(gps, dict):
-                payload["gps"] = {}
-                gps = payload["gps"]
-            if "lat" not in gps:
-                gps["lat"] = lat_canon
-            if "lon" not in gps:
-                gps["lon"] = lon_canon
-        lat, lon = _extract_lat_lon(payload, latf, lonf)
-        if lat is None or lon is None:
-            return None
         rd = db.get(ResolvedDevice, row.resolved_device_id)
-        device_name = (rd.device_label if rd and rd.device_label else None) or row.object_name
         site = db.get(Site, row.site_id)
-        site_name = site.name if site else None
-        hf_source = payload
-        if health_field and health_field != "health_status":
-            hf_source = {**payload, "health_status": _get_path(payload, health_field)}
-        hf = extract_health_fields(hf_source)
-        blink = derive_blink_mode(
-            health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
-            health_blink=hf.get("health_blink") if isinstance(hf.get("health_blink"), bool) else None,
-            health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
-            offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
-        )
-        merged = {**payload, **payload.get("_kpi", {})}
-        kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
-        title = row.object_name
-        if title_field:
-            tv = _get_path(payload, title_field)
-            if tv is not None:
-                title = str(tv)
-        hmsg = payload.get("health_message")
-        hdeg = extract_heading_deg(loc_json)
         ep_row = db.get(Endpoint, row.endpoint_id)
-        exp_sec, ep_mob = read_endpoint_intelligence_defaults(ep_row) if ep_row else (15, None)
-        disp_for_mob = dict(row.display_json) if isinstance(row.display_json, dict) else {}
-        mob, has_h = infer_mobility(ep_mob, read_display_mobility(disp_for_mob), hdeg, str(row.object_name or ""))
-        return {
-            "source_type": "latest_device_state",
-            "source_id": str(row.id),
-            "resolved_device_id": str(row.resolved_device_id),
-            "endpoint_id": str(row.endpoint_id),
-            "display_name": title,
-            "device_name": device_name,
-            "site_name": site_name,
-            "latitude": lat,
-            "longitude": lon,
-            "kpis": kpis,
-            "health_status": hf.get("health_status") or row.health_status,
-            "health_message": str(hmsg) if hmsg else None,
-            "blink_mode": blink,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-            "heading_deg": hdeg,
-            "mobility_type": mob,
-            "has_heading": has_h,
-            "expected_frequency_sec": exp_sec,
-        }
+        return _marker_dict_from_lds_row(
+            row,
+            latf=latf,
+            lonf=lonf,
+            kpi_fields=kpi_fields,
+            title_field=title_field,
+            health_field=health_field,
+            site_name=site.name if site else None,
+            rd=rd,
+            ep_row=ep_row,
+        )
 
     if st == "result_object":
         row = db.get(WorkflowResultObject, source_id)
