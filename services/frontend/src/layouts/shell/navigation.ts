@@ -91,7 +91,6 @@ export const ADMIN_NAV_ITEMS: NavChild[] = [
   { to: "/administration/users", label: "Users" },
   { to: "/administration/sites", label: "Sites" },
   { to: "/administration/clear-data", label: "Clear operational data" },
-  { to: "/administration/monitoring", label: "Monitoring" },
   { to: "/administration/llm-config", label: "LLM Configuration" },
   { to: "/administration/ports", label: "Configure Ports" },
   { to: "/administration/restore", label: "Restore to Default" },
@@ -143,6 +142,7 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
   if (pathname === "/administration/users") return "Users";
   if (pathname === "/administration/sites") return "Sites";
+  if (pathname.startsWith("/administration/monitoring")) return "Monitoring";
   if (pathname === "/administration/ports") return "Configure Ports";
   if (pathname === "/scrubber/raw-select") return "Raw sample";
   if (pathname === "/workflow") return "Workflows";

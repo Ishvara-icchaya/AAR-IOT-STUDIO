@@ -290,7 +290,7 @@ export function attachDeckSiteMapOverlay(
       );
     }
 
-    if (intelOverlay?.richSamplePoints?.length) {
+    if (layerControls.showTraceRoute && intelOverlay?.richSamplePoints?.length) {
       layers.push(
         new ScatterplotLayer({
           id: "dash-intel-hist-samples",
@@ -312,7 +312,7 @@ export function attachDeckSiteMapOverlay(
           },
         }),
       );
-    } else if (intelOverlay?.samplePoints?.length) {
+    } else if (layerControls.showTraceRoute && intelOverlay?.samplePoints?.length) {
       layers.push(
         new ScatterplotLayer({
           id: "dash-intel-hist-samples",

@@ -1,6 +1,9 @@
 import type { MapMarkersQueryBody } from "@/api/dashboard";
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 
+/** Stable empty arrays so `adaptMapChrome` does not allocate new `[]` every call (avoids effect dependency churn). */
+const NO_STRINGS: string[] = [];
+
 /** Map controls — from server map_controls or defaults (not marker geometry). */
 export type MapControlsVM = {
   auto_fit_on_first_load: boolean;
@@ -110,10 +113,12 @@ export function adaptMapChrome(block: DashboardLiveWidgetDTO): MapChromeVM {
   const lonf = String(d.longitude_field ?? "gps.lon");
 
   const kpiRaw = d.kpi_fields;
-  const kpiFields = Array.isArray(kpiRaw) ? kpiRaw.map(String) : [];
+  const kpiFields =
+    Array.isArray(kpiRaw) && kpiRaw.length > 0 ? kpiRaw.map((x) => String(x)) : NO_STRINGS;
 
   const exRaw = d.excluded_source_ids;
-  const excludedSourceIds = Array.isArray(exRaw) ? exRaw.map(String) : [];
+  const excludedSourceIds =
+    Array.isArray(exRaw) && exRaw.length > 0 ? exRaw.map((x) => String(x)) : NO_STRINGS;
 
   const devRaw = d.device_ids;
   const deviceIds = Array.isArray(devRaw) ? devRaw.map(String) : undefined;

@@ -29,7 +29,7 @@ type Freshness = "active" | "stale" | "offline" | "unknown";
 
 export type MapIntelligenceDeviceRow = {
   source_id: string;
-  entityId: string;
+  entityId?: string;
   display_name?: string;
   mobility_type?: string;
   freshness_status?: Freshness;
@@ -38,13 +38,16 @@ export type MapIntelligenceDeviceRow = {
   expected_frequency_sec?: number;
 };
 
+export type MapIntelMode = "runtime" | "historical";
+
 export type MapIntelligencePanelProps = {
   siteId: string;
-  blockTitle: string;
   kpiKeys: string[];
   /** Dominant endpoint on the map, or null for site-wide roster. */
   endpointId: string | null;
   expanded: boolean;
+  /** Runtime vs Historical — owned by parent so controls can live on the map chrome. */
+  intelMode: MapIntelMode;
   onIntelOverlay: (state: IntelOverlayState | null) => void;
 };
 
@@ -65,14 +68,15 @@ function formatKpiPreview(kpis: Record<string, unknown> | undefined): string {
 
 export function MapIntelligencePanel({
   siteId,
-  blockTitle,
   kpiKeys,
   endpointId,
   expanded,
+  intelMode: mode,
   onIntelOverlay,
 }: MapIntelligencePanelProps) {
   const searchId = useId();
-  const [mode, setMode] = useState<"runtime" | "historical">("runtime");
+  /** Stable for effect deps — parent often passes `?? []` (new array reference each render when empty). */
+  const kpiKeysSig = kpiKeys.join("\u0001");
   const [listKind, setListKind] = useState<"devices" | "endpoint">("devices");
   const [devicePage, setDevicePage] = useState(1);
   const [search, setSearch] = useState("");
@@ -119,12 +123,12 @@ export function MapIntelligencePanel({
       });
       setPayload(r ?? null);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Intelligence load failed");
+      setErr(e instanceof Error ? e.message : "Advanced panel load failed");
       setPayload(null);
     } finally {
       setLoading(false);
     }
-  }, [expanded, siteId, endpointId, mode, kpiKeys]);
+  }, [expanded, siteId, endpointId, mode, kpiKeysSig]);
 
   useEffect(() => {
     void fetchExpanded();
@@ -244,7 +248,10 @@ export function MapIntelligencePanel({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return devices;
-    return devices.filter((d) => (d.display_name ?? "").toLowerCase().includes(q) || d.entityId.includes(q));
+    return devices.filter(
+      (d) =>
+        (d.display_name ?? "").toLowerCase().includes(q) || (d.entityId ?? "").toLowerCase().includes(q),
+    );
   }, [devices, search]);
 
   const PAGE_SIZE = 5;
@@ -294,7 +301,7 @@ export function MapIntelligencePanel({
         setDetailLoading(false);
       }
     },
-    [siteId, kpiKeys],
+    [siteId, kpiKeysSig],
   );
 
   const loadPath = useCallback(async () => {
@@ -420,49 +427,15 @@ export function MapIntelligencePanel({
     return () => {
       cancelled = true;
     };
-  }, [showEndpointTrend, showDeviceTrend, siteId, kpiKeys, selected?.entityId, trendContextKey]);
+  }, [showEndpointTrend, showDeviceTrend, siteId, kpiKeysSig, selected?.entityId, trendContextKey]);
 
   return (
-    <aside className="dash-map-intel" aria-label="Map intelligence">
-      <div className="dash-map-intel__head">
-        <table className="dash-map-intel__head-table">
-          <tbody>
-            <tr>
-              <th scope="row" className="dash-map-intel__head-th">
-                Panel
-              </th>
-              <td className="dash-map-intel__head-td dash-map-intel__head-td--text">
-                <h4 className="dash-map-intel__title">Intelligence</h4>
-                <p className="dash-map-intel__subtitle">{blockTitle}</p>
-              </td>
-              <th scope="row" className="dash-map-intel__head-th">
-                Mode
-              </th>
-              <td className="dash-map-intel__head-td dash-map-intel__head-td--modes">
-                <div className="dash-map-intel__mode-row" role="group" aria-label="Map mode">
-                  <button
-                    type="button"
-                    className={`dash-map-intel__mode-btn ${mode === "runtime" ? "dash-map-intel__mode-btn--on" : ""}`}
-                    onClick={() => setMode("runtime")}
-                  >
-                    Runtime
-                  </button>
-                  <button
-                    type="button"
-                    className={`dash-map-intel__mode-btn ${mode === "historical" ? "dash-map-intel__mode-btn--on" : ""}`}
-                    onClick={() => setMode("historical")}
-                  >
-                    Historical
-                  </button>
-                </div>
-                <p className="dash-map-intel__hint dash-map-intel__hint--under-mode">
-                  Select a row in the devices table below for detail and historical path.
-                </p>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+    <aside className="dash-map-intel" aria-label="Roster, path, and diagnostics">
+      {!siteId ? (
+        <p className="dash-map-intel__err" role="status">
+          This map has no site in its binding. Configure a site on the widget so this view can load roster and trends.
+        </p>
+      ) : null}
 
       <section className="dash-map-intel__section dash-map-intel__section--trends" aria-labelledby="dash-map-intel-trends">
         <h5 id="dash-map-intel-trends" className="dash-map-intel__section-title">

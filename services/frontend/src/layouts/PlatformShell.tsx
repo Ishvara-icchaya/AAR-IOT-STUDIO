@@ -20,7 +20,9 @@ export function PlatformShell() {
     pathname.startsWith("/workflow") ||
     pathname.startsWith("/dashboard") ||
     pathname.startsWith("/enterprise-ai") ||
-    pathname === "/administration/monitoring";
+    pathname === "/administration/monitoring" ||
+    pathname === "/administration/users" ||
+    pathname === "/administration/sites";
 
   useEffect(() => {
     dbg("PlatformShell mount", pathname);

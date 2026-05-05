@@ -1086,10 +1086,10 @@ export function DeviceRegisterPage() {
         size="md"
       >
         <form onSubmit={onModalSubmit}>
-          <div style={modalRow}>
-            <label style={modalField}>
+          <div style={modalStack}>
+            <label style={modalFieldStacked}>
               Site
-              <select value={siteId} onChange={(e) => setSiteId(e.target.value)} required style={inp}>
+              <select value={siteId} onChange={(e) => setSiteId(e.target.value)} required style={inpFull}>
                 <option value="" disabled>
                   Select site
                 </option>
@@ -1100,17 +1100,19 @@ export function DeviceRegisterPage() {
                 ))}
               </select>
             </label>
-            <label style={modalField}>
+            <label style={modalFieldStacked}>
               Device name
-              <input value={name} onChange={(e) => setName(e.target.value)} required style={inp} />
+              <input value={name} onChange={(e) => setName(e.target.value)} required style={inpFull} />
             </label>
-            <label style={modalField}>
+            <label style={modalFieldStacked}>
               Description
-              <input value={description} onChange={(e) => setDescription(e.target.value)} style={inp} />
+              <input value={description} onChange={(e) => setDescription(e.target.value)} style={inpFull} />
             </label>
-            <button type="submit" style={btnPrimary} disabled={saving || !sites.length}>
-              {saving ? "Saving…" : modalMode === "create" ? "Register device" : "Save changes"}
-            </button>
+            <div style={modalActionsRow}>
+              <button type="submit" style={btnPrimary} disabled={saving || !sites.length}>
+                {saving ? "Saving…" : modalMode === "create" ? "Register device" : "Save changes"}
+              </button>
+            </div>
           </div>
         </form>
       </AppModalShell>
@@ -1133,6 +1135,12 @@ const inp: CSSProperties = {
   color: "var(--color-text)",
   fontFamily: "inherit",
   fontSize: "0.88rem",
+};
+
+const inpFull: CSSProperties = {
+  ...inp,
+  width: "100%",
+  boxSizing: "border-box",
 };
 
 const btnPrimary: CSSProperties = {
@@ -1164,20 +1172,25 @@ const linkBtn: CSSProperties = {
   textDecoration: "underline",
 };
 
-const modalRow: CSSProperties = {
+const modalStack: CSSProperties = {
   display: "flex",
-  flexWrap: "wrap",
-  gap: "0.65rem",
-  alignItems: "flex-end",
+  flexDirection: "column",
+  gap: "0.85rem",
+  width: "100%",
 };
 
-const modalField: CSSProperties = {
+const modalFieldStacked: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "0.25rem",
   fontSize: "0.8rem",
   color: "var(--color-text-muted)",
-  flex: "1 1 140px",
-  minWidth: "120px",
+  width: "100%",
+};
+
+const modalActionsRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginTop: "0.15rem",
 };
 

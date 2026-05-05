@@ -2980,10 +2980,9 @@ a:hover {
 }
 
 .dash-config-modal {
-  width: min(1380px, 98vw);
-  /* ~+40% vs prior min(90vh, 880px) — more room for binding + preview */
-  max-height: min(92vh, 1232px);
-  min-height: min(63vh, 720px);
+  width: min(1680px, 99vw);
+  max-height: min(94vh, 1320px);
+  min-height: min(70vh, 820px);
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
@@ -3037,6 +3036,56 @@ a:hover {
   gap: 0.55rem;
   border-left: 1px solid color-mix(in oklab, var(--color-border) 88%, transparent);
   padding-left: var(--space-md);
+}
+
+.dash-widget-config-shell--map4 {
+  display: block;
+  min-height: min(68vh, 760px);
+}
+
+.dash-widget-config-map4-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 1.35fr) minmax(260px, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+  min-height: min(66vh, 780px);
+}
+
+.dash-widget-config-map4__display-row {
+  margin-top: 0.35rem;
+  padding-top: var(--space-md);
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 82%, transparent);
+}
+
+.dash-widget-config-map4__col {
+  min-width: 0;
+  max-height: min(82vh, 980px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-right: 0.1rem;
+}
+
+.dash-widget-config-map4__col--preview {
+  border-left: 1px solid color-mix(in oklab, var(--color-border) 88%, transparent);
+  padding-left: var(--space-md);
+}
+
+.dash-widget-config-map4__heading {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--color-text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dash-widget-config-map4-preview-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .dash-widget-config-rail__h {
@@ -3116,6 +3165,164 @@ a:hover {
   border-radius: var(--radius);
   padding: 0.5rem;
   font-size: 0.85rem;
+}
+
+.dash-widget-config-msfilter {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  padding: 0.28rem 0.45rem;
+}
+
+.dash-widget-config-msgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.2rem 0.45rem;
+  align-content: start;
+  max-height: 6.75rem;
+  overflow: hidden;
+  margin-top: 0.3rem;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
+  border-radius: var(--radius);
+}
+
+.dash-widget-config-msgrid__chk {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.28rem;
+  font-size: 0.72rem;
+  line-height: 1.28;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.dash-widget-config-msgrid__lbl {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.dash-widget-config-grid-latlon {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.dash-widget-config-grid-behavior {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem 0.45rem;
+}
+
+.dash-widget-config-behavior__cell {
+  margin: 0;
+  align-items: flex-start;
+}
+
+.dash-widget-config-maxdirect {
+  margin-top: 0.45rem;
+}
+
+.dash-widget-config-grid-trace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+}
+
+.dash-widget-config-grid-trace__cell {
+  margin: 0;
+}
+
+.dash-widget-config-trace-hint {
+  margin-bottom: 0.15rem;
+}
+
+.dash-widget-config-track-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.dash-widget-config-track-line__actions {
+  margin-left: auto;
+}
+
+.dash-widget-config-advanced-launch {
+  margin-top: 0.25rem;
+}
+
+.dash-widget-config-debug-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.48);
+}
+
+.dash-widget-config-debug-modal {
+  width: min(680px, 96vw);
+  max-height: min(86vh, 880px);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border: 1px solid color-mix(in oklab, var(--color-border) 88%, transparent);
+  border-radius: calc(var(--radius-lg) + 2px);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.dash-widget-config-debug-modal__head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dash-widget-config-debug-modal__head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dash-widget-config-debug-modal__body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: auto;
+}
+
+.dash-widget-config-debug-modal__pre {
+  margin: 0;
+  flex: 1;
+  min-height: 12rem;
+  max-height: 60vh;
+  overflow: auto;
+  font-size: 0.66rem;
+  line-height: 1.32;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: color-mix(in oklab, var(--color-bg) 92%, transparent);
+}
+
+.dash-widget-config-debug-modal__foot {
+  flex-shrink: 0;
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  justify-content: flex-end;
 }
 
 .dash-widget-config-dl {
@@ -3436,6 +3643,31 @@ a:hover {
 
 .dash-widget-config-advanced .dash-binding {
   margin-top: 0.45rem;
+}
+
+@media (max-width: 1320px) {
+  .dash-widget-config-map4-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .dash-widget-config-map4__col--preview {
+    grid-column: 1 / -1;
+    border-left: none;
+    padding-left: 0;
+    border-top: 1px solid color-mix(in oklab, var(--color-border) 88%, transparent);
+    padding-top: var(--space-md);
+    max-height: min(44vh, 560px);
+  }
+}
+
+@media (max-width: 900px) {
+  .dash-widget-config-map4-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dash-widget-config-map4__col--preview {
+    max-height: none;
+  }
 }
 
 @media (max-width: 1180px) {
@@ -3938,54 +4170,160 @@ a:hover {
   outline-offset: -4px;
 }
 
-/* Expanded map intelligence: map + intel row on top, layers/legend bar at bottom. */
+/* Expanded map: col1 = map + layers, col2 = legend + roster.
+   Same flex contract as .dm-device-table-shell (device-register-page.css): flex 1 1 auto + min-height 0. */
 .dash-map-widget__expanded-split {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   align-items: stretch;
   min-height: 0;
+  min-width: 0;
   width: 100%;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow: hidden;
   gap: 0;
 }
 
-.dash-map-widget__expanded-main-row {
+/* Scrollport like .dm-table-scroll: hard cap vs viewport + overflow inside (not unbounded flex growth). */
+.dash-map-widget__expanded-two-col {
   display: flex;
   flex-direction: row;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
+  max-width: 100%;
+  /* −40% vs prior cap (×0.6) so the block stays clearly inside the viewport. */
+  max-height: min(
+    43.2rem,
+    max(0px, calc((100vh - 14rem) * 0.6)),
+    max(0px, calc((100dvh - 14rem) * 0.6)),
+    max(0px, calc((100svh - 14rem) * 0.6))
+  );
   align-items: stretch;
+  align-content: flex-start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
-.dash-map-widget__expanded-map-col {
+.dash-map-widget__expanded-col-label {
+  flex: 0 0 auto;
+  margin: 0 0 0.35rem;
+  padding: 0 0.1rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.dash-map-widget__expanded-map-display-col {
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-  max-width: 100%;
-  display: flex;
-  flex-direction: column;
+  max-width: 84%;
+  align-self: stretch;
+  max-height: none;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, auto);
   position: relative;
   overflow: hidden;
+  padding: 0.4rem;
 }
 
-.dash-map-widget__expanded-layer-col {
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  border-left: none;
-  border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+/* Runtime / Historical — floated on the map surface (Advanced view). */
+.dash-map-widget__map-mode-overlay {
+  position: absolute;
+  z-index: 12;
+  /* ~20% lower in the map cell than the top edge + inset. */
+  top: calc(0.45rem + 20%);
+  left: 0.45rem;
+  max-width: min(calc(100% - 0.9rem), 19rem);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.28rem;
+  pointer-events: none;
+}
+
+.dash-map-widget__map-mode-overlay .dash-map-intel__mode-row--on-map {
+  pointer-events: auto;
+  margin: 0;
+  padding: 0.3rem 0.35rem;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
   background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
-  overflow: visible;
-  max-height: none;
+  box-shadow: 0 4px 18px color-mix(in oklab, #000 28%, transparent);
+}
+
+.dash-map-widget__map-mode-overlay-hint {
+  margin: 0;
+  padding: 0.2rem 0.35rem 0.25rem;
+  font-size: 0.6rem;
+  line-height: 1.32;
+  max-height: 3.25rem;
+  overflow-y: auto;
+  color: var(--color-text-muted);
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: color-mix(in oklab, var(--color-surface-elevated) 88%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent);
+  border-top: none;
+  pointer-events: auto;
+}
+
+.dash-map-widget__expanded-map-display-col .dash-map-widget__layer-tools--row1 {
+  border-top: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
+  min-height: 0;
+  max-height: min(42dvh, 50%);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dash-map-widget__expanded-map-display-col .dash-map-layers {
+  max-height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dash-map-widget__expanded-advanced-col {
+  flex: 0 0 min(22rem, 38vw);
+  width: min(22rem, 38vw);
+  max-width: 100%;
+  min-width: min(17rem, 100%);
+  max-height: 100%;
+  box-sizing: border-box;
+  border-left: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dash-map-widget__expanded-advanced-col .dash-map-widget__legend-row {
+  flex: 0 0 auto;
+  border-top: none;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+}
+
+.dash-map-widget__expanded-advanced-col > .dash-map-intel {
+  flex: 1 1 0;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  border-left: none;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dash-map-widget__layer-tools {
@@ -3999,6 +4337,7 @@ a:hover {
 
 .dash-map-widget__layer-tools--row1 {
   flex: 0 0 auto;
+  flex-shrink: 0;
   padding-bottom: 0.55rem;
 }
 
@@ -4234,6 +4573,26 @@ a:hover {
   font-weight: 650;
 }
 
+.dash-map-legend__color-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+}
+
+.dash-map-legend__color-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.dash-map-legend__color-mode input {
+  margin: 0;
+}
+
 .dash-map-legend__list {
   margin: 0;
   padding: 0;
@@ -4284,17 +4643,20 @@ a:hover {
 }
 
 .dash-map-widget__single-map-wrap--expanded-intel {
-  flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   min-width: 0;
   width: 100%;
   max-width: 100%;
   aspect-ratio: unset;
-  max-height: none;
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in oklab, var(--color-border) 82%, transparent);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-border) 38%, transparent);
 }
 
 .dash-map-intel {
@@ -4359,6 +4721,13 @@ a:hover {
   margin: 0.35rem 0 0;
   font-size: 0.68rem;
   line-height: 1.35;
+}
+
+.dash-map-intel__hint--panel {
+  margin: 0.45rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--color-text-muted);
 }
 
 .dash-map-intel__section--trends {
@@ -4705,21 +5074,32 @@ a:hover {
 }
 
 @media (max-width: 720px) {
-  .dash-map-widget__expanded-main-row {
+  .dash-map-widget__expanded-two-col {
     flex-direction: column;
   }
 
-  .dash-map-intel {
+  .dash-map-widget__expanded-map-display-col {
+    max-width: 100%;
+    max-height: none;
+    align-self: stretch;
+  }
+
+  .dash-map-widget__expanded-map-display-col .dash-map-widget__layer-tools--row1 {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .dash-map-widget__expanded-advanced-col {
     flex: 0 0 auto;
     width: 100%;
     min-width: 0;
     border-left: none;
     border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
-    max-height: min(42dvh, 22rem);
+    max-height: min(46dvh, 24rem);
   }
 
-  .dash-map-widget__expanded-layer-col {
-    max-height: none;
+  .dash-map-widget__expanded-advanced-col > .dash-map-intel {
+    max-height: min(36dvh, 18rem);
   }
 
   .dash-map-layers__bands--one-row {
@@ -4976,6 +5356,7 @@ a:hover {
 .dash-widget--map.dash-map-widget--expanded .dash-wf__body.dash-wf__body--fill {
   overflow: hidden !important;
   min-height: 0;
+  min-width: 0;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -4985,8 +5366,10 @@ a:hover {
   overflow: visible !important;
 }
 
+/* Keep the expanded shell clipping the layout; map marker popups use portal + high z-index. */
 .dash-live .dash-widget--map.dash-map-widget--expanded {
-  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: hidden !important;
 }
 
 .dash-map-popup-shell--intel-view.maplibregl-popup {
@@ -5978,7 +6361,8 @@ a:hover {
   max-height: none;
 }
 
-.dash-live .dash-widget--map.dash-map-widget--expanded {
+.dash-live .dash-widget--map.dash-map-widget--expanded,
+.dash-widget--map.dash-map-widget--expanded.dash-wf {
   position: fixed;
   z-index: 8000;
   left: max(0.5rem, env(safe-area-inset-left, 0px));
@@ -5987,18 +6371,38 @@ a:hover {
   bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   width: auto;
   max-width: none;
-  max-height: none;
+  /* Cap to viewport; subtract widget header + insets so inner flex never reports a taller CB than the screen. */
+  max-height: min(calc(100dvh - 1rem), calc(100svh - 1rem), calc(100vh - 1rem));
   min-height: 0;
   margin: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   box-shadow: 0 28px 90px color-mix(in oklab, #000 38%, transparent);
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__expanded-split {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__expanded-two-col {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  max-height: min(
+    43.2rem,
+    max(0px, calc((100vh - 14rem) * 0.6)),
+    max(0px, calc((100dvh - 14rem) * 0.6)),
+    max(0px, calc((100svh - 14rem) * 0.6))
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__enterprise-grid {
@@ -6008,17 +6412,47 @@ a:hover {
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__single-map-wrap {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+}
+
+.dash-live
+  .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap--expanded-intel {
+  min-height: 0;
+  height: 100%;
+  max-height: none;
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
   flex: 1 1 auto !important;
-  min-height: 0 !important;
+  /* Default map tile; expanded intel path overrides — keep min small so two-col min-content stays in viewport. */
+  min-height: min(18dvh, 220px) !important;
   height: 100% !important;
   max-height: none !important;
   width: 100% !important;
   max-width: 100% !important;
+}
+
+.dash-live
+  .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap--expanded-intel
+  .dash-map-widget__map {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  height: 100% !important;
+}
+
+.dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
+  min-height: min(18dvh, 220px);
+}
+
+.dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap--expanded-intel
+  .dash-map-widget__map {
+  min-height: 0;
+  max-height: 100%;
 }
 
 .dash-widget--map.dash-map-widget--expanded .dash-map-widget__single-map-wrap {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MapLayerControlPanel } from "@/components/dashboard/map/MapLayerControlPanel";
 import { MapLayerLegend } from "@/components/dashboard/map/MapLayerLegend";
 import maplibregl, { type StyleSpecification } from "maplibre-gl";
@@ -29,10 +29,11 @@ import { apiMarkersToMarkerRecs } from "@/lib/dashboard/adapters/apiMarkersToRec
 import { markersToViewModels, type MapPointVM, type MapProfile } from "@/lib/dashboard/mapViewModel";
 import { MapMarkerPopupRoot } from "@/components/dashboard/map/MapMarkerPopupRoot";
 import { openDashboardMapMarkerPopup } from "@/components/dashboard/map/mountMapMarkerPopup";
-import { MapIntelligencePanel } from "@/components/dashboard/map/MapIntelligencePanel";
+import { MapIntelligencePanel, type MapIntelMode } from "@/components/dashboard/map/MapIntelligencePanel";
 import {
   filterMarkersForLayers,
   parseMapLayerControlsFromBlock,
+  type MapLayerColorMode,
   type MapLayerControls,
 } from "@/lib/dashboard/mapLayerControls";
 
@@ -141,6 +142,8 @@ function applyViewport(
   firstFitDoneRef: { current: boolean },
   /** When true, first load ignores saved map_init and fits every marker (typical device-aggregate live map). */
   aggregateByDevice?: boolean,
+  /** When true (Advanced open), skip auto-fit-on-refresh so the camera stays fixed while markers refresh. */
+  freezeAutoFitOnRefresh?: boolean,
 ) {
   if (list.length === 0) return;
 
@@ -173,7 +176,7 @@ function applyViewport(
     return;
   }
 
-  if (!isFirstFitWindow && controls.auto_fit_on_refresh === true) {
+  if (!isFirstFitWindow && controls.auto_fit_on_refresh === true && !freezeAutoFitOnRefresh) {
     if (init?.bounds && init.bounds[0] && init.bounds[1]) {
       const b = new maplibregl.LngLatBounds(init.bounds[0], init.bounds[1]);
       map.fitBounds(b, { padding: 40, maxZoom: 14, duration: 350 });
@@ -308,6 +311,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   const d = block.data ?? {};
   const [styleNotice, setStyleNotice] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [intelMode, setIntelMode] = useState<MapIntelMode>("runtime");
   const [intelOverlay, setIntelOverlay] = useState<IntelOverlayState | null>(null);
   const [inlineMarkerDetail, setInlineMarkerDetail] = useState<MapInlineMarkerDetail | null>(null);
 
@@ -358,12 +362,21 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     [smoothMarkers, controls, layerControls],
   );
 
-  useEffect(() => {
+  /**
+   * Snap filtered markers into `smoothMarkers` before paint when Advanced is open (or smoothing is off).
+   * Otherwise the deck `useEffect` can run in the same commit with a stale `smoothMarkersRef` after
+   * layer/filter changes — map layers (Trace, filters, color) appear broken.
+   */
+  useLayoutEffect(() => {
     const ch = adaptMapChrome(block);
     if (!ch.mapSmoothMarkers || expandedRef.current) {
       setSmoothMarkers(filteredMarkers);
-      return;
     }
+  }, [filteredMarkers, block, expanded]);
+
+  useEffect(() => {
+    const ch = adaptMapChrome(block);
+    if (!ch.mapSmoothMarkers || expandedRef.current) return;
     const start = smoothMarkersRef.current;
     let step = 0;
     const id = window.setInterval(() => {
@@ -440,6 +453,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       if (!body) return;
       void postMapMarkersQuery(body)
         .then((r) => {
+          if (expandedRef.current) return;
           if (!r?.markers) return;
           setMarkerList(apiMarkersToMarkerRecs(r.markers));
           if (r.map_init) setMapInitApi(parseMapInit(r.map_init));
@@ -458,6 +472,9 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    /** New MapLibre instance whenever Advanced toggles — the map div can remount across layout branches. */
+    firstFitDoneRef.current = false;
 
     let styleFallbackUsed = false;
     const chrome0 = adaptMapChrome(latestBlockRef.current);
@@ -491,7 +508,16 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     });
 
     let resizeRaf: number | null = null;
-    const ro = new ResizeObserver(() => {
+    let lastW = 0;
+    let lastH = 0;
+    const ro = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect;
+      if (!cr) return;
+      const w = Math.round(cr.width);
+      const h = Math.round(cr.height);
+      if (w > 0 && h > 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
+      lastW = w;
+      lastH = h;
       if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = null;
@@ -521,7 +547,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       map.remove();
       mapRef.current = null;
     };
-  }, [mapStyleUrl, block.widget_id]);
+  }, [mapStyleUrl, block.widget_id, expanded, enterpriseMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -685,7 +711,15 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       }
       deckHandleRef.current.updatePoints(vms, useCluster);
       deckHandleRef.current.applyLayerControls(layerControlsRef.current);
-      applyViewport(map, list, init, ctrl, firstFitDoneRef, chromeNow.aggregateByDevice);
+      applyViewport(
+        map,
+        list,
+        init,
+        ctrl,
+        firstFitDoneRef,
+        chromeNow.aggregateByDevice,
+        expandedRef.current,
+      );
     };
 
     if (map.isStyleLoaded()) {
@@ -698,7 +732,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       cancelled = true;
       map.off("load", run);
     };
-  }, [syncKey, mapStyleUrl, block.widget_id, markerFetch]);
+  }, [syncKey, mapStyleUrl, block.widget_id, markerFetch, expanded, enterpriseMode]);
 
   useEffect(() => {
     const deck = deckHandleRef.current;
@@ -765,15 +799,22 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     const outerRaf = requestAnimationFrame(() => {
       innerRaf = requestAnimationFrame(() => map.resize());
     });
+    /** Advanced view moves the map in the flex tree; MapLibre needs several resizes as layout settles. */
     const delayed =
       expanded &&
-      window.setTimeout(() => {
-        map.resize();
-      }, 120);
+      [160, 420].map((ms) =>
+        window.setTimeout(() => {
+          try {
+            map.resize();
+          } catch {
+            /* map tearing down */
+          }
+        }, ms),
+      );
     return () => {
       cancelAnimationFrame(outerRaf);
       if (innerRaf) cancelAnimationFrame(innerRaf);
-      if (delayed) window.clearTimeout(delayed);
+      if (delayed) delayed.forEach((id) => window.clearTimeout(id));
     };
   }, [expanded]);
 
@@ -807,12 +848,19 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [inlineMarkerDetail]);
 
+  /** Push intelligence overlay + layer toggles whenever either changes (deck `refresh` reads both). */
   useEffect(() => {
-    deckHandleRef.current?.setIntelligenceOverlay?.(intelOverlay);
-  }, [intelOverlay, syncKey]);
+    const deck = deckHandleRef.current;
+    if (!deck) return;
+    deck.setIntelligenceOverlay(intelOverlay);
+    deck.applyLayerControls(layerControls);
+  }, [intelOverlay, layerControls, syncKey, expanded]);
 
   useEffect(() => {
-    if (!expanded) setIntelOverlay(null);
+    if (!expanded) {
+      setIntelOverlay(null);
+      setIntelMode("runtime");
+    }
   }, [expanded]);
 
   useEffect(() => {
@@ -856,8 +904,15 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   const intelEndpointId = dominantEndpointId(filteredMarkers);
   const intelSiteId = chrome.siteId ?? "";
 
+  const onLegendColorMode = useCallback((m: MapLayerColorMode) => {
+    setLayerControls((lc) => ({ ...lc, colorMode: m }));
+  }, []);
+
+  const mapHostKey = expanded ? "advanced" : enterpriseMode ? "enterprise" : "inline";
+
   const mapEl = (
     <div
+      key={mapHostKey}
       ref={containerRef}
       className="dash-map-widget__map"
       style={
@@ -897,9 +952,9 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       className="dash-map-widget__expand-btn"
       onClick={() => setExpanded((x) => !x)}
       aria-expanded={expanded}
-      title={expanded ? "Close expanded intelligence view" : "Open expanded map intelligence (split layout)"}
+      title={expanded ? "Close expanded advanced view" : "Open expanded map (split layout: map display and advanced)"}
     >
-      {expanded ? "Close view" : "Intelligence view"}
+      {expanded ? "Close view" : "Advanced"}
     </button>
   );
 
@@ -926,7 +981,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
             ? {
                 role: "dialog",
                 "aria-modal": true,
-                "aria-label": `Expanded map intelligence — ${block.title}`,
+                "aria-label": `Expanded map — ${block.title}`,
               }
             : undefined
         }
@@ -946,29 +1001,56 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         ) : null}
         {expanded ? (
           <div className="dash-map-widget__expanded-split">
-            <div className="dash-map-widget__expanded-main-row">
-              <div className="dash-map-widget__expanded-map-col">
+            <div className="dash-map-widget__expanded-two-col">
+              <div className="dash-map-widget__expanded-map-display-col">
                 <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--expanded-intel">
+                  <div className="dash-map-widget__map-mode-overlay">
+                    <div className="dash-map-intel__mode-row dash-map-intel__mode-row--on-map" role="group" aria-label="Map mode">
+                      <button
+                        type="button"
+                        className={`dash-map-intel__mode-btn ${intelMode === "runtime" ? "dash-map-intel__mode-btn--on" : ""}`}
+                        onClick={() => setIntelMode("runtime")}
+                      >
+                        Runtime
+                      </button>
+                      <button
+                        type="button"
+                        className={`dash-map-intel__mode-btn ${intelMode === "historical" ? "dash-map-intel__mode-btn--on" : ""}`}
+                        onClick={() => setIntelMode("historical")}
+                      >
+                        Historical
+                      </button>
+                    </div>
+                    <p className="dash-map-widget__map-mode-overlay-hint">
+                      <strong>Runtime</strong> / <strong>Historical</strong> — pick a device in the table, then path
+                      and replay. <strong>Historical</strong>: <strong>Load 24h footprint</strong>.
+                    </p>
+                  </div>
                   {mapEl}
                 </div>
+                <div className="dash-map-widget__layer-tools dash-map-widget__layer-tools--row1">
+                  <MapLayerControlPanel value={layerControls} onChange={setLayerControls} />
+                </div>
               </div>
-              <MapIntelligencePanel
-                siteId={intelSiteId}
-                blockTitle={block.title?.trim() || "Map"}
-                kpiKeys={chrome.kpiFields ?? []}
-                endpointId={intelEndpointId}
-                expanded={expanded}
-                onIntelOverlay={setIntelOverlay}
-              />
+              <div className="dash-map-widget__expanded-advanced-col">
+                <div className="dash-map-widget__legend-row" aria-label="Map legend">
+                  <MapLayerLegend
+                    layerControls={layerControls}
+                    markers={filteredMarkers}
+                    intelOverlay={intelOverlay}
+                    onColorModeChange={onLegendColorMode}
+                  />
+                </div>
+                <MapIntelligencePanel
+                  siteId={intelSiteId}
+                  kpiKeys={chrome.kpiFields ?? []}
+                  endpointId={intelEndpointId}
+                  expanded={expanded}
+                  intelMode={intelMode}
+                  onIntelOverlay={setIntelOverlay}
+                />
+              </div>
             </div>
-            <aside className="dash-map-widget__expanded-layer-col" aria-label="Map layers and legend">
-              <div className="dash-map-widget__layer-tools dash-map-widget__layer-tools--row1">
-                <MapLayerControlPanel value={layerControls} onChange={setLayerControls} />
-              </div>
-              <div className="dash-map-widget__legend-row" aria-label="Map legend">
-                <MapLayerLegend layerControls={layerControls} markers={filteredMarkers} intelOverlay={intelOverlay} />
-              </div>
-            </aside>
           </div>
         ) : isEnterprise ? (
           <div className="dash-map-widget__enterprise-grid">

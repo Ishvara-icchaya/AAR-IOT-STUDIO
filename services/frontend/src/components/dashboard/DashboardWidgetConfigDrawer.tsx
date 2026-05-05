@@ -6,6 +6,7 @@ import { DashboardChartConfigSection } from "./DashboardChartConfigSection";
 import * as dashApi from "@/api/dashboard";
 import { DashboardWidgetView } from "./DashboardWidgetView";
 import { inferDashboardSourceMode } from "@/lib/dashboard/inferDashboardSourceMode";
+import { derivedMapTrackMode } from "@/lib/dashboard/mapWidgetTrack";
 import { EndpointGroupPickerField, IndividualDevicePickerField } from "./DashboardSourcePickers";
 
 function findWidget(
@@ -39,19 +40,29 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
   const [draft, setDraft] = useState<DashboardWidgetModel | null>(null);
   const [singlePreview, setSinglePreview] = useState<Awaited<ReturnType<typeof dashApi.previewDashboard>> | null>(null);
   const [collectionOptions, setCollectionOptions] = useState<dashApi.ResolvedDeviceCollectionSourceItem[]>([]);
+  const [debugModalOpen, setDebugModalOpen] = useState(false);
 
   useEffect(() => {
     setDraft(base);
   }, [base, open, target?.rowId, target?.columnId]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setDebugModalOpen(false);
+      return;
+    }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") closeDrawer();
+      if (e.key === "Escape") {
+        if (debugModalOpen) {
+          setDebugModalOpen(false);
+          return;
+        }
+        closeDrawer();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, closeDrawer]);
+  }, [open, closeDrawer, debugModalOpen]);
 
   useEffect(() => {
     if (!open || !siteId) {
@@ -159,7 +170,7 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
   const previewMarkerCount = Array.isArray(previewMarkers) ? previewMarkers.length : null;
   const mapCfgRec = draft.type === "map" ? (draft.config as Record<string, unknown>) : {};
   const mapTrackStr =
-    draft.type === "map" ? (String(mapCfgRec.mapTrackMode ?? "site").trim() || "site") : "";
+    draft.type === "map" ? derivedMapTrackMode(mapCfgRec as Record<string, unknown>) : "site";
   const maxDirectVal =
     draft.type === "map" &&
     typeof mapCfgRec.maxDirectMarkers === "number" &&
@@ -276,8 +287,8 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
     });
   }
 
-  const rightRail = (
-    <aside className="dash-widget-config-shell__right" aria-label="Preview and binding summary">
+  const widgetPreviewAndSummary = (
+    <>
       <h3 className="dash-widget-config-rail__h">Preview</h3>
       <div className="dash-widget-config-preview-pane dash-widget-config-preview-pane--rail">
         {previewWidgetNoTitle ? (
@@ -311,6 +322,12 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
           ))}
         </ul>
       )}
+    </>
+  );
+
+  const rightRail = (
+    <aside className="dash-widget-config-shell__right" aria-label="Preview and binding summary">
+      {widgetPreviewAndSummary}
     </aside>
   );
 
@@ -442,17 +459,53 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                   </div>
                 </details>
 
-                <details className="dash-widget-config-accordion">
-                  <summary className="dash-widget-config-accordion__summary">Advanced / Debug</summary>
-                  <div className="dash-widget-config-accordion__body">
-                    <p className="dash-widget__muted dash-widget-config-accordion__hint">
-                      Raw widget JSON for support and migrations.
-                    </p>
-                    <pre className="dash-widget-config-debug-pre">{JSON.stringify(draft, null, 2)}</pre>
-                  </div>
-                </details>
+                <div className="dash-widget-config-advanced-launch">
+                  <button type="button" className="dash-btn dash-btn--secondary" onClick={() => setDebugModalOpen(true)}>
+                    Open debug JSON…
+                  </button>
+                </div>
               </div>
               {rightRail}
+            </div>
+          ) : draft.type === "map" ? (
+            <div className="dash-widget-config-shell dash-widget-config-shell--map4">
+              <DashboardBindingEditor
+                widget={draft}
+                onChange={setDraft}
+                disabled={frozen}
+                siteId={siteId}
+                collectionOptions={collectionOptions}
+                mapConfigureFourColumn
+                mapBasicSlot={
+                  <details className="dash-widget-config-accordion" open>
+                    <summary className="dash-widget-config-accordion__summary">Basic</summary>
+                    <div className="dash-widget-config-accordion__body">
+                      <label className="dash-drawer__label">
+                        Title
+                        <input
+                          className="dash-drawer__input"
+                          value={draft.title}
+                          disabled={frozen}
+                          onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                        />
+                      </label>
+                      <p className="dash-widget__muted dash-widget-config-readonly-type">
+                        Widget type: <strong>{humanizeWidgetType(draft.type)}</strong>
+                      </p>
+                    </div>
+                  </details>
+                }
+                mapPreviewColumn={
+                  <div className="dash-widget-config-map4-preview-inner">{widgetPreviewAndSummary}</div>
+                }
+                mapCol1Footer={
+                  <div className="dash-widget-config-advanced-launch">
+                    <button type="button" className="dash-btn dash-btn--secondary" onClick={() => setDebugModalOpen(true)}>
+                      Open debug JSON…
+                    </button>
+                  </div>
+                }
+              />
             </div>
           ) : (
             <div className="dash-widget-config-shell">
@@ -483,15 +536,11 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
                   collectionOptions={collectionOptions}
                 />
 
-                <details className="dash-widget-config-accordion">
-                  <summary className="dash-widget-config-accordion__summary">Advanced / Debug</summary>
-                  <div className="dash-widget-config-accordion__body">
-                    <p className="dash-widget__muted dash-widget-config-accordion__hint">
-                      Raw widget JSON for support and migrations.
-                    </p>
-                    <pre className="dash-widget-config-debug-pre">{JSON.stringify(draft, null, 2)}</pre>
-                  </div>
-                </details>
+                <div className="dash-widget-config-advanced-launch">
+                  <button type="button" className="dash-btn dash-btn--secondary" onClick={() => setDebugModalOpen(true)}>
+                    Open debug JSON…
+                  </button>
+                </div>
               </div>
               {rightRail}
             </div>
@@ -508,6 +557,47 @@ export function DashboardWidgetConfigDrawer({ dashboardId }: { dashboardId: stri
           </button>
         </footer>
       </div>
+      {debugModalOpen ? (
+        <div
+          className="dash-widget-config-debug-backdrop"
+          role="presentation"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDebugModalOpen(false);
+          }}
+        >
+          <div
+            className="dash-widget-config-debug-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dash-config-debug-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="dash-widget-config-debug-modal__head">
+              <h3 id="dash-config-debug-title">Advanced / Debug</h3>
+              <button
+                type="button"
+                className="dash-drawer__close"
+                aria-label="Close debug"
+                onClick={() => setDebugModalOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="dash-widget-config-debug-modal__body">
+              <p className="dash-widget__muted dash-widget-config-accordion__hint">
+                Raw widget JSON for support and migrations.
+              </p>
+              <pre className="dash-widget-config-debug-modal__pre">{JSON.stringify(draft, null, 2)}</pre>
+            </div>
+            <footer className="dash-widget-config-debug-modal__foot">
+              <button type="button" className="dash-btn dash-btn--accent" onClick={() => setDebugModalOpen(false)}>
+                Close
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

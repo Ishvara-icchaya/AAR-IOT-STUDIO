@@ -1,4 +1,4 @@
-import type { MapLayerControls, MapLayerColorMode } from "@/lib/dashboard/mapLayerControls";
+import type { MapLayerControls } from "@/lib/dashboard/mapLayerControls";
 
 type Props = {
   value: MapLayerControls;
@@ -11,9 +11,9 @@ function patch<K extends keyof MapLayerControls>(cur: MapLayerControls, key: K, 
 
 export function MapLayerControlPanel({ value: lc, onChange }: Props) {
   return (
-    <section className="dash-map-layers" aria-labelledby="dash-map-layers-title">
-      <h4 id="dash-map-layers-title" className="dash-map-layers__title">
-        Map display
+    <section className="dash-map-layers" aria-labelledby="dash-map-layers-heading">
+      <h4 id="dash-map-layers-heading" className="dash-map-layers__title">
+        Map layers
       </h4>
       <div
         className="dash-map-layers__single-line"
@@ -116,29 +116,6 @@ export function MapLayerControlPanel({ value: lc, onChange }: Props) {
               <span>Offline only</span>
             </label>
       </div>
-
-      <fieldset className="dash-map-layers__fieldset dash-map-layers__fieldset--color-below">
-        <legend className="dash-map-layers__legend">Color by</legend>
-        <div className="dash-map-layers__band-cols dash-map-layers__band-cols--tight dash-map-layers__band-cols--color-row">
-          {(
-            [
-              ["health", "Health"],
-              ["group", "Endpoint group"],
-              ["device", "Device"],
-            ] as const
-          ).map(([mode, label]) => (
-            <label key={mode} className="dash-map-layers__radio dash-map-layers__cell">
-              <input
-                type="radio"
-                name="map-layer-color"
-                checked={lc.colorMode === mode}
-                onChange={() => onChange(patch(lc, "colorMode", mode as MapLayerColorMode))}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
     </section>
   );
 }

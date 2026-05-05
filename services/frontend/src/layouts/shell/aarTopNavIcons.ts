@@ -1,16 +1,4 @@
-import {
-  Activity,
-  Bell,
-  Bot,
-  ChevronDown,
-  DatabaseZap,
-  LayoutDashboard,
-  RefreshCw,
-  Server,
-  Settings,
-  UserCircle,
-  Workflow,
-} from "lucide-react";
+import { Activity, Bell, Bot, ChevronDown, DatabaseZap, LayoutDashboard, RefreshCw, Server, Settings, UserCircle, Workflow } from "lucide-react";
 
 export const NAV_ICONS = {
   devices: Server,
@@ -18,8 +6,8 @@ export const NAV_ICONS = {
   registerEndpoint: Bot,
   workflows: Workflow,
   dashboards: LayoutDashboard,
-  ai: Bot,
   monitoring: Activity,
+  ai: Bot,
   settings: Settings,
   alerts: Bell,
   refresh: RefreshCw,

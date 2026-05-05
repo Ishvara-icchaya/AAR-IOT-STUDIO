@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/api/client";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
 import "./device-register-page.css";
@@ -19,6 +20,8 @@ export function AdminSitesPage() {
   const [nameContains, setNameContains] = useState("");
   const [descContains, setDescContains] = useState("");
   const [page, setPage] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,19 +72,25 @@ export function AdminSitesPage() {
     if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
   }, [page, pageCount]);
 
-  async function onCreate(e: FormEvent) {
+  function openCreateModal() {
+    setCreateErr(null);
+    setName("");
+    setDescription("");
+    setCreateOpen(true);
+  }
+
+  async function onCreateSite(e: FormEvent) {
     e.preventDefault();
-    setErr(null);
+    setCreateErr(null);
     try {
       await apiFetch("/administration/sites", {
         method: "POST",
-        json: { name, description: description || null },
+        json: { name: name.trim(), description: description.trim() || null },
       });
-      setName("");
-      setDescription("");
+      setCreateOpen(false);
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Create failed (admin only)");
+      setCreateErr(e instanceof Error ? e.message : "Create failed (admin only)");
     }
   }
 
@@ -119,6 +128,11 @@ export function AdminSitesPage() {
         </section>
 
         <section className="dm-filter-panel" aria-label="Filters and create site">
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.35rem" }}>
+            <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
+              Create site
+            </button>
+          </div>
           <div className="dm-controls-form__row">
             <label className="dm-filter-field dm-filter-field--grow">
               <span className="dm-filter-field__label">Name contains</span>
@@ -139,25 +153,46 @@ export function AdminSitesPage() {
               />
             </label>
           </div>
-          <form className="dm-controls-form__row" style={{ marginTop: "0.55rem" }} onSubmit={onCreate}>
-            <label className="dm-filter-field dm-filter-field--grow">
-              <span className="dm-filter-field__label">New site name</span>
+        </section>
+
+        <AppModalShell
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          title="Create site"
+          subtitle="New site for this tenant."
+          size="xl"
+          dialogClassName="scrubber-raw-select-modal admin-modal--form admin-modal--narrow"
+        >
+          <form className="admin-modal-form" onSubmit={onCreateSite}>
+            {createErr ? (
+              <p className="admin-modal-form__err" role="alert">
+                {createErr}
+              </p>
+            ) : null}
+            <label className="admin-modal-form__field">
+              <span>Site name</span>
               <input type="text" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Site name" />
             </label>
-            <label className="dm-filter-field dm-filter-field--grow">
-              <span className="dm-filter-field__label">Description (optional)</span>
-              <input
-                type="text"
+            <label className="admin-modal-form__field">
+              <span>Description</span>
+              <textarea
+                rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Short note for operators"
+                placeholder="Optional description for operators"
+                style={{ resize: "vertical", minHeight: "5rem" }}
               />
             </label>
-            <button type="submit" className="dm-btn dm-btn--primary" style={{ marginBottom: "0.12rem" }}>
-              Create site
-            </button>
+            <div className="admin-modal-form__actions">
+              <button type="button" className="dm-btn dm-btn--secondary" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="dm-btn dm-btn--primary">
+                Create site
+              </button>
+            </div>
           </form>
-        </section>
+        </AppModalShell>
 
         <div className="dm-table-wrap">
           {loading && items.length === 0 ? (

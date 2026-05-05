@@ -132,6 +132,16 @@
   min-height: 0;
 }
 
+/* Administration create-user / create-site: ~40% narrower than default scrubber raw modal (1200px → 720px) */
+.scrubber-raw-select-modal.admin-modal--form.admin-modal--narrow {
+  max-width: min(720px, 100%);
+}
+
+/* Administration create-user / create-site: same shell sizing, form scrolls inside body */
+.scrubber-raw-select-modal.admin-modal--form .app-modal__body {
+  overflow: auto;
+}
+
 .scrubber-raw-select-modal__body {
   display: flex;
   flex-direction: column;
@@ -200,4 +210,90 @@ button.scrubber-raw-sort-th {
 
 button.scrubber-raw-sort-th:hover {
   color: var(--color-accent, #1d76ff);
+}
+
+/* Administration modals — single column form */
+.admin-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 32rem;
+}
+
+.admin-modal-form__err {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius, 8px);
+  background: color-mix(in oklab, #b45309 12%, transparent);
+  color: var(--color-text, #f4f6f8);
+  font-size: 0.86rem;
+}
+
+.admin-modal-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #9aa3b2);
+}
+
+.admin-modal-form__field > span {
+  font-weight: 600;
+}
+
+.admin-modal-form__field input,
+.admin-modal-form__field select {
+  padding: 0.45rem 0.55rem;
+  border-radius: var(--radius, 8px);
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  background: var(--color-bg, #0a0e14);
+  color: var(--color-text, #f4f6f8);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.admin-modal-form__fieldset {
+  margin: 0;
+  padding: 0.55rem 0.65rem 0.65rem;
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: var(--radius, 8px);
+}
+
+.admin-modal-form__fieldset legend {
+  padding: 0 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--color-text-muted, #9aa3b2);
+}
+
+.admin-modal-form__hint {
+  margin: 0 0 0.4rem;
+  font-size: 0.76rem;
+  color: var(--color-text-muted, #9aa3b2);
+  line-height: 1.4;
+}
+
+.admin-modal-form__site-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.admin-modal-form__check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--color-text, #f4f6f8);
+  cursor: pointer;
+}
+
+.admin-modal-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
 }

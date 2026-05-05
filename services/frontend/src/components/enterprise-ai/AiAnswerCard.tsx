@@ -14,6 +14,12 @@ function formatUtcRange(ev: AIChatResponse["evidence"]) {
   }
 }
 
+function degradedSummaryHint(res: AIChatResponse): string {
+  const merged = [...(res.warnings ?? []), ...(res.evidence?.warnings ?? [])];
+  const detail = merged.find((s) => /llm|summar|ollama|model|unavailable/i.test(s));
+  return detail?.trim() || "Structured retrieval ran; the optional summarization model did not produce text for this response.";
+}
+
 export function AiAnswerCard({
   res,
   emptyStyle = "default",
@@ -49,8 +55,8 @@ export function AiAnswerCard({
           {mode === "structured_plus_llm" ? "Structured + LLM" : "Structured only"}
         </AarPill>
         {res.degraded ? (
-          <AarPill tone="warn" title="Answer uses structured retrieval only; the summarization model did not run.">
-            LLM unavailable
+          <AarPill tone="warn" title={degradedSummaryHint(res)}>
+            No model summary
           </AarPill>
         ) : null}
         {clamped ? (

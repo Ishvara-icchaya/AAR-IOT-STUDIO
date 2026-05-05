@@ -2,9 +2,12 @@ import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { apiFetch } from "@/api/client";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import { PageStatus } from "@/components/PageStatus";
 import { PageShell } from "@/layouts/PageShell";
 import "./device-register-page.css";
+
+type SiteOpt = { id: string; name: string; description: string | null };
 
 type UserRow = {
   id: string;
@@ -29,6 +32,11 @@ export function AdminUsersPage() {
   const [activeFilter, setActiveFilter] = useState<"all" | "yes" | "no">("all");
   const [nameContains, setNameContains] = useState("");
   const [page, setPage] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [tenantSites, setTenantSites] = useState<SiteOpt[]>([]);
+  const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,6 +55,19 @@ export function AdminUsersPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadTenantSites = useCallback(async () => {
+    try {
+      const data = await apiFetch<SiteOpt[]>("/administration/sites");
+      setTenantSites(data ?? []);
+    } catch {
+      setTenantSites([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadTenantSites();
+  }, [loadTenantSites]);
 
   const filtered = useMemo(() => {
     const ec = emailContains.trim().toLowerCase();
@@ -89,19 +110,39 @@ export function AdminUsersPage() {
     if (page > pageCount - 1) setPage(Math.max(0, pageCount - 1));
   }, [page, pageCount]);
 
-  async function onCreate(e: FormEvent) {
+  function openCreateModal() {
+    setCreateErr(null);
+    setEmail("");
+    setPassword("");
+    setUsername("");
+    setRole("operator");
+    setSelectedSiteIds([]);
+    setCreateOpen(true);
+    void loadTenantSites();
+  }
+
+  function toggleUserSite(sid: string) {
+    setSelectedSiteIds((prev) => (prev.includes(sid) ? prev.filter((x) => x !== sid) : [...prev, sid]));
+  }
+
+  async function onCreateUser(e: FormEvent) {
     e.preventDefault();
-    setErr(null);
+    setCreateErr(null);
     try {
       await apiFetch("/administration/users", {
         method: "POST",
-        json: { email, password, role, site_ids: [] },
+        json: {
+          email: email.trim(),
+          password,
+          full_name: username.trim() || null,
+          role,
+          site_ids: selectedSiteIds,
+        },
       });
-      setEmail("");
-      setPassword("");
+      setCreateOpen(false);
       await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Create failed");
+      setCreateErr(e instanceof Error ? e.message : "Create failed");
     }
   }
 
@@ -167,6 +208,11 @@ export function AdminUsersPage() {
         </section>
 
         <section className="dm-filter-panel" aria-label="Filters and create user">
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.35rem" }}>
+            <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateModal}>
+              Create user
+            </button>
+          </div>
           <div className="dm-controls-form__row">
             <label className="dm-filter-field dm-filter-field--grow">
               <span className="dm-filter-field__label">Email contains</span>
@@ -203,40 +249,81 @@ export function AdminUsersPage() {
               </select>
             </label>
           </div>
-          <form className="dm-controls-form__row" style={{ marginTop: "0.55rem" }} onSubmit={onCreate}>
-            <label className="dm-filter-field dm-filter-field--grow">
-              <span className="dm-filter-field__label">New email</span>
+        </section>
+
+        <AppModalShell
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          title="Create user"
+          subtitle="New platform account for this tenant."
+          size="xl"
+          dialogClassName="scrubber-raw-select-modal admin-modal--form admin-modal--narrow"
+        >
+          <form className="admin-modal-form" onSubmit={onCreateUser}>
+            {createErr ? (
+              <p className="admin-modal-form__err" role="alert">
+                {createErr}
+              </p>
+            ) : null}
+            <label className="admin-modal-form__field">
+              <span>Username</span>
               <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@example.com"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Display name (optional)"
               />
             </label>
-            <label className="dm-filter-field dm-filter-field--grow">
-              <span className="dm-filter-field__label">Password (min 8)</span>
+            <label className="admin-modal-form__field">
+              <span>Email</span>
+              <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" />
+            </label>
+            <label className="admin-modal-form__field">
+              <span>Password</span>
               <input
                 type="password"
                 required
                 minLength={8}
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Minimum 8 characters"
               />
             </label>
-            <label className="dm-filter-field">
-              <span className="dm-filter-field__label">Role</span>
+            <label className="admin-modal-form__field">
+              <span>Role</span>
               <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "operator")}>
                 <option value="operator">operator</option>
                 <option value="admin">admin</option>
               </select>
             </label>
-            <button type="submit" className="dm-btn dm-btn--primary" style={{ marginBottom: "0.12rem" }}>
-              Create user
-            </button>
+            <fieldset className="admin-modal-form__fieldset">
+              <legend>Site visibility</legend>
+              <p className="admin-modal-form__hint">Choose which sites this user may access. Operators typically need at least one site.</p>
+              <div className="admin-modal-form__site-grid">
+                {tenantSites.length === 0 ? (
+                  <span className="admin-modal-form__hint">No sites in tenant — create a site first.</span>
+                ) : (
+                  tenantSites.map((s) => (
+                    <label key={s.id} className="admin-modal-form__check">
+                      <input type="checkbox" checked={selectedSiteIds.includes(s.id)} onChange={() => toggleUserSite(s.id)} />
+                      <span>{s.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </fieldset>
+            <div className="admin-modal-form__actions">
+              <button type="button" className="dm-btn dm-btn--secondary" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="dm-btn dm-btn--primary">
+                Create user
+              </button>
+            </div>
           </form>
-        </section>
+        </AppModalShell>
 
         <div className="dm-table-wrap">
           {loading && items.length === 0 ? (

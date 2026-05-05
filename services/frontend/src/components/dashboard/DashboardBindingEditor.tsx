@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   getLatestDeviceStateFieldMetadata,
   getResultObjectFieldMetadata,
@@ -8,7 +8,11 @@ import type { DashboardWidgetModel } from "@/types/dashboardLayout";
 import * as dashApi from "@/api/dashboard";
 import { listDevices, type DeviceRead } from "@/api/devices";
 import { listEndpoints, type EndpointRead } from "@/api/endpoints";
-import { EndpointGroupPickerField, IndividualDevicePickerField } from "./DashboardSourcePickers";
+import {
+  EndpointGroupPickerField,
+  formatEndpointGroupOptionLabel,
+  IndividualDevicePickerField,
+} from "./DashboardSourcePickers";
 import { inferDashboardSourceMode } from "@/lib/dashboard/inferDashboardSourceMode";
 import {
   mergeMapLayerControls,
@@ -16,6 +20,12 @@ import {
   type MapLayerControls,
   type MapLayerFilterMode,
 } from "@/lib/dashboard/mapLayerControls";
+import {
+  derivedMapTrackMode,
+  mapEndpointRowComplete,
+  mapEndpointRows,
+  normalizeMapEndpointEntries,
+} from "@/lib/dashboard/mapWidgetTrack";
 
 type FieldPathPickerProps = {
   label: string;
@@ -75,6 +85,11 @@ type Props = {
   siteId?: string | null;
   /** Resolved endpoint groups for KPI/table/device/chart source pickers (builder preloads). */
   collectionOptions?: dashApi.ResolvedDeviceCollectionSourceItem[];
+  /** Map widget: four-column configure layout (drawer supplies basic + preview slots). */
+  mapConfigureFourColumn?: boolean;
+  mapBasicSlot?: ReactNode;
+  mapPreviewColumn?: ReactNode;
+  mapCol1Footer?: ReactNode;
 };
 
 export function DashboardBindingEditor({
@@ -83,6 +98,10 @@ export function DashboardBindingEditor({
   disabled,
   siteId,
   collectionOptions = [],
+  mapConfigureFourColumn = false,
+  mapBasicSlot = null,
+  mapPreviewColumn = null,
+  mapCol1Footer = null,
 }: Props) {
   const b = widget.binding;
   const c = widget.config;
@@ -104,7 +123,10 @@ export function DashboardBindingEditor({
 
   const needsSource = !["text", "health_summary", "alert_summary", "site_summary"].includes(widget.type);
   const mapAuto = widget.type === "map" && (c.autoIncludeGpsObjects !== false);
-  const mapTrackMode = String(c.mapTrackMode ?? "site").trim() || "site";
+  const mapTrackUi = useMemo(
+    () => derivedMapTrackMode(c as Record<string, unknown>),
+    [c.mapTrackMode, c.mapEndpointGroupEntries, c.mapDeviceIds],
+  );
   const sourceMode = inferDashboardSourceMode(widget.binding);
   const layerControls = mergeMapLayerControls(c.mapLayerControls);
 
@@ -119,6 +141,9 @@ export function DashboardBindingEditor({
   const sourceTypeBind = (b.sourceType as string) || "latest_device_state";
   const [fieldMeta, setFieldMeta] = useState<PayloadFieldEntry[]>([]);
   const [fieldMetaLoading, setFieldMetaLoading] = useState(false);
+  const [mapDeviceFilter, setMapDeviceFilter] = useState("");
+  const [mapEligibleFilter, setMapEligibleFilter] = useState("");
+  const [epGroupFilter, setEpGroupFilter] = useState("");
 
   useEffect(() => {
     const needsMeta =
@@ -213,6 +238,636 @@ export function DashboardBindingEditor({
       ? raw.filter((x) => !(x.sourceType === item.source_type && x.sourceId === item.source_id))
       : [...raw, { sourceType: item.source_type, sourceId: item.source_id }];
     patchConfig({ includedSources: next });
+  }
+
+  function toggleCollectionOpt(opt: dashApi.ResolvedDeviceCollectionSourceItem) {
+    const norm = normalizeMapEndpointEntries(mapEndpointRows(c as Record<string, unknown>));
+    const ix = norm.findIndex((e) => e.endpointId === opt.endpoint_id && e.objectName === opt.object_name);
+    const next = ix >= 0 ? norm.filter((_, i) => i !== ix) : [...norm, { endpointId: opt.endpoint_id, objectName: opt.object_name }];
+    const meaningful = next.filter((e) => e.endpointId.trim() && e.objectName.trim());
+    if (!meaningful.length) {
+      patchConfig({ mapEndpointGroupEntries: [], mapTrackMode: "site", autoIncludeGpsObjects: true });
+      return;
+    }
+    patchConfig({ mapEndpointGroupEntries: next, mapTrackMode: "endpoint_groups", autoIncludeGpsObjects: false });
+  }
+
+  function patchEndpointGroupRows(rows: Record<string, unknown>[]) {
+    const anyComplete = rows.some((r) => mapEndpointRowComplete(r));
+    patchConfig({
+      mapEndpointGroupEntries: rows,
+      ...(anyComplete ? { mapTrackMode: "endpoint_groups", autoIncludeGpsObjects: false } : {}),
+    });
+  }
+
+  function renderMapDataSourceAccordion() {
+    if (!needsSource || widget.type !== "map") return null;
+    return (
+      <details className="dash-widget-config-accordion" open>
+        <summary className="dash-widget-config-accordion__summary">Data source</summary>
+        <div className="dash-widget-config-accordion__body">
+          <label className="dash-drawer__label dash-drawer__check">
+            <input
+              type="checkbox"
+              checked={c.autoIncludeGpsObjects !== false}
+              disabled={disabled}
+              onChange={(e) => patchConfig({ autoIncludeGpsObjects: e.target.checked })}
+            />
+            Auto-include all GPS-capable objects for this site
+          </label>
+
+          {c.autoIncludeGpsObjects !== false && (
+            <label className="dash-drawer__label">
+              Excluded source IDs (comma-separated)
+              <input
+                className="dash-drawer__input"
+                value={(c.excludedSourceIds as string[])?.join(", ") ?? ""}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ excludedSourceIds: parseList(e.target.value) })}
+              />
+            </label>
+          )}
+
+          {mapAuto && siteId && mapTrackUi !== "endpoint_groups" && (
+            <div className="dash-drawer__label">
+              <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                Devices on map — leave all unchecked for every device; check to limit markers
+              </span>
+              <input
+                className="dash-drawer__input dash-widget-config-msfilter"
+                placeholder="Filter devices…"
+                value={mapDeviceFilter}
+                disabled={disabled}
+                onChange={(e) => setMapDeviceFilter(e.target.value)}
+                aria-label="Filter device list"
+              />
+              <div className="dash-widget-config-msgrid">
+                {mapSiteDevices.length === 0 ? (
+                  <span className="dash-widget__muted">No devices or loading…</span>
+                ) : (
+                  mapSiteDevices
+                    .filter((d) => {
+                      const q = mapDeviceFilter.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (d.name ?? "").toLowerCase().includes(q) ||
+                        d.id.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((d) => {
+                      const allowed = (c.mapDeviceIds as string[] | undefined) ?? [];
+                      const allIds = mapSiteDevices.map((x) => x.id);
+                      const restrict = allowed.length > 0;
+                      const checked = !restrict || allowed.includes(d.id);
+                      return (
+                        <label key={d.id} className="dash-widget-config-msgrid__chk">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={() => {
+                              const cur = (c.mapDeviceIds as string[] | undefined) ?? [];
+                              let nextIds: string[];
+                              if (!restrict) {
+                                nextIds = allIds.filter((id) => id !== d.id);
+                              } else if (cur.includes(d.id)) {
+                                nextIds = cur.filter((id) => id !== d.id);
+                              } else {
+                                const cand = [...cur, d.id];
+                                const setNext = new Set(cand);
+                                nextIds =
+                                  allIds.length > 0 && allIds.every((id) => setNext.has(id)) ? [] : cand;
+                              }
+                              patchConfig({
+                                mapDeviceIds: nextIds,
+                                mapTrackMode: nextIds.length > 0 ? "devices" : "site",
+                              });
+                            }}
+                          />
+                          <span className="dash-widget-config-msgrid__lbl">
+                            {d.name}{" "}
+                            <span className="dash-widget__muted">({d.id.slice(0, 8)}…)</span>
+                          </span>
+                        </label>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          )}
+
+          {!mapAuto && siteId && mapTrackUi !== "endpoint_groups" && (
+            <div className="dash-drawer__label">
+              <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                Map objects (eligible — multiselect)
+              </span>
+              <input
+                className="dash-drawer__input dash-widget-config-msfilter"
+                placeholder="Filter objects…"
+                value={mapEligibleFilter}
+                disabled={disabled}
+                onChange={(e) => setMapEligibleFilter(e.target.value)}
+                aria-label="Filter eligible map objects"
+              />
+              <div className="dash-widget-config-msgrid">
+                {eligibleMap.length === 0 ? (
+                  <span className="dash-widget__muted">No eligible objects or loading…</span>
+                ) : (
+                  eligibleMap
+                    .filter((item) => {
+                      const q = mapEligibleFilter.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (item.name ?? "").toLowerCase().includes(q) ||
+                        item.source_id.toLowerCase().includes(q) ||
+                        (item.source_type ?? "").toLowerCase().includes(q)
+                      );
+                    })
+                    .map((item) => {
+                      const checked = (
+                        (c.includedSources as Array<{ sourceType: string; sourceId: string }>) ?? []
+                      ).some((x) => x.sourceType === item.source_type && x.sourceId === item.source_id);
+                      return (
+                        <label key={`${item.source_type}:${item.source_id}`} className="dash-widget-config-msgrid__chk">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={() => toggleIncluded(item)}
+                          />
+                          <span className="dash-widget-config-msgrid__lbl">
+                            {item.name}{" "}
+                            <span className="dash-widget__muted">
+                              ({item.source_type} · {item.source_id.slice(0, 8)}…)
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+          )}
+
+          {!mapAuto && (
+            <p className="dash-widget__muted" style={{ fontSize: "0.8rem" }}>
+              Pick a source below. Required when auto GPS is off.
+            </p>
+          )}
+
+          {siteId ? (
+            <div className="dash-widget-config-track-line">
+              <span className="dash-widget__muted">Mode:</span>{" "}
+              <strong>
+                {mapTrackUi === "endpoint_groups"
+                  ? "Endpoint groups"
+                  : mapTrackUi === "devices"
+                    ? "Filtered devices"
+                    : "Site GPS"}
+              </strong>
+              <span className="dash-widget-config-track-line__actions">
+                {mapTrackUi === "endpoint_groups" ? (
+                  <button
+                    type="button"
+                    className="dash-link"
+                    disabled={disabled}
+                    onClick={() =>
+                      patchConfig({
+                        mapTrackMode: "site",
+                        mapEndpointGroupEntries: [],
+                        autoIncludeGpsObjects: true,
+                        mapDeviceIds: [],
+                      })
+                    }
+                  >
+                    Use site GPS
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="dash-link"
+                    disabled={disabled}
+                    onClick={() =>
+                      patchConfig({
+                        mapTrackMode: "endpoint_groups",
+                        autoIncludeGpsObjects: false,
+                        mapEndpointGroupEntries: [{ endpointId: "", objectName: "" }],
+                      })
+                    }
+                  >
+                    Use endpoint groups…
+                  </button>
+                )}
+              </span>
+            </div>
+          ) : null}
+          {mapTrackUi === "endpoint_groups" && siteId ? (
+            collectionOptions.length > 0 ? (
+              <div className="dash-drawer__label">
+                <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                  Endpoint groups (multi-select)
+                </span>
+                <input
+                  className="dash-drawer__input dash-widget-config-msfilter"
+                  placeholder="Filter groups…"
+                  value={epGroupFilter}
+                  disabled={disabled}
+                  onChange={(e) => setEpGroupFilter(e.target.value)}
+                  aria-label="Filter endpoint groups"
+                />
+                <div className="dash-widget-config-msgrid">
+                  {collectionOptions
+                    .filter((opt) => {
+                      const q = epGroupFilter.trim().toLowerCase();
+                      if (!q) return true;
+                      return formatEndpointGroupOptionLabel(opt).toLowerCase().includes(q);
+                    })
+                    .map((opt) => {
+                      const norm = normalizeMapEndpointEntries(
+                        mapEndpointRows(c as Record<string, unknown>),
+                      );
+                      const checked = norm.some(
+                        (e) => e.endpointId === opt.endpoint_id && e.objectName === opt.object_name,
+                      );
+                      return (
+                        <label key={`${opt.endpoint_id}|${opt.object_name}`} className="dash-widget-config-msgrid__chk">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={() => toggleCollectionOpt(opt)}
+                          />
+                          <span className="dash-widget-config-msgrid__lbl" title={formatEndpointGroupOptionLabel(opt)}>
+                            {formatEndpointGroupOptionLabel(opt)}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : (
+              <div className="dash-drawer__label">
+                <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
+                  Endpoint groups (one or more)
+                </span>
+                {(Array.isArray(c.mapEndpointGroupEntries)
+                  ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                  : []
+                ).map((row, idx) => {
+                  const eid = String(row.endpointId ?? row.endpoint_id ?? "");
+                  const oname = String(row.objectName ?? row.object_name ?? "");
+                  return (
+                    <div
+                      key={`meg-${idx}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr auto",
+                        gap: "0.35rem",
+                        marginBottom: "0.35rem",
+                        alignItems: "end",
+                      }}
+                    >
+                      <label style={{ fontSize: "0.8rem" }}>
+                        Endpoint
+                        <select
+                          className="dash-drawer__input"
+                          disabled={disabled}
+                          value={eid}
+                          onChange={(ev) => {
+                            const rows = [
+                              ...(Array.isArray(c.mapEndpointGroupEntries)
+                                ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                                : []),
+                            ];
+                            rows[idx] = { ...rows[idx], endpointId: ev.target.value };
+                            patchEndpointGroupRows(rows);
+                          }}
+                        >
+                          <option value="">Select…</option>
+                          {mapSiteEndpoints.map((ep) => (
+                            <option key={ep.id} value={ep.id}>
+                              {ep.endpoint_name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ fontSize: "0.8rem" }}>
+                        Object name
+                        <input
+                          className="dash-drawer__input"
+                          disabled={disabled}
+                          value={oname}
+                          placeholder="e.g. vehicle"
+                          onChange={(ev) => {
+                            const rows = [
+                              ...(Array.isArray(c.mapEndpointGroupEntries)
+                                ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                                : []),
+                            ];
+                            rows[idx] = { ...rows[idx], objectName: ev.target.value };
+                            patchEndpointGroupRows(rows);
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="dash-drawer__input"
+                        style={{ padding: "0.15rem 0.35rem", cursor: "pointer" }}
+                        disabled={disabled}
+                        title="Remove group"
+                        onClick={() => {
+                          const rows = [
+                            ...(Array.isArray(c.mapEndpointGroupEntries)
+                              ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                              : []),
+                          ];
+                          rows.splice(idx, 1);
+                          if (!rows.length) {
+                            patchConfig({
+                              mapEndpointGroupEntries: [],
+                              mapTrackMode: "site",
+                              autoIncludeGpsObjects: true,
+                            });
+                            return;
+                          }
+                          patchEndpointGroupRows(rows);
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="dash-drawer__input"
+                  style={{ marginTop: "0.25rem", padding: "0.25rem 0.5rem", cursor: "pointer" }}
+                  disabled={disabled}
+                  onClick={() => {
+                    const rows = [
+                      ...(Array.isArray(c.mapEndpointGroupEntries)
+                        ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
+                        : []),
+                    ];
+                  patchEndpointGroupRows([...rows, { endpointId: "", objectName: "" }]);
+                }}
+              >
+                + Add group
+              </button>
+              </div>
+            )
+          ) : null}
+        </div>
+      </details>
+    );
+  }
+
+  function renderMapBehaviorAccordion() {
+    if (widget.type !== "map") return null;
+    return (
+      <details className="dash-widget-config-accordion" open>
+        <summary className="dash-widget-config-accordion__summary">Map behavior</summary>
+        <div className="dash-widget-config-accordion__body">
+          <div className="dash-widget-config-grid-behavior">
+            <label className="dash-widget-config-behavior__cell dash-drawer__label dash-drawer__check">
+              <input
+                type="checkbox"
+                checked={c.mapAggregateByDevice === true}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ mapAggregateByDevice: e.target.checked })}
+              />
+              <span>One marker per device</span>
+            </label>
+            <label className="dash-widget-config-behavior__cell dash-drawer__label dash-drawer__check">
+              <input
+                type="checkbox"
+                checked={c.mapSmoothMarkers !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ mapSmoothMarkers: e.target.checked })}
+              />
+              <span>Smooth marker motion</span>
+            </label>
+            <label className="dash-widget-config-behavior__cell dash-drawer__label dash-drawer__check">
+              <input
+                type="checkbox"
+                checked={c.clusterMarkers !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ clusterMarkers: e.target.checked })}
+              />
+              <span>Cluster markers</span>
+            </label>
+            <label className="dash-widget-config-behavior__cell dash-drawer__label dash-drawer__check">
+              <input
+                type="checkbox"
+                checked={c.autoFitOnFirstLoad !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ autoFitOnFirstLoad: e.target.checked })}
+              />
+              <span>Auto-fit on first load</span>
+            </label>
+            <label className="dash-widget-config-behavior__cell dash-drawer__label dash-drawer__check">
+              <input
+                type="checkbox"
+                checked={c.autoFitOnRefresh === true}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ autoFitOnRefresh: e.target.checked })}
+              />
+              <span>Auto-fit on refresh</span>
+            </label>
+            <label className="dash-widget-config-behavior__cell dash-drawer__label dash-drawer__check">
+              <input
+                type="checkbox"
+                checked={c.preserveViewport !== false}
+                disabled={disabled}
+                onChange={(e) => patchConfig({ preserveViewport: e.target.checked })}
+              />
+              <span>Preserve viewport</span>
+            </label>
+          </div>
+          <label className="dash-drawer__label dash-widget-config-maxdirect">
+            Max direct markers before forcing clusters
+            <input
+              className="dash-drawer__input"
+              type="number"
+              min={10}
+              max={500}
+              value={typeof c.maxDirectMarkers === "number" ? c.maxDirectMarkers : 80}
+              disabled={disabled}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                patchConfig({ maxDirectMarkers: Number.isFinite(n) ? n : 80 });
+              }}
+            />
+          </label>
+        </div>
+      </details>
+    );
+  }
+
+  function renderMapDisplayAccordion() {
+    if (widget.type !== "map") return null;
+    return (
+      <details className="dash-widget-config-accordion" open>
+        <summary className="dash-widget-config-accordion__summary">Display &amp; layers</summary>
+        <div className="dash-widget-config-accordion__body">
+          <fieldset className="dash-widget-config-accordion__fieldset">
+            <legend className="dash-widget-config-accordion__legend">Color by</legend>
+            <div className="dash-widget-config-inline-radios">
+              {(
+                [
+                  ["health", "Health"],
+                  ["group", "Endpoint group"],
+                  ["device", "Device"],
+                ] as const
+              ).map(([mode, label]) => (
+                <label key={mode} className="dash-drawer__label dash-drawer__check">
+                  <input
+                    type="radio"
+                    name="dash-config-map-color"
+                    checked={layerControls.colorMode === mode}
+                    disabled={disabled}
+                    onChange={() => patchMapLayerControls({ colorMode: mode as MapLayerColorMode })}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="dash-drawer__label dash-drawer__check">
+            <input
+              type="checkbox"
+              checked={layerControls.showLabels}
+              disabled={disabled}
+              onChange={(e) => patchMapLayerControls({ showLabels: e.target.checked })}
+            />
+            Show labels on markers
+          </label>
+          <fieldset className="dash-widget-config-accordion__fieldset">
+            <legend className="dash-widget-config-accordion__legend">Stale / offline visibility</legend>
+            <div className="dash-widget-config-inline-radios">
+              {(
+                [
+                  ["all", "All markers"],
+                  ["stale", "Stale only"],
+                  ["offline", "Offline only"],
+                ] as const
+              ).map(([mode, label]) => (
+                <label key={mode} className="dash-drawer__label dash-drawer__check">
+                  <input
+                    type="radio"
+                    name="dash-config-map-filter"
+                    checked={layerControls.filterMode === mode}
+                    disabled={disabled}
+                    onChange={() => patchMapLayerControls({ filterMode: mode as MapLayerFilterMode })}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <p className="dash-widget__muted dash-widget-config-accordion__hint dash-widget-config-trace-hint">
+            Expanded map: trace route and replay head overlays (historical / intelligence).
+          </p>
+          <div className="dash-widget-config-grid-trace">
+            <label className="dash-drawer__label dash-drawer__check dash-widget-config-grid-trace__cell">
+              <input
+                type="checkbox"
+                checked={layerControls.showTraceRoute}
+                disabled={disabled}
+                onChange={(e) => patchMapLayerControls({ showTraceRoute: e.target.checked })}
+              />
+              <span>Show trace route</span>
+            </label>
+            <label className="dash-drawer__label dash-drawer__check dash-widget-config-grid-trace__cell">
+              <input
+                type="checkbox"
+                checked={layerControls.showReplayHead}
+                disabled={disabled}
+                onChange={(e) => patchMapLayerControls({ showReplayHead: e.target.checked })}
+              />
+              <span>Show replay head</span>
+            </label>
+          </div>
+        </div>
+      </details>
+    );
+  }
+
+  function renderMapFieldsSemanticsColumn() {
+    if (widget.type !== "map") return null;
+    return (
+      <>
+        <label className="dash-drawer__label">
+          KPI fields (comma-separated paths; overrides checklist on device tile)
+          <input
+            className="dash-drawer__input"
+            value={(b.kpiFields as string[])?.join(", ") ?? ""}
+            disabled={disabled}
+            onChange={(e) => patchBinding({ kpiFields: parseList(e.target.value) })}
+          />
+        </label>
+        <div className="dash-widget-config-grid-latlon">
+          <FieldPathPicker
+            label="Latitude field"
+            value={String(b.latitudeField ?? "gps.lat")}
+            onChange={(v) => patchBinding({ latitudeField: v || "gps.lat" })}
+            meta={fieldMeta}
+            loading={fieldMetaLoading}
+            disabled={disabled}
+          />
+          <FieldPathPicker
+            label="Longitude field"
+            value={String(b.longitudeField ?? "gps.lon")}
+            onChange={(v) => patchBinding({ longitudeField: v || "gps.lon" })}
+            meta={fieldMeta}
+            loading={fieldMetaLoading}
+            disabled={disabled}
+          />
+        </div>
+        <FieldPathPicker
+          label="Title field (optional)"
+          value={String(b.titleField ?? "")}
+          onChange={(v) => patchBinding({ titleField: v || undefined })}
+          meta={fieldMeta}
+          loading={fieldMetaLoading}
+          disabled={disabled}
+        />
+        <FieldPathPicker
+          label="Health field override (optional)"
+          value={String(b.healthField ?? "")}
+          onChange={(v) => patchBinding({ healthField: v || undefined })}
+          meta={fieldMeta}
+          loading={fieldMetaLoading}
+          disabled={disabled}
+        />
+      </>
+    );
+  }
+
+  if (widget.type === "map" && mapConfigureFourColumn) {
+    return (
+      <div className="dash-binding dash-binding--map4">
+        <div className="dash-widget-config-map4-grid">
+          <div className="dash-widget-config-map4__col dash-widget-config-map4__col--basic">
+            <h3 className="dash-widget-config-map4__heading">Basic</h3>
+            {mapBasicSlot}
+            {renderMapDataSourceAccordion()}
+            {renderMapBehaviorAccordion()}
+            {mapCol1Footer}
+          </div>
+          <div className="dash-widget-config-map4__col dash-widget-config-map4__col--fields">
+            <details className="dash-widget-config-accordion" open>
+              <summary className="dash-widget-config-accordion__summary">Fields &amp; semantics</summary>
+              <div className="dash-widget-config-accordion__body">{renderMapFieldsSemanticsColumn()}</div>
+            </details>
+            <div className="dash-widget-config-map4__display-row">{renderMapDisplayAccordion()}</div>
+          </div>
+          <aside className="dash-widget-config-map4__col dash-widget-config-map4__col--preview" aria-label="Preview">
+            {mapPreviewColumn}
+          </aside>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -318,275 +973,7 @@ export function DashboardBindingEditor({
         </details>
       )}
 
-      {needsSource && widget.type === "map" && (
-        <details className="dash-widget-config-accordion" open>
-          <summary className="dash-widget-config-accordion__summary">Data source</summary>
-          <div className="dash-widget-config-accordion__body">
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.autoIncludeGpsObjects !== false}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ autoIncludeGpsObjects: e.target.checked })}
-              />
-              Auto-include all GPS-capable objects for this site
-            </label>
-
-            {c.autoIncludeGpsObjects !== false && (
-              <label className="dash-drawer__label">
-                Excluded source IDs (comma-separated)
-                <input
-                  className="dash-drawer__input"
-                  value={(c.excludedSourceIds as string[])?.join(", ") ?? ""}
-                  disabled={disabled}
-                  onChange={(e) => patchConfig({ excludedSourceIds: parseList(e.target.value) })}
-                />
-              </label>
-            )}
-
-            {mapAuto && siteId && mapTrackMode !== "endpoint_groups" && (
-              <div className="dash-drawer__label">
-                <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
-                  Devices on map — leave all unchecked to include every device at this site; check specific devices to
-                  limit markers
-                </span>
-                <div className="dash-widget-config-scrollbox">
-                  {mapSiteDevices.length === 0 ? (
-                    <span className="dash-widget__muted">No devices or loading…</span>
-                  ) : (
-                    mapSiteDevices.map((d) => {
-                      const allowed = (c.mapDeviceIds as string[] | undefined) ?? [];
-                      const allIds = mapSiteDevices.map((x) => x.id);
-                      const restrict = allowed.length > 0;
-                      const checked = !restrict || allowed.includes(d.id);
-                      return (
-                        <label
-                          key={d.id}
-                          style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.25rem" }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={disabled}
-                            onChange={() => {
-                              const cur = (c.mapDeviceIds as string[] | undefined) ?? [];
-                              if (!restrict) {
-                                const next = allIds.filter((id) => id !== d.id);
-                                patchConfig({ mapDeviceIds: next });
-                                return;
-                              }
-                              if (cur.includes(d.id)) {
-                                const next = cur.filter((id) => id !== d.id);
-                                patchConfig({ mapDeviceIds: next });
-                              } else {
-                                const next = [...cur, d.id];
-                                const setNext = new Set(next);
-                                if (allIds.length > 0 && allIds.every((id) => setNext.has(id))) {
-                                  patchConfig({ mapDeviceIds: [] });
-                                } else {
-                                  patchConfig({ mapDeviceIds: next });
-                                }
-                              }
-                            }}
-                          />
-                          <span>
-                            {d.name}{" "}
-                            <span className="dash-widget__muted">({d.id.slice(0, 8)}…)</span>
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!mapAuto && siteId && mapTrackMode !== "endpoint_groups" && (
-              <div className="dash-drawer__label">
-                <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
-                  Map objects (eligible for this site — multiselect)
-                </span>
-                <div className="dash-widget-config-scrollbox">
-                  {eligibleMap.length === 0 ? (
-                    <span className="dash-widget__muted">No eligible objects or loading…</span>
-                  ) : (
-                    eligibleMap.map((item) => {
-                      const checked = (
-                        (c.includedSources as Array<{ sourceType: string; sourceId: string }>) ?? []
-                      ).some((x) => x.sourceType === item.source_type && x.sourceId === item.source_id);
-                      return (
-                        <label
-                          key={`${item.source_type}:${item.source_id}`}
-                          style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.25rem" }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            disabled={disabled}
-                            onChange={() => toggleIncluded(item)}
-                          />
-                          <span>
-                            {item.name}{" "}
-                            <span className="dash-widget__muted">
-                              ({item.source_type} · {item.source_id.slice(0, 8)}…)
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!mapAuto && (
-              <p className="dash-widget__muted" style={{ fontSize: "0.8rem" }}>
-                Pick a source below. Required when auto GPS is off.
-              </p>
-            )}
-
-            {siteId ? (
-              <label className="dash-drawer__label">
-                Map tracks
-                <select
-                  className="dash-drawer__input"
-                  disabled={disabled}
-                  value={mapTrackMode}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    patchConfig({ mapTrackMode: v });
-                    if (v === "endpoint_groups") {
-                      patchConfig({
-                        autoIncludeGpsObjects: false,
-                        mapEndpointGroupEntries:
-                          Array.isArray(c.mapEndpointGroupEntries) && (c.mapEndpointGroupEntries as unknown[]).length
-                            ? c.mapEndpointGroupEntries
-                            : [{ endpointId: "", objectName: "" }],
-                      });
-                    } else if (v === "site") {
-                      patchConfig({ mapEndpointGroupEntries: [], autoIncludeGpsObjects: true });
-                    } else {
-                      patchConfig({ mapEndpointGroupEntries: [], autoIncludeGpsObjects: true });
-                    }
-                  }}
-                >
-                  <option value="site">Site — all GPS data objects (auto)</option>
-                  <option value="devices">Selected devices (filter)</option>
-                  <option value="endpoint_groups">Endpoint group(s) — fleet / LDS positions</option>
-                </select>
-                <span className="dash-widget__muted dash-widget-config-accordion__hint">
-                  Endpoint groups use live resolved-device positions; each group gets a distinct marker color. Devices mode
-                  filters site auto-map to checked devices only.
-                </span>
-              </label>
-            ) : null}
-            {mapTrackMode === "endpoint_groups" && siteId ? (
-              <div className="dash-drawer__label">
-                <span className="dash-widget__muted" style={{ display: "block", marginBottom: "0.35rem" }}>
-                  Endpoint groups (one or more)
-                </span>
-                {(Array.isArray(c.mapEndpointGroupEntries) ? (c.mapEndpointGroupEntries as Record<string, unknown>[]) : []).map(
-                  (row, idx) => {
-                    const eid = String(row.endpointId ?? row.endpoint_id ?? "");
-                    const oname = String(row.objectName ?? row.object_name ?? "");
-                    return (
-                      <div
-                        key={`meg-${idx}`}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr auto",
-                          gap: "0.35rem",
-                          marginBottom: "0.35rem",
-                          alignItems: "end",
-                        }}
-                      >
-                        <label style={{ fontSize: "0.8rem" }}>
-                          Endpoint
-                          <select
-                            className="dash-drawer__input"
-                            disabled={disabled}
-                            value={eid}
-                            onChange={(ev) => {
-                              const rows = [
-                                ...(Array.isArray(c.mapEndpointGroupEntries)
-                                  ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
-                                  : []),
-                              ];
-                              rows[idx] = { ...rows[idx], endpointId: ev.target.value };
-                              patchConfig({ mapEndpointGroupEntries: rows });
-                            }}
-                          >
-                            <option value="">Select…</option>
-                            {mapSiteEndpoints.map((ep) => (
-                              <option key={ep.id} value={ep.id}>
-                                {ep.endpoint_name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label style={{ fontSize: "0.8rem" }}>
-                          Object name
-                          <input
-                            className="dash-drawer__input"
-                            disabled={disabled}
-                            value={oname}
-                            placeholder="e.g. vehicle"
-                            onChange={(ev) => {
-                              const rows = [
-                                ...(Array.isArray(c.mapEndpointGroupEntries)
-                                  ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
-                                  : []),
-                              ];
-                              rows[idx] = { ...rows[idx], objectName: ev.target.value };
-                              patchConfig({ mapEndpointGroupEntries: rows });
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="dash-drawer__input"
-                          style={{ padding: "0.15rem 0.35rem", cursor: "pointer" }}
-                          disabled={disabled}
-                          title="Remove group"
-                          onClick={() => {
-                            const rows = [
-                              ...(Array.isArray(c.mapEndpointGroupEntries)
-                                ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
-                                : []),
-                            ];
-                            rows.splice(idx, 1);
-                            patchConfig({
-                              mapEndpointGroupEntries: rows.length ? rows : [{ endpointId: "", objectName: "" }],
-                            });
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    );
-                  },
-                )}
-                <button
-                  type="button"
-                  className="dash-drawer__input"
-                  style={{ marginTop: "0.25rem", padding: "0.25rem 0.5rem", cursor: "pointer" }}
-                  disabled={disabled}
-                  onClick={() => {
-                    const rows = [
-                      ...(Array.isArray(c.mapEndpointGroupEntries)
-                        ? (c.mapEndpointGroupEntries as Record<string, unknown>[])
-                        : []),
-                    ];
-                    patchConfig({ mapEndpointGroupEntries: [...rows, { endpointId: "", objectName: "" }] });
-                  }}
-                >
-                  + Add group
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </details>
-      )}
+      {renderMapDataSourceAccordion()}
 
       {(widget.type === "health_summary" || widget.type === "alert_summary" || widget.type === "site_summary") && (
         <p className="dash-widget__muted">Uses the dashboard site for aggregation. No source binding.</p>
@@ -718,217 +1105,27 @@ export function DashboardBindingEditor({
               </div>
             </div>
           ) : null}
-          <label className="dash-drawer__label">
-            KPI fields (comma-separated paths; overrides checklist on device tile)
-            <input
-              className="dash-drawer__input"
-              value={(b.kpiFields as string[])?.join(", ") ?? ""}
-              disabled={disabled}
-              onChange={(e) => patchBinding({ kpiFields: parseList(e.target.value) })}
-            />
-          </label>
+          {widget.type === "device_tile" ? (
+            <label className="dash-drawer__label">
+              KPI fields (comma-separated paths; overrides checklist on device tile)
+              <input
+                className="dash-drawer__input"
+                value={(b.kpiFields as string[])?.join(", ") ?? ""}
+                disabled={disabled}
+                onChange={(e) => patchBinding({ kpiFields: parseList(e.target.value) })}
+              />
+            </label>
+          ) : null}
+          {widget.type === "map" ? renderMapFieldsSemanticsColumn() : null}
         </>
       )}
-
-          {widget.type === "map" && (
-            <>
-              <FieldPathPicker
-                label="Latitude field"
-                value={String(b.latitudeField ?? "gps.lat")}
-                onChange={(v) => patchBinding({ latitudeField: v || "gps.lat" })}
-                meta={fieldMeta}
-                loading={fieldMetaLoading}
-                disabled={disabled}
-              />
-              <FieldPathPicker
-                label="Longitude field"
-                value={String(b.longitudeField ?? "gps.lon")}
-                onChange={(v) => patchBinding({ longitudeField: v || "gps.lon" })}
-                meta={fieldMeta}
-                loading={fieldMetaLoading}
-                disabled={disabled}
-              />
-              <FieldPathPicker
-                label="Title field (optional)"
-                value={String(b.titleField ?? "")}
-                onChange={(v) => patchBinding({ titleField: v || undefined })}
-                meta={fieldMeta}
-                loading={fieldMetaLoading}
-                disabled={disabled}
-              />
-              <FieldPathPicker
-                label="Health field override (optional)"
-                value={String(b.healthField ?? "")}
-                onChange={(v) => patchBinding({ healthField: v || undefined })}
-                meta={fieldMeta}
-                loading={fieldMetaLoading}
-                disabled={disabled}
-              />
-            </>
-          )}
         </div>
       </details>
 
-      {widget.type === "map" && (
-        <details className="dash-widget-config-accordion" open>
-          <summary className="dash-widget-config-accordion__summary">Map behavior</summary>
-          <div className="dash-widget-config-accordion__body">
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.mapAggregateByDevice === true}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ mapAggregateByDevice: e.target.checked })}
-              />
-              One marker per device (centroid when multiple GPS feeds per device)
-            </label>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.mapSmoothMarkers !== false}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ mapSmoothMarkers: e.target.checked })}
-              />
-              Smooth marker motion on refresh (realtime)
-            </label>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.clusterMarkers !== false}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ clusterMarkers: e.target.checked })}
-              />
-              Cluster markers (GeoJSON layers; always on if count exceeds max direct)
-            </label>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.autoFitOnFirstLoad !== false}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ autoFitOnFirstLoad: e.target.checked })}
-              />
-              Auto-fit to markers on first load
-            </label>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.autoFitOnRefresh === true}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ autoFitOnRefresh: e.target.checked })}
-              />
-              Auto-fit on every refresh (overrides preserve viewport)
-            </label>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={c.preserveViewport !== false}
-                disabled={disabled}
-                onChange={(e) => patchConfig({ preserveViewport: e.target.checked })}
-              />
-              Preserve center / zoom between refreshes (when auto-fit on refresh is off)
-            </label>
-            <label className="dash-drawer__label">
-              Max direct markers before forcing clusters
-              <input
-                className="dash-drawer__input"
-                type="number"
-                min={10}
-                max={500}
-                value={typeof c.maxDirectMarkers === "number" ? c.maxDirectMarkers : 80}
-                disabled={disabled}
-                onChange={(e) => {
-                  const n = parseInt(e.target.value, 10);
-                  patchConfig({ maxDirectMarkers: Number.isFinite(n) ? n : 80 });
-                }}
-              />
-            </label>
-          </div>
-        </details>
-      )}
+      {renderMapBehaviorAccordion()}
 
-      {widget.type === "map" && (
-        <details className="dash-widget-config-accordion" open>
-          <summary className="dash-widget-config-accordion__summary">Display &amp; layers</summary>
-          <div className="dash-widget-config-accordion__body">
-            <fieldset className="dash-widget-config-accordion__fieldset">
-              <legend className="dash-widget-config-accordion__legend">Color by</legend>
-              <div className="dash-widget-config-inline-radios">
-                {(
-                  [
-                    ["health", "Health"],
-                    ["group", "Endpoint group"],
-                    ["device", "Device"],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <label key={mode} className="dash-drawer__label dash-drawer__check">
-                    <input
-                      type="radio"
-                      name="dash-config-map-color"
-                      checked={layerControls.colorMode === mode}
-                      disabled={disabled}
-                      onChange={() => patchMapLayerControls({ colorMode: mode as MapLayerColorMode })}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={layerControls.showLabels}
-                disabled={disabled}
-                onChange={(e) => patchMapLayerControls({ showLabels: e.target.checked })}
-              />
-              Show labels on markers
-            </label>
-            <fieldset className="dash-widget-config-accordion__fieldset">
-              <legend className="dash-widget-config-accordion__legend">Stale / offline visibility</legend>
-              <div className="dash-widget-config-inline-radios">
-                {(
-                  [
-                    ["all", "All markers"],
-                    ["stale", "Stale only"],
-                    ["offline", "Offline only"],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <label key={mode} className="dash-drawer__label dash-drawer__check">
-                    <input
-                      type="radio"
-                      name="dash-config-map-filter"
-                      checked={layerControls.filterMode === mode}
-                      disabled={disabled}
-                      onChange={() => patchMapLayerControls({ filterMode: mode as MapLayerFilterMode })}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <p className="dash-widget__muted dash-widget-config-accordion__hint">
-              Expanded map: trace route and replay head overlays (historical / intelligence).
-            </p>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={layerControls.showTraceRoute}
-                disabled={disabled}
-                onChange={(e) => patchMapLayerControls({ showTraceRoute: e.target.checked })}
-              />
-              Show trace route (expanded map)
-            </label>
-            <label className="dash-drawer__label dash-drawer__check">
-              <input
-                type="checkbox"
-                checked={layerControls.showReplayHead}
-                disabled={disabled}
-                onChange={(e) => patchMapLayerControls({ showReplayHead: e.target.checked })}
-              />
-              Show replay head (expanded map)
-            </label>
-          </div>
-        </details>
-      )}
+      {renderMapDisplayAccordion()}
+
     </div>
   );
 }

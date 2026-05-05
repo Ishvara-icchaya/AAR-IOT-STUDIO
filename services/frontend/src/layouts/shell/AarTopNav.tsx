@@ -50,13 +50,13 @@ const NAV_ITEMS: NavDef[] = [
     to: "/dashboard/list",
     isActive: (p) => p.startsWith("/dashboard"),
   },
-  { key: "ai", label: "AI", to: "/enterprise-ai", isActive: (p) => p.startsWith("/enterprise-ai") },
   {
     key: "monitoring",
     label: "Monitoring",
     to: "/administration/monitoring",
     isActive: (p) => p.startsWith("/administration/monitoring"),
   },
+  { key: "ai", label: "AI", to: "/enterprise-ai", isActive: (p) => p.startsWith("/enterprise-ai") },
 ];
 
 export type AarTopNavProps = {
@@ -127,11 +127,19 @@ export function AarTopNav({
       </button>
 
       <div className="aar-topnav__brand">
-        <div className="aar-topnav__logo" aria-hidden>
-          A
-        </div>
-        <div className="aar-topnav__brand-text">
-          <div className="aar-topnav__product">AAR-IoT-Studio</div>
+        <div className="aar-topnav__brand-stack">
+          <button
+            type="button"
+            className="aar-topnav__brand-home"
+            title="Go to primary dashboard"
+            aria-label="AAR-IoT-Studio home — reload and open primary dashboard"
+            onClick={() => {
+              window.location.assign("/dashboard");
+            }}
+          >
+            <img className="aar-topnav__logo" src="/favicon.svg" alt="" width={34} height={34} decoding="async" />
+            <span className="aar-topnav__product">AAR-IoT-Studio</span>
+          </button>
           <div className="aar-topnav__context">
             <span className="aar-topnav__context-label">
               Customer: <strong className="aar-topnav__context-strong">{customerName}</strong>

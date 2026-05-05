@@ -12,8 +12,28 @@ from app.core.redis_sync import get_redis
 from app.services.monitoring_collectors import probe_ollama
 
 
+def _public_ollama_error(err: str | None) -> str | None:
+    """Stable, operator-facing text — avoid raw httpx / errno dumps in the UI."""
+    if not err:
+        return None
+    low = err.lower()
+    if "connection refused" in low or "[errno 111]" in low or "errno 111" in low:
+        return "Cannot reach Ollama at the configured URL (connection refused)."
+    if "timed out" in low or "timeout" in low:
+        return "Ollama did not respond in time (timeout)."
+    if "name or service not known" in low or "nodename nor servname" in low or "temporary failure in name resolution" in low:
+        return "Ollama host name could not be resolved (check OLLAMA_BASE_URL)."
+    if "certificate" in low or "ssl" in low:
+        return "TLS error talking to Ollama (check URL and certificates)."
+    if "401" in err or "403" in err:
+        return "Ollama rejected the request (auth / permission)."
+    line = err.strip().split("\n", 1)[0].strip()
+    return line[:240] + ("…" if len(line) > 240 else "")
+
+
 def ai_health_payload() -> dict[str, Any]:
     ok, err, _tags = probe_ollama()
+    err_pub = _public_ollama_error(err) if not ok else None
     r = get_redis()
     recent_failures = 0
     if r:
@@ -25,7 +45,7 @@ def ai_health_payload() -> dict[str, Any]:
             pass
     return {
         "ollama_reachable": ok,
-        "ollama_error": err,
+        "ollama_error": err_pub if not ok else None,
         "model_configured": bool(settings.ollama_model),
         "ollama_model": settings.ollama_model,
         "recent_llm_failures_estimate": recent_failures,

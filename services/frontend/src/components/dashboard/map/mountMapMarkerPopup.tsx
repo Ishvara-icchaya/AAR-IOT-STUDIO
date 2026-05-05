@@ -19,7 +19,7 @@ export function openDashboardMapMarkerPopup(
     detailRefreshIntervalSec?: number;
     detailRenderEpoch?: string;
     /**
-     * Expanded “Intelligence view”: popups must sit above panels and avoid tight max-width
+     * Expanded map (Advanced column): popups must sit above panels and avoid tight max-width
      * so tables are usable; grid map uses a compact card.
      */
     expandedMapIntel?: boolean;

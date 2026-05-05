@@ -48,7 +48,13 @@ const CONCISE_ANSWER_MAX = 280;
 /** Same copy as `ai_service._structured_answer` when the query returns zero rows. */
 const NO_MATCHING_ROWS_MESSAGE = "No matching rows were found for your site scope and time range.";
 
-const DEGRADED_FOOTER_MESSAGE = "Structured data only — LLM unavailable or skipped.";
+/** Shown when the API set `degraded` after a failed summarization step (structured answer still returned). */
+function degradedShellNotice(res: AIChatResponse): string {
+  const merged = [...(res.warnings ?? []), ...(res.evidence?.warnings ?? [])];
+  const detail = merged.find((s) => /llm|summar|ollama|model|unavailable/i.test(s));
+  if (detail?.trim()) return detail.trim();
+  return "Summarization did not run for this answer; the text below is still grounded in retrieved data.";
+}
 
 function conciseAnswerPreview(text: string | undefined | null): string {
   const t = (text ?? "").trim();
@@ -180,7 +186,7 @@ export function EnterpriseAiPage() {
     lastFooterGenHandled.current = gen;
 
     if (res.degraded) {
-      pushMessage("warning", DEGRADED_FOOTER_MESSAGE);
+      pushMessage("info", degradedShellNotice(res));
     }
     const answerTrim = (res.answer ?? "").trim();
     if (answerTrim === NO_MATCHING_ROWS_MESSAGE || answerTrim.includes(NO_MATCHING_ROWS_MESSAGE)) {
@@ -261,9 +267,17 @@ export function EnterpriseAiPage() {
         </OpsFilterPanel>
         {health && !health.ollama_reachable ? (
           <PageStatus variant="warning">
-            <strong>LLM summaries are offline.</strong> Enterprise AI still returns structured KPI and alert data, but natural-language
-            summaries need Ollama reachable from the API. {health.ollama_error ? <span>{health.ollama_error} </span> : null}
-            Set <code>OLLAMA_BASE_URL</code> and <code>OLLAMA_MODEL</code>, pull the model on the Ollama host, then reload this page.
+            <p style={{ margin: 0 }}>
+              <strong>LLM summaries are offline.</strong> Structured KPIs, alerts, and evidence still work; natural-language answers need
+              Ollama running where the API can reach it.
+            </p>
+            {health.ollama_error ? (
+              <p style={{ margin: "0.5rem 0 0", fontSize: "0.88rem", color: "var(--color-text-muted)" }}>{health.ollama_error}</p>
+            ) : null}
+            <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem" }}>
+              Configure <code>OLLAMA_BASE_URL</code> and <code>OLLAMA_MODEL</code>, ensure the model is pulled on the Ollama host, then reload
+              this page.
+            </p>
           </PageStatus>
         ) : null}
 

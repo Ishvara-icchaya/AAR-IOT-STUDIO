@@ -1,4 +1,3 @@
-import { lazy, Suspense } from "react";
 import type { DashboardLiveWidgetDTO } from "@/types/dashboard";
 import { DEFAULT_MAP_STYLE_URL } from "@/lib/dashboardMapStyle";
 import { parseDashboardLayout } from "@/lib/dashboard/dashboardLayoutEngine";
@@ -11,12 +10,8 @@ import {
   DashboardRuntimeShell,
   type DashboardRuntimeVariant,
 } from "./runtime/DashboardRuntimeShell";
+import { DashboardResponsiveGrid } from "./runtime/DashboardResponsiveGrid";
 import "./dashboard-runtime.css";
-
-/** Split grid + widget stack from live shell so map/chart/table lazy chunks load with the grid, not the shell. */
-const DashboardResponsiveGridLazy = lazy(() =>
-  import("./runtime/DashboardResponsiveGrid").then((m) => ({ default: m.DashboardResponsiveGrid })),
-);
 
 function buildRuntimeFromDashboard(dashboard: unknown): DashboardLiveRuntimeValue {
   const o = dashboard && typeof dashboard === "object" ? (dashboard as Record<string, unknown>) : {};
@@ -96,21 +91,13 @@ export function DashboardLiveRenderer({
         variant={shellVariant}
       >
         <div className={rootClass}>
-          <Suspense
-            fallback={
-              <div className="dash-widget__muted" style={{ padding: "1rem" }}>
-                Loading dashboard layout…
-              </div>
-            }
-          >
-            <DashboardResponsiveGridLazy
-              rows={rows}
-              widgetsById={byId}
-              fitPage={fitPage && layoutDensity !== "reference" && layoutDensity !== "preview"}
-              renderedAt={renderedAt}
-              hideRenderedMeta={layoutDensity === "reference"}
-            />
-          </Suspense>
+          <DashboardResponsiveGrid
+            rows={rows}
+            widgetsById={byId}
+            fitPage={fitPage && layoutDensity !== "reference" && layoutDensity !== "preview"}
+            renderedAt={renderedAt}
+            hideRenderedMeta={layoutDensity === "reference"}
+          />
         </div>
       </DashboardRuntimeShell>
     </DashboardLiveProvider>
