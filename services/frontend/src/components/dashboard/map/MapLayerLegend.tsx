@@ -30,9 +30,11 @@ type Props = {
   intelOverlay: IntelOverlayState | null;
   /** When set, show Color by controls (same modes as the former map-layers fieldset). */
   onColorModeChange?: (mode: MapLayerColorMode) => void;
+  /** Cockpit: only the color legend block (for layers column body). */
+  colorsOnly?: boolean;
 };
 
-export function MapLayerLegend({ layerControls: lc, markers, intelOverlay, onColorModeChange }: Props) {
+export function MapLayerLegend({ layerControls: lc, markers, intelOverlay, onColorModeChange, colorsOnly = false }: Props) {
   const mode = lc.colorMode;
 
   let colorRows: { key: string; label: string; rgba: [number, number, number, number] }[] = [];
@@ -116,40 +118,48 @@ export function MapLayerLegend({ layerControls: lc, markers, intelOverlay, onCol
     }
   }
 
+  const colorsSection = (
+    <section className="dash-map-legend dash-map-legend--colors" aria-label="Color legend">
+      <h4 className="dash-map-legend__title">Legend</h4>
+      {onColorModeChange ? (
+        <div className="dash-map-legend__color-modes" role="group" aria-label="Color markers by">
+          {(
+            [
+              ["health", "Health"],
+              ["group", "Group"],
+              ["device", "Device"],
+            ] as const
+          ).map(([mode, label]) => (
+            <label key={mode} className="dash-map-legend__color-mode">
+              <input
+                type="radio"
+                name="dash-map-legend-color-mode"
+                checked={lc.colorMode === mode}
+                onChange={() => onColorModeChange(mode)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+      <ul className="dash-map-legend__list dash-map-legend__list--grid">
+        {colorRows.map((r) => (
+          <li key={r.key} className="dash-map-legend__item">
+            <Swatch rgba={r.rgba} />
+            <span>{r.label}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
+  if (colorsOnly) {
+    return colorsSection;
+  }
+
   return (
     <div className="dash-map-legend-wrap">
-      <section className="dash-map-legend dash-map-legend--colors" aria-label="Color legend">
-        <h4 className="dash-map-legend__title">Legend</h4>
-        {onColorModeChange ? (
-          <div className="dash-map-legend__color-modes" role="group" aria-label="Color markers by">
-            {(
-              [
-                ["health", "Health"],
-                ["group", "Group"],
-                ["device", "Device"],
-              ] as const
-            ).map(([mode, label]) => (
-              <label key={mode} className="dash-map-legend__color-mode">
-                <input
-                  type="radio"
-                  name="dash-map-legend-color-mode"
-                  checked={lc.colorMode === mode}
-                  onChange={() => onColorModeChange(mode)}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
-          </div>
-        ) : null}
-        <ul className="dash-map-legend__list dash-map-legend__list--grid">
-          {colorRows.map((r) => (
-            <li key={r.key} className="dash-map-legend__item">
-              <Swatch rgba={r.rgba} />
-              <span>{r.label}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      {colorsSection}
       {routeRows.length ? (
         <section className="dash-map-legend dash-map-legend--route" aria-label="Trace legend">
           <h4 className="dash-map-legend__title">Trace</h4>

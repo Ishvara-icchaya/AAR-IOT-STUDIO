@@ -3,18 +3,30 @@ import type { MapLayerControls } from "@/lib/dashboard/mapLayerControls";
 type Props = {
   value: MapLayerControls;
   onChange: (next: MapLayerControls) => void;
+  /** Cockpit: row-wrap layout for expanded map layers column. */
+  variant?: "default" | "cockpit";
 };
 
 function patch<K extends keyof MapLayerControls>(cur: MapLayerControls, key: K, val: MapLayerControls[K]): MapLayerControls {
   return { ...cur, [key]: val };
 }
 
-export function MapLayerControlPanel({ value: lc, onChange }: Props) {
+export function MapLayerControlPanel({ value: lc, onChange, variant = "default" }: Props) {
+  const cockpit = variant === "cockpit";
   return (
-    <section className="dash-map-layers" aria-labelledby="dash-map-layers-heading">
-      <h4 id="dash-map-layers-heading" className="dash-map-layers__title">
-        Map layers
-      </h4>
+    <section
+      className={`dash-map-layers${cockpit ? " dash-map-layers--cockpit-rows" : ""}`}
+      aria-labelledby="dash-map-layers-heading"
+    >
+      {!cockpit ? (
+        <h4 id="dash-map-layers-heading" className="dash-map-layers__title">
+          Map layers
+        </h4>
+      ) : (
+        <span id="dash-map-layers-heading" className="dash-map-layers__title dash-map-layers__title--sr">
+          Map layers
+        </span>
+      )}
       <div
         className="dash-map-layers__single-line"
         role="group"

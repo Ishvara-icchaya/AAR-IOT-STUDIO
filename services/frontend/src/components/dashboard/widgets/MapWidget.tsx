@@ -36,6 +36,7 @@ import {
   type MapLayerColorMode,
   type MapLayerControls,
 } from "@/lib/dashboard/mapLayerControls";
+import "@/pages/device-register-page.css";
 
 /** Docked marker detail (non–Intelligence standard map); same props shape as MapMarkerPopupRoot. */
 type MapInlineMarkerDetail = {
@@ -515,7 +516,8 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       if (!cr) return;
       const w = Math.round(cr.width);
       const h = Math.round(cr.height);
-      if (w > 0 && h > 0 && Math.abs(w - lastW) < 2 && Math.abs(h - lastH) < 2) return;
+      /* Ignore sub-pixel / post–map.resize oscillation so the cockpit grid does not “breathe”. */
+      if (w > 0 && h > 0 && Math.abs(w - lastW) < 5 && Math.abs(h - lastH) < 5) return;
       lastW = w;
       lastH = h;
       if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
@@ -910,6 +912,24 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   const mapHostKey = expanded ? "advanced" : enterpriseMode ? "enterprise" : "inline";
 
+  const mapNotices = (
+    <>
+      {styleNotice ? (
+        <p className="dash-widget__muted dash-wf-map__notice">{styleNotice}</p>
+      ) : null}
+      {markerStatusNote ? (
+        <p className="dash-widget__muted dash-wf-map__notice" role="status">
+          {markerStatusNote}
+        </p>
+      ) : null}
+      {chrome.degraded && chrome.warning ? (
+        <p className="dash-widget__muted dash-wf-map__notice" role="status">
+          {chrome.warning}
+        </p>
+      ) : null}
+    </>
+  );
+
   const mapEl = (
     <div
       key={mapHostKey}
@@ -986,72 +1006,40 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
             : undefined
         }
       >
-        {styleNotice ? (
-          <p className="dash-widget__muted dash-wf-map__notice">{styleNotice}</p>
-        ) : null}
-        {markerStatusNote ? (
-          <p className="dash-widget__muted dash-wf-map__notice" role="status">
-            {markerStatusNote}
-          </p>
-        ) : null}
-        {chrome.degraded && chrome.warning ? (
-          <p className="dash-widget__muted dash-wf-map__notice" role="status">
-            {chrome.warning}
-          </p>
-        ) : null}
         {expanded ? (
-          <div className="dash-map-widget__expanded-split">
-            <div className="dash-map-widget__expanded-two-col">
-              <div className="dash-map-widget__expanded-map-display-col">
-                <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--expanded-intel">
-                  <div className="dash-map-widget__map-mode-overlay">
-                    <div className="dash-map-intel__mode-row dash-map-intel__mode-row--on-map" role="group" aria-label="Map mode">
-                      <button
-                        type="button"
-                        className={`dash-map-intel__mode-btn ${intelMode === "runtime" ? "dash-map-intel__mode-btn--on" : ""}`}
-                        onClick={() => setIntelMode("runtime")}
-                      >
-                        Runtime
-                      </button>
-                      <button
-                        type="button"
-                        className={`dash-map-intel__mode-btn ${intelMode === "historical" ? "dash-map-intel__mode-btn--on" : ""}`}
-                        onClick={() => setIntelMode("historical")}
-                      >
-                        Historical
-                      </button>
-                    </div>
-                    <p className="dash-map-widget__map-mode-overlay-hint">
-                      <strong>Runtime</strong> / <strong>Historical</strong> — pick a device in the table, then path
-                      and replay. <strong>Historical</strong>: <strong>Load 24h footprint</strong>.
-                    </p>
-                  </div>
-                  {mapEl}
+          <div className="dash-map-widget__expanded-notices" aria-live="polite">
+            {mapNotices}
+          </div>
+        ) : (
+          mapNotices
+        )}
+        {expanded ? (
+          <MapIntelligencePanel
+            siteId={intelSiteId}
+            kpiKeys={chrome.kpiFields ?? []}
+            endpointId={intelEndpointId}
+            expanded={expanded}
+            intelMode={intelMode}
+            onIntelModeChange={setIntelMode}
+            onIntelOverlay={setIntelOverlay}
+            mapCanvas={mapEl}
+            layersPanel={
+              <div className="dash-map-widget__layers-stack">
+                <div className="dash-map-widget__layers-controls">
+                  <MapLayerControlPanel variant="cockpit" value={layerControls} onChange={setLayerControls} />
                 </div>
-                <div className="dash-map-widget__layer-tools dash-map-widget__layer-tools--row1">
-                  <MapLayerControlPanel value={layerControls} onChange={setLayerControls} />
-                </div>
-              </div>
-              <div className="dash-map-widget__expanded-advanced-col">
-                <div className="dash-map-widget__legend-row" aria-label="Map legend">
+                <div className="dash-map-widget__panel-body dash-map-widget__layers-legend-body" aria-label="Map legend">
                   <MapLayerLegend
+                    colorsOnly
                     layerControls={layerControls}
                     markers={filteredMarkers}
                     intelOverlay={intelOverlay}
                     onColorModeChange={onLegendColorMode}
                   />
                 </div>
-                <MapIntelligencePanel
-                  siteId={intelSiteId}
-                  kpiKeys={chrome.kpiFields ?? []}
-                  endpointId={intelEndpointId}
-                  expanded={expanded}
-                  intelMode={intelMode}
-                  onIntelOverlay={setIntelOverlay}
-                />
               </div>
-            </div>
-          </div>
+            }
+          />
         ) : isEnterprise ? (
           <div className="dash-map-widget__enterprise-grid">
             <div className="dash-map-widget__map-col">{mapEl}</div>

@@ -4170,160 +4170,736 @@ a:hover {
   outline-offset: -4px;
 }
 
-/* Expanded map: col1 = map + layers, col2 = legend + roster.
-   Same flex contract as .dm-device-table-shell (device-register-page.css): flex 1 1 auto + min-height 0. */
+/* Expanded map: bounded 3-row intelligence grid (cockpit). */
 .dash-map-widget__expanded-split {
+  --dm-bg: var(--aar-bg);
+  --dm-surface: var(--aar-surface);
+  --dm-surface-2: var(--aar-surface-2);
+  --dm-border: var(--aar-border);
+  --dm-border-strong: var(--aar-border-strong);
+  --dm-text: var(--aar-text);
+  --dm-muted: var(--aar-muted);
+  --dm-accent-blue: var(--aar-accent-blue);
+  --dm-neon: var(--aar-accent-green);
+  --dm-warn: var(--aar-accent-amber);
+  --dm-danger: var(--aar-accent-red);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px) minmax(200px, 260px);
+  /* fr tracks only — avoids % of height feedback loops with dvh/svh and scrollbar toggles. */
+  grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--dm-text);
+  box-sizing: border-box;
+  contain: layout;
+  scrollbar-gutter: stable;
+}
+
+/* Fixed strip: style/loading/warning lines used to mount/unmount and shift the whole cockpit (panel heads “bounce”). */
+.dash-map-widget__expanded-notices {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  height: 2.75rem;
+  overflow: hidden auto;
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.dash-map-widget__expanded-notices .dash-wf-map__notice {
+  margin: 0;
+  flex-shrink: 0;
+  line-height: 1.25;
+}
+
+.dash-map-widget__expanded-split *,
+.dash-map-widget__expanded-split *::before,
+.dash-map-widget__expanded-split *::after {
+  box-sizing: border-box;
+}
+
+.dash-map-widget__expanded-map {
+  grid-column: 1 / 2;
+  grid-row: 1 / 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dash-map-widget__layers-panel {
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dash-map-widget__mid-grid {
+  grid-column: 1 / 3;
+  grid-row: 2 / 3;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr);
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dash-map-widget__rollup-panel {
+  grid-column: 3 / 4;
+  grid-row: 1 / span 2;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dash-map-widget__panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--dm-border);
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--dm-surface) 94%, var(--dm-text) 3%),
+    color-mix(in oklab, var(--dm-surface-2) 94%, #000)
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, var(--dm-border-strong) 55%, transparent),
+    0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.dash-map-widget__panel-head {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--dm-border);
+}
+
+.dash-map-widget__panel-head--split {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  min-height: 2.35rem;
+}
+
+.dash-map-widget__panel-head--split .dash-map-widget__panel-title {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.dash-map-widget__panel-head--split .map-intelligence-panel__mode-row--head {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.dash-map-widget__panel-title {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dm-muted);
+}
+
+.dash-map-widget__panel-body {
   flex: 1 1 auto;
-  align-items: stretch;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.55rem 0.65rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dash-map-widget__map-canvas {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.dash-map-widget__map-canvas .dash-map-widget__single-map-wrap--expanded-intel {
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   width: 100%;
-  max-width: 100%;
-  overflow: hidden;
-  gap: 0;
 }
 
-/* Scrollport like .dm-table-scroll: hard cap vs viewport + overflow inside (not unbounded flex growth). */
-.dash-map-widget__expanded-two-col {
+.dash-map-widget__layers-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.45rem;
+  min-width: 0;
+  width: 100%;
+}
+
+.dash-map-widget__layers-controls {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.dash-map-widget__layers-legend-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-map-widget__layers-legend-body .dash-map-legend--colors {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.dash-map-widget__layers-panel .dash-map-layers.dash-map-layers--cockpit-rows {
+  border-color: color-mix(in oklab, var(--dm-border) 80%, transparent);
+  background: color-mix(in oklab, var(--dm-surface-2) 90%, #000 10%);
+}
+
+.dash-map-layers.dash-map-layers--cockpit-rows {
   display: flex;
   flex-direction: row;
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  /* −40% vs prior cap (×0.6) so the block stays clearly inside the viewport. */
-  max-height: min(
-    43.2rem,
-    max(0px, calc((100vh - 14rem) * 0.6)),
-    max(0px, calc((100dvh - 14rem) * 0.6)),
-    max(0px, calc((100svh - 14rem) * 0.6))
-  );
-  align-items: stretch;
-  align-content: flex-start;
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.45rem 0.65rem;
 }
 
-.dash-map-widget__expanded-col-label {
-  flex: 0 0 auto;
-  margin: 0 0 0.35rem;
-  padding: 0 0.1rem;
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+.dash-map-layers.dash-map-layers--cockpit-rows .dash-map-layers__title {
+  flex: 0 0 100%;
+  margin: 0 0 0.2rem;
 }
 
-.dash-map-widget__expanded-map-display-col {
-  flex: 1 1 0;
-  min-width: 0;
-  min-height: 0;
-  max-width: 84%;
-  align-self: stretch;
-  max-height: none;
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) minmax(0, auto);
-  position: relative;
-  overflow: hidden;
-  padding: 0.4rem;
-}
-
-/* Runtime / Historical — floated on the map surface (Advanced view). */
-.dash-map-widget__map-mode-overlay {
+.dash-map-layers__title--sr {
   position: absolute;
-  z-index: 12;
-  /* ~20% lower in the map cell than the top edge + inset. */
-  top: calc(0.45rem + 20%);
-  left: 0.45rem;
-  max-width: min(calc(100% - 0.9rem), 19rem);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dash-map-layers.dash-map-layers--cockpit-rows .dash-map-layers__single-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow-x: visible;
+  overflow-y: visible;
+}
+
+.map-intelligence-panel__device-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.65rem;
+  margin-bottom: 0.45rem;
+}
+
+.map-intelligence-panel__filter-inline.dm-filter-field {
+  flex: 1 1 160px;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.map-intelligence-panel__filter-inline.dm-filter-field .dm-filter-field__label {
+  margin-bottom: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.map-intelligence-panel__filter-inline.dm-filter-field input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map-intelligence-panel__rollup-metrics {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.map-intelligence-panel__rollup-metric {
+  padding: 0.4rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border);
+  background: color-mix(in oklab, var(--dm-surface-2) 92%, #000 8%);
+}
+
+.map-intelligence-panel__rollup-metric-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dm-muted);
+}
+
+.map-intelligence-panel__rollup-metric-value {
+  margin-top: 0.12rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--dm-text);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.map-intelligence-panel__rollup-field-picker {
+  margin-top: 0.25rem;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in oklab, var(--dm-border) 85%, transparent);
+  padding: 0.35rem 0.45rem;
+}
+
+.map-intelligence-panel__rollup-field-picker-summary {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--dm-accent-blue);
+  cursor: pointer;
+}
+
+.map-intelligence-panel__rollup-checkboxes {
+  display: flex;
+  flex-direction: column;
   gap: 0.28rem;
-  pointer-events: none;
+  margin-top: 0.35rem;
+  max-height: 10rem;
+  overflow-y: auto;
 }
 
-.dash-map-widget__map-mode-overlay .dash-map-intel__mode-row--on-map {
-  pointer-events: auto;
-  margin: 0;
-  padding: 0.3rem 0.35rem;
-  border-radius: var(--radius);
-  border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
-  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
-  box-shadow: 0 4px 18px color-mix(in oklab, #000 28%, transparent);
+.map-intelligence-panel__rollup-chk {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--dm-text);
+  cursor: pointer;
 }
 
-.dash-map-widget__map-mode-overlay-hint {
-  margin: 0;
-  padding: 0.2rem 0.35rem 0.25rem;
+.map-intelligence-panel__kv--modal {
+  max-height: min(58vh, 26rem);
+}
+
+.map-intelligence-panel__mode-row--head {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+}
+
+.map-intelligence-panel__mode-row--head .map-intelligence-panel__mode-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.22rem 0.42rem;
+  font-size: 0.65rem;
+}
+
+.map-intelligence-panel__rollup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.map-intelligence-panel__rollup-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.map-intelligence-panel__rollup-trace .map-intelligence-panel__advanced-label {
+  margin-bottom: 0.1rem;
+}
+
+.map-intelligence-panel__section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dm-muted);
+}
+
+.map-intelligence-panel__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--dm-border) 70%, transparent);
+  font-size: 0.72rem;
+}
+
+.map-intelligence-panel__row:last-child {
+  border-bottom: none;
+}
+
+.map-intelligence-panel__metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.map-intelligence-panel__metric {
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border);
+  background: var(--dm-surface-2);
+}
+
+.map-intelligence-panel__metric-label {
   font-size: 0.6rem;
-  line-height: 1.32;
-  max-height: 3.25rem;
-  overflow-y: auto;
-  color: var(--color-text-muted);
-  border-radius: 0 0 var(--radius) var(--radius);
-  background: color-mix(in oklab, var(--color-surface-elevated) 88%, transparent);
-  border: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent);
-  border-top: none;
-  pointer-events: auto;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--dm-muted);
 }
 
-.dash-map-widget__expanded-map-display-col .dash-map-widget__layer-tools--row1 {
-  border-top: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
-  min-height: 0;
-  max-height: min(42dvh, 50%);
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+.map-intelligence-panel__metric-value {
+  margin-top: 0.15rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--dm-text);
+  font-variant-numeric: tabular-nums;
 }
 
-.dash-map-widget__expanded-map-display-col .dash-map-layers {
-  max-height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+.map-intelligence-panel__metric-value--sm {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
-.dash-map-widget__expanded-advanced-col {
-  flex: 0 0 min(22rem, 38vw);
-  width: min(22rem, 38vw);
+.map-intelligence-panel__metric-value--truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   max-width: 100%;
-  min-width: min(17rem, 100%);
-  max-height: 100%;
+}
+
+.map-intelligence-panel__status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  margin-top: 0.35rem;
+}
+
+.map-intelligence-panel__kpi-line {
+  margin: 0.35rem 0 0;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--dm-muted);
+}
+
+.map-intelligence-panel__hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: var(--dm-muted);
+}
+
+.map-intelligence-panel__muted {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--dm-muted);
+}
+
+.map-intelligence-panel__muted--tight {
+  margin-top: 0.25rem;
+}
+
+.map-intelligence-panel__err {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--dm-danger);
+}
+
+.map-intelligence-panel__mode-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.map-intelligence-panel__mode-btn {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.32rem 0.45rem;
+  border-radius: 9px;
+  border: 1px solid var(--dm-border-strong);
+  background: var(--dm-surface-2);
+  color: var(--dm-text);
+  cursor: pointer;
+}
+
+.map-intelligence-panel__mode-btn--on {
+  border-color: color-mix(in oklab, var(--dm-accent-blue) 55%, var(--dm-border));
+  background: color-mix(in oklab, var(--dm-accent-blue) 16%, var(--dm-surface-2));
+  color: var(--dm-text);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--dm-accent-blue) 22%, transparent);
+}
+
+.map-intelligence-panel__segment {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.map-intelligence-panel__segment-btn {
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--dm-border);
+  background: color-mix(in oklab, var(--dm-muted) 8%, transparent);
+  color: var(--dm-muted);
+  cursor: pointer;
+}
+
+.map-intelligence-panel__segment-btn--on {
+  color: var(--dm-neon);
+  border-color: color-mix(in oklab, var(--dm-neon) 42%, var(--dm-border));
+  background: color-mix(in oklab, var(--dm-neon) 14%, #0f1724);
+}
+
+.dash-map-widget__expanded-split .dm-filter-field input[type="search"] {
+  min-width: 0;
+  width: 100%;
+  padding: 0.32rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border-strong);
+  background: var(--dm-surface-2);
+  color: var(--dm-text);
+  font-size: 0.76rem;
+  font-family: inherit;
   box-sizing: border-box;
-  border-left: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
-  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+}
+
+.dash-map-widget__expanded-split .dm-filter-field input[type="search"]::placeholder {
+  color: color-mix(in oklab, var(--dm-muted) 75%, transparent);
+}
+
+.dash-map-widget__expanded-split .dm-filter-field input[type="search"]:focus {
+  outline: none;
+  border-color: color-mix(in oklab, var(--dm-accent-blue) 55%, var(--dm-border));
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--dm-accent-blue) 22%, transparent);
+}
+
+.map-intelligence-panel__table-shell {
+  margin-top: 0.35rem;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border);
+  overflow: hidden;
+  background: color-mix(in oklab, var(--dm-surface-2) 92%, #000 8%);
+}
+
+.dash-map-widget__expanded-split .map-intelligence-panel__device-table.dm-data-table {
+  font-size: 0.7rem;
+}
+
+.dash-map-widget__expanded-split .map-intelligence-panel__device-table .dm-data-table__th,
+.dash-map-widget__expanded-split .map-intelligence-panel__device-table .dm-data-table__td {
+  padding: 0.28rem 0.4rem;
+  height: auto;
+  min-height: 2rem;
+  border-bottom-color: color-mix(in oklab, var(--dm-border) 85%, transparent);
+}
+
+.dash-map-widget__expanded-split .map-intelligence-panel__device-table .dm-data-table__th {
+  background: color-mix(in oklab, var(--dm-surface-2) 88%, #000 12%);
+  color: var(--dm-muted);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.map-intelligence-panel__tr--selected {
+  background: color-mix(in oklab, var(--dm-accent-blue) 12%, var(--dm-surface-2)) !important;
+}
+
+.map-intelligence-panel__device-link {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  font-size: inherit;
+  color: var(--dm-accent-blue);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.map-intelligence-panel__device-link:hover {
+  color: color-mix(in oklab, var(--dm-accent-blue) 85%, #fff);
+}
+
+.map-intelligence-panel__td-compact {
+  font-size: 0.65rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 6.5rem;
+}
+
+.map-intelligence-panel__pager {
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border);
+  background: color-mix(in oklab, var(--dm-surface-2) 90%, #000 10%);
+}
+
+.map-intelligence-panel__pager-note {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.65rem;
+  color: var(--dm-muted);
+  text-align: center;
+}
+
+.map-intelligence-panel__selected-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.map-intelligence-panel__selected-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--dm-text);
+}
+
+.map-intelligence-panel__kv {
   display: flex;
   flex-direction: column;
   gap: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.dash-map-widget__expanded-advanced-col .dash-map-widget__legend-row {
-  flex: 0 0 auto;
-  border-top: none;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
-}
-
-.dash-map-widget__expanded-advanced-col > .dash-map-intel {
-  flex: 1 1 0;
-  width: 100%;
-  max-width: none;
-  min-width: 0;
-  border-left: none;
-  min-height: 0;
-  overflow-x: hidden;
+  max-height: 11rem;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  padding-right: 0.15rem;
+}
+
+.map-intelligence-panel__row-k {
+  flex: 0 0 42%;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--dm-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-intelligence-panel__row-v {
+  flex: 1 1 auto;
+  text-align: right;
+  font-size: 0.68rem;
+  color: var(--dm-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-intelligence-panel__trace-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.35rem;
+}
+
+.map-intelligence-panel__advanced {
+  margin-top: 0.15rem;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in oklab, var(--dm-border) 90%, transparent);
+  background: color-mix(in oklab, var(--dm-surface) 75%, #000 20%);
+  padding: 0.35rem 0.45rem;
+}
+
+.map-intelligence-panel__advanced-summary {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--dm-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.map-intelligence-panel__advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.map-intelligence-panel__advanced-body {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in oklab, var(--dm-border) 65%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.map-intelligence-panel__trend-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.map-intelligence-panel__advanced-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dm-muted);
+}
+
+.map-intelligence-panel__trend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  align-items: center;
+}
+
+.map-intelligence-panel__chk {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  margin: 0;
+  cursor: pointer;
+  color: var(--dm-text);
+}
+
+.map-intelligence-panel__debug-pre {
+  margin: 0;
+  padding: 0.45rem;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  max-height: 10rem;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid var(--dm-border);
+  background: var(--dm-surface-2);
+  color: var(--dm-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .dash-map-widget__layer-tools {
@@ -5073,35 +5649,32 @@ a:hover {
   font-size: 0.78rem;
 }
 
+@media (max-width: 1100px) {
+  .dash-map-widget__expanded-split {
+    grid-template-columns: 1fr;
+    grid-template-rows:
+      minmax(220px, 1.2fr)
+      minmax(140px, 0.75fr)
+      minmax(140px, 0.75fr)
+      minmax(140px, 0.75fr);
+    overflow: auto;
+    contain: layout;
+  }
+
+  .dash-map-widget__expanded-map,
+  .dash-map-widget__layers-panel,
+  .dash-map-widget__rollup-panel,
+  .dash-map-widget__mid-grid {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .dash-map-widget__mid-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 720px) {
-  .dash-map-widget__expanded-two-col {
-    flex-direction: column;
-  }
-
-  .dash-map-widget__expanded-map-display-col {
-    max-width: 100%;
-    max-height: none;
-    align-self: stretch;
-  }
-
-  .dash-map-widget__expanded-map-display-col .dash-map-widget__layer-tools--row1 {
-    max-height: none;
-    overflow-y: visible;
-  }
-
-  .dash-map-widget__expanded-advanced-col {
-    flex: 0 0 auto;
-    width: 100%;
-    min-width: 0;
-    border-left: none;
-    border-top: 1px solid color-mix(in oklab, var(--color-border) 85%, transparent);
-    max-height: min(46dvh, 24rem);
-  }
-
-  .dash-map-widget__expanded-advanced-col > .dash-map-intel {
-    max-height: min(36dvh, 18rem);
-  }
-
   .dash-map-layers__bands--one-row {
     flex-direction: column;
     align-items: stretch;
@@ -5355,6 +5928,7 @@ a:hover {
 /* Intelligence expanded: clip widget body so the map cell does not show its own scrollbar (popups use high z-index). */
 .dash-widget--map.dash-map-widget--expanded .dash-wf__body.dash-wf__body--fill {
   overflow: hidden !important;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   flex: 1 1 auto;
@@ -6371,8 +6945,8 @@ a:hover {
   bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
   width: auto;
   max-width: none;
-  /* Cap to viewport; subtract widget header + insets so inner flex never reports a taller CB than the screen. */
-  max-height: min(calc(100dvh - 1rem), calc(100svh - 1rem), calc(100vh - 1rem));
+  /* Cap to viewport; single dvh avoids dvh/svh/vh disagreeing (height jitter as bars show/hide). */
+  max-height: calc(100dvh - 1rem);
   min-height: 0;
   margin: 0;
   overflow: hidden;
@@ -6384,25 +6958,10 @@ a:hover {
 
 .dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__expanded-split {
   flex: 1 1 auto;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   max-width: 100%;
-}
-
-.dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__expanded-two-col {
-  flex: 1 1 auto;
-  min-height: 0;
-  min-width: 0;
-  max-width: 100%;
-  max-height: min(
-    43.2rem,
-    max(0px, calc((100vh - 14rem) * 0.6)),
-    max(0px, calc((100dvh - 14rem) * 0.6)),
-    max(0px, calc((100svh - 14rem) * 0.6))
-  );
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__enterprise-grid {
@@ -6426,8 +6985,7 @@ a:hover {
 
 .dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
   flex: 1 1 auto !important;
-  /* Default map tile; expanded intel path overrides — keep min small so two-col min-content stays in viewport. */
-  min-height: min(18dvh, 220px) !important;
+  min-height: 0 !important;
   height: 100% !important;
   max-height: none !important;
   width: 100% !important;
@@ -6445,7 +7003,7 @@ a:hover {
 }
 
 .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
-  min-height: min(18dvh, 220px);
+  min-height: 0;
 }
 
 .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)

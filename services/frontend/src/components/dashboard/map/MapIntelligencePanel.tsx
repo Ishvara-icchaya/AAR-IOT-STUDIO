@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { AppModalShell } from "@/components/app/AppModalShell";
 import {
   getMapIntelligenceExpanded,
   getMapIntelligenceHistoricalMarkers,
@@ -46,24 +47,86 @@ export type MapIntelligencePanelProps = {
   /** Dominant endpoint on the map, or null for site-wide roster. */
   endpointId: string | null;
   expanded: boolean;
-  /** Runtime vs Historical — owned by parent so controls can live on the map chrome. */
+  /** Runtime vs Historical — owned by parent; toggles rendered in this panel. */
   intelMode: MapIntelMode;
+  onIntelModeChange: (mode: MapIntelMode) => void;
   onIntelOverlay: (state: IntelOverlayState | null) => void;
+  /** MapLibre host element (expanded cockpit row 1 / col 1). */
+  mapCanvas: ReactNode;
+  /** Layer controls + legend (row 1 / col 2). */
+  layersPanel: ReactNode;
 };
 
-function freshnessClass(s: string | undefined): string {
+function freshnessPillClass(s: string | undefined): string {
   const x = (s ?? "").toLowerCase();
-  if (x === "active") return "dash-map-intel__pill--active";
-  if (x === "stale") return "dash-map-intel__pill--stale";
-  if (x === "offline") return "dash-map-intel__pill--offline";
-  return "dash-map-intel__pill--unknown";
+  if (x === "active") return "dm-pill dm-pill--neon";
+  if (x === "stale") return "dm-pill dm-pill--warn";
+  if (x === "offline") return "dm-pill dm-pill--bad";
+  return "dm-pill dm-pill--muted";
 }
 
-function formatKpiPreview(kpis: Record<string, unknown> | undefined): string {
-  if (!kpis || typeof kpis !== "object") return "—";
-  const entries = Object.entries(kpis).slice(0, 3);
-  if (!entries.length) return "—";
-  return entries.map(([k, v]) => `${k}: ${String(v)}`).join(" · ");
+function formatDetailCell(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "object") {
+    try {
+      return JSON.stringify(v).slice(0, 160);
+    } catch {
+      return "—";
+    }
+  }
+  return String(v).slice(0, 220);
+}
+
+function detailSummaryRows(detail: Record<string, unknown> | null): { key: string; value: string }[] {
+  if (!detail || typeof detail !== "object") return [];
+  return Object.entries(detail)
+    .slice(0, 28)
+    .map(([key, value]) => ({ key, value: formatDetailCell(value) }));
+}
+
+function rollupCandidateKeys(
+  payload: Record<string, unknown> | null,
+  selected: MapIntelligenceDeviceRow | null,
+  detail: Record<string, unknown> | null,
+  kpiKeys: string[],
+): string[] {
+  const set = new Set<string>();
+  for (const k of kpiKeys) {
+    const t = k.trim();
+    if (t) set.add(t);
+  }
+  const addObj = (o: unknown) => {
+    if (o && typeof o === "object" && !Array.isArray(o)) {
+      for (const key of Object.keys(o as Record<string, unknown>)) set.add(key);
+    }
+  };
+  addObj(payload?.aggregate_kpis);
+  addObj(selected?.latest_kpis);
+  addObj(detail);
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+function formatRollupScalar(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "object") return JSON.stringify(v).slice(0, 96);
+  return String(v);
+}
+
+function rollupValueForKey(
+  key: string,
+  payload: Record<string, unknown> | null,
+  selected: MapIntelligenceDeviceRow | null,
+  detail: Record<string, unknown> | null,
+): string {
+  if (selected) {
+    const d = detail?.[key];
+    if (d !== undefined) return formatRollupScalar(d);
+    const lk = selected.latest_kpis?.[key];
+    if (lk !== undefined) return formatRollupScalar(lk);
+  }
+  const agg = payload?.aggregate_kpis as Record<string, unknown> | undefined;
+  if (agg && key in agg) return formatRollupScalar(agg[key]);
+  return "—";
 }
 
 export function MapIntelligencePanel({
@@ -72,7 +135,10 @@ export function MapIntelligencePanel({
   endpointId,
   expanded,
   intelMode: mode,
+  onIntelModeChange,
   onIntelOverlay,
+  mapCanvas,
+  layersPanel,
 }: MapIntelligencePanelProps) {
   const searchId = useId();
   /** Stable for effect deps — parent often passes `?? []` (new array reference each render when empty). */
@@ -100,6 +166,8 @@ export function MapIntelligencePanel({
   const [showEndpointTrend, setShowEndpointTrend] = useState(false);
   const [showDeviceTrend, setShowDeviceTrend] = useState(false);
   const [trendSummary, setTrendSummary] = useState<string | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [rollupDisplayedKeys, setRollupDisplayedKeys] = useState<string[]>([]);
   const histSamplesRef = useRef<[number, number][] | null>(null);
   const histRichRef = useRef<ReturnType<typeof parseRichMapPointsFromApi> | null>(null);
 
@@ -254,7 +322,7 @@ export function MapIntelligencePanel({
     );
   }, [devices, search]);
 
-  const PAGE_SIZE = 5;
+  const PAGE_SIZE = 4;
   const sortedDevices = useMemo(() => {
     const arr = [...filtered];
     arr.sort((a, b) => {
@@ -282,8 +350,57 @@ export function MapIntelligencePanel({
 
   const ep = payload?.endpoint as Record<string, unknown> | undefined;
 
+  const siteDisplay =
+    (typeof payload?.site_name === "string" && payload.site_name.trim()) ||
+    (typeof payload?.site_display_name === "string" && payload.site_display_name.trim()) ||
+    (typeof ep?.site_name === "string" && String(ep.site_name).trim()) ||
+    siteId;
+
+  const rollupStorageKey = `map-intel-rollup-keys:${siteId}:${endpointId ?? "all"}`;
+  const rollupAllKeys = useMemo(
+    () => rollupCandidateKeys(payload, selected, detail, kpiKeys),
+    [payload, selected, detail, kpiKeysSig],
+  );
+  /** Detail payload changes often (modal); do not drive auto-fill or grid relayout from it. */
+  const rollupKeysEpochStable = useMemo(
+    () => rollupCandidateKeys(payload, selected, null, kpiKeys).join("\u0001"),
+    [payload, selected?.source_id, kpiKeysSig, siteId, endpointId],
+  );
+
+  useEffect(() => {
+    const all = rollupCandidateKeys(payload, selected, null, kpiKeys);
+    setRollupDisplayedKeys((prev) => {
+      const kept = prev.filter((k) => all.includes(k));
+      const prio = kpiKeys.map((k) => k.trim()).filter(Boolean);
+      let next = [...kept];
+      for (const k of prio) {
+        if (all.includes(k) && !next.includes(k) && next.length < 5) next.push(k);
+      }
+      for (const k of all) {
+        if (next.length >= 5) break;
+        if (!next.includes(k)) next.push(k);
+      }
+      next = next.slice(0, 5);
+      if (next.length === prev.length && next.every((k, i) => k === prev[i])) return prev;
+      return next;
+    });
+  }, [rollupKeysEpochStable, kpiKeysSig, kpiKeys, siteId, endpointId, payload, selected?.source_id]);
+
+  const persistRollupKeys = useCallback(
+    (keys: string[]) => {
+      const trimmed = keys.filter((k) => rollupAllKeys.includes(k)).slice(0, 5);
+      try {
+        sessionStorage.setItem(rollupStorageKey, JSON.stringify(trimmed));
+      } catch {
+        /* ignore */
+      }
+      setRollupDisplayedKeys(trimmed);
+    },
+    [rollupAllKeys, rollupStorageKey],
+  );
+
   const loadDetail = useCallback(
-    async (row: MapIntelligenceDeviceRow) => {
+    async (row: MapIntelligenceDeviceRow, openModalAfter = false) => {
       setSelected(row);
       setDetailLoading(true);
       setDetail(null);
@@ -299,6 +416,7 @@ export function MapIntelligencePanel({
         setDetail(null);
       } finally {
         setDetailLoading(false);
+        if (openModalAfter) setDetailModalOpen(true);
       }
     },
     [siteId, kpiKeysSig],
@@ -429,141 +547,280 @@ export function MapIntelligencePanel({
     };
   }, [showEndpointTrend, showDeviceTrend, siteId, kpiKeysSig, selected?.entityId, trendContextKey]);
 
+  const modalDetailRows = useMemo(() => detailSummaryRows(detail), [detail]);
+
   return (
-    <aside className="dash-map-intel" aria-label="Roster, path, and diagnostics">
-      {!siteId ? (
-        <p className="dash-map-intel__err" role="status">
-          This map has no site in its binding. Configure a site on the widget so this view can load roster and trends.
-        </p>
-      ) : null}
-
-      <section className="dash-map-intel__section dash-map-intel__section--trends" aria-labelledby="dash-map-intel-trends">
-        <h5 id="dash-map-intel-trends" className="dash-map-intel__section-title">
-          Trends (diagnostics)
-        </h5>
-        <div className="dash-map-intel__trend-row">
-          <label className="dash-map-intel__chk">
-            <input type="checkbox" checked={showEndpointTrend} onChange={(e) => setShowEndpointTrend(e.target.checked)} />
-            Endpoint (1h)
-          </label>
-          <label className="dash-map-intel__chk">
-            <input
-              type="checkbox"
-              checked={showDeviceTrend}
-              onChange={(e) => setShowDeviceTrend(e.target.checked)}
-              disabled={!selected?.entityId}
-            />
-            Device (1h)
-          </label>
+    <div className="dash-map-widget__expanded-split" role="region" aria-label="Advanced map intelligence">
+      <section className="dash-map-widget__expanded-map dash-map-widget__panel">
+        <header className="dash-map-widget__panel-head dash-map-widget__panel-head--split">
+          <h3 className="dash-map-widget__panel-title">Map</h3>
+          <div className="map-intelligence-panel__mode-row map-intelligence-panel__mode-row--head" role="group" aria-label="Runtime or historical map mode">
+            <button
+              type="button"
+              className={`map-intelligence-panel__mode-btn ${mode === "runtime" ? "map-intelligence-panel__mode-btn--on" : ""}`}
+              onClick={() => onIntelModeChange("runtime")}
+            >
+              Runtime
+            </button>
+            <button
+              type="button"
+              className={`map-intelligence-panel__mode-btn ${mode === "historical" ? "map-intelligence-panel__mode-btn--on" : ""}`}
+              onClick={() => onIntelModeChange("historical")}
+            >
+              Historical
+            </button>
+          </div>
+        </header>
+        <div className="dash-map-widget__panel-body dash-map-widget__map-canvas">
+          <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--expanded-intel">{mapCanvas}</div>
         </div>
-        {trendSummary ? <p className="dash-map-intel__muted dash-map-intel__muted--tight">{trendSummary}</p> : null}
       </section>
 
-      <section className="dash-map-intel__section" aria-labelledby="dash-map-intel-endpoint">
-        <h5 id="dash-map-intel-endpoint" className="dash-map-intel__section-title">
-          Endpoint summary
-        </h5>
-        {loading && !payload ? (
-          <p className="dash-map-intel__muted">Loading…</p>
-        ) : err ? (
-          <p className="dash-map-intel__err">{err}</p>
-        ) : (
-          <dl className="dash-map-intel__dl">
-            <div>
-              <dt>Site</dt>
-              <dd>{siteId}</dd>
-            </div>
-            <div>
-              <dt>Endpoint</dt>
-              <dd>{ep?.name ? String(ep.name) : "—"}</dd>
-            </div>
-            <div>
-              <dt>Devices</dt>
-              <dd>{typeof ep?.device_count === "number" ? ep.device_count : devices.length}</dd>
-            </div>
-            <div>
-              <dt>Active / stale / offline / unknown</dt>
-              <dd>
-                {typeof ep?.active_count === "number" ? ep.active_count : "—"} /{" "}
-                {typeof ep?.stale_count === "number" ? ep.stale_count : "—"} /{" "}
-                {typeof ep?.offline_count === "number" ? ep.offline_count : "—"} /{" "}
-                {typeof ep?.unknown_count === "number" ? ep.unknown_count : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt>Refresh</dt>
-              <dd>
-                every {refreshSec}s
-                {typeof payload?.observable_window_sec === "number"
-                  ? ` · stale window ≥ ${String(payload.observable_window_sec)}s`
-                  : null}
-              </dd>
-            </div>
-            {payload?.aggregate_kpis && typeof payload.aggregate_kpis === "object" ? (
-              <div>
-                <dt>Aggregate KPIs (mean)</dt>
-                <dd className="dash-map-intel__kpi-inline">
-                  {formatKpiPreview(payload.aggregate_kpis as Record<string, unknown>)}
-                </dd>
+      <section className="dash-map-widget__layers-panel dash-map-widget__panel">
+        <header className="dash-map-widget__panel-head">
+          <h3 className="dash-map-widget__panel-title">Map layers</h3>
+        </header>
+        {layersPanel}
+      </section>
+
+      <section className="dash-map-widget__rollup-panel dash-map-widget__panel">
+        <header className="dash-map-widget__panel-head">
+          <h3 className="dash-map-widget__panel-title">Rollup fields</h3>
+        </header>
+        <div className="dash-map-widget__panel-body map-intelligence-panel__rollup-body">
+          <div className="map-intelligence-panel__rollup-metrics" aria-label="Rollup KPI fields">
+            {rollupDisplayedKeys.length === 0 ? (
+              <p className="map-intelligence-panel__muted">No KPI fields in this scope.</p>
+            ) : (
+              rollupDisplayedKeys.map((key) => (
+                <div key={key} className="map-intelligence-panel__rollup-metric">
+                  <div className="map-intelligence-panel__rollup-metric-label">{key}</div>
+                  <div className="map-intelligence-panel__rollup-metric-value">
+                    {rollupValueForKey(key, payload, selected, detail)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          {rollupAllKeys.length > 5 ? (
+            <details className="map-intelligence-panel__rollup-field-picker">
+              <summary className="map-intelligence-panel__rollup-field-picker-summary">Choose fields (max 5)</summary>
+              <div className="map-intelligence-panel__rollup-checkboxes">
+                {rollupAllKeys.map((k) => (
+                  <label key={k} className="map-intelligence-panel__rollup-chk">
+                    <input
+                      type="checkbox"
+                      checked={rollupDisplayedKeys.includes(k)}
+                      disabled={!rollupDisplayedKeys.includes(k) && rollupDisplayedKeys.length >= 5}
+                      onChange={() => {
+                        if (rollupDisplayedKeys.includes(k)) {
+                          persistRollupKeys(rollupDisplayedKeys.filter((x) => x !== k));
+                        } else if (rollupDisplayedKeys.length < 5) {
+                          persistRollupKeys([...rollupDisplayedKeys, k]);
+                        }
+                      }}
+                    />
+                    <span>{k}</span>
+                  </label>
+                ))}
               </div>
-            ) : null}
-          </dl>
-        )}
+            </details>
+          ) : null}
+          <div className="map-intelligence-panel__rollup-trace">
+            <span className="map-intelligence-panel__advanced-label">Trace / replay</span>
+            {mode !== "historical" ? (
+              <p className="map-intelligence-panel__muted">Switch to Historical to load paths and replay.</p>
+            ) : !selected ? (
+              <p className="map-intelligence-panel__muted">Select a device in the list, then load a 24h footprint.</p>
+            ) : (
+              <>
+                <div className="dm-act-grid map-intelligence-panel__trace-actions">
+                  <button
+                    type="button"
+                    className="dm-act-grid__btn dm-act-grid__btn--text"
+                    disabled={pathLoading}
+                    onClick={() => void loadPath()}
+                  >
+                    {pathLoading ? "Loading…" : "Load 24h footprint"}
+                  </button>
+                  <button
+                    type="button"
+                    className="dm-act-grid__btn dm-act-grid__btn--text"
+                    disabled={!pathPolyline || pathPolyline.length < 2 || pathLoading}
+                    title="Replay: moving head along the selected route; all loaded traces stay full length"
+                    onClick={() => setReplayFrame(0)}
+                  >
+                    Replay path
+                  </button>
+                </div>
+                {pathErr ? <p className="map-intelligence-panel__err">{pathErr}</p> : null}
+              </>
+            )}
+          </div>
+          <details className="map-intelligence-panel__advanced">
+            <summary className="map-intelligence-panel__advanced-summary">Advanced</summary>
+            <div className="map-intelligence-panel__advanced-body">
+              <div className="map-intelligence-panel__trend-block">
+                <span className="map-intelligence-panel__advanced-label">Trends (1h)</span>
+                <div className="map-intelligence-panel__trend-row">
+                  <label className="map-intelligence-panel__chk">
+                    <input type="checkbox" checked={showEndpointTrend} onChange={(e) => setShowEndpointTrend(e.target.checked)} />
+                    Endpoint
+                  </label>
+                  <label className="map-intelligence-panel__chk">
+                    <input
+                      type="checkbox"
+                      checked={showDeviceTrend}
+                      onChange={(e) => setShowDeviceTrend(e.target.checked)}
+                      disabled={!selected?.entityId}
+                    />
+                    Device
+                  </label>
+                </div>
+                {trendSummary ? <p className="map-intelligence-panel__muted map-intelligence-panel__muted--tight">{trendSummary}</p> : null}
+              </div>
+              {detail && Object.keys(detail).length ? (
+                <pre className="map-intelligence-panel__debug-pre">{JSON.stringify(detail, null, 2).slice(0, 4000)}</pre>
+              ) : null}
+            </div>
+          </details>
+        </div>
       </section>
 
-      <section className="dash-map-intel__section" aria-labelledby="dash-map-intel-devices">
-        <h5 id="dash-map-intel-devices" className="dash-map-intel__section-title">
-          Roster
-        </h5>
-        <div className="dash-map-intel__list-kind" role="group" aria-label="Roster source: devices or endpoint summary">
-          <button
-            type="button"
-            className={`dash-map-intel__tab ${listKind === "devices" ? "dash-map-intel__tab--on" : ""}`}
-            onClick={() => setListKind("devices")}
-          >
-            Devices
-          </button>
-          <button
-            type="button"
-            className={`dash-map-intel__tab ${listKind === "endpoint" ? "dash-map-intel__tab--on" : ""}`}
-            onClick={() => setListKind("endpoint")}
-          >
-            Endpoint
-          </button>
-        </div>
+      <div className="dash-map-widget__mid-grid">
+        <section className="dash-map-widget__endpoint-summary dash-map-widget__panel">
+          <header className="dash-map-widget__panel-head">
+            <h3 className="dash-map-widget__panel-title">Endpoint summary</h3>
+          </header>
+          <div className="dash-map-widget__panel-body">
+            {!siteId ? (
+              <p className="map-intelligence-panel__err" role="status">
+                This map has no site in its binding. Configure a site on the widget so this view can load roster and trends.
+              </p>
+            ) : loading && !payload ? (
+              <p className="map-intelligence-panel__muted">Loading…</p>
+            ) : err ? (
+              <p className="map-intelligence-panel__err">{err}</p>
+            ) : (
+              <>
+                <div className="map-intelligence-panel__metric-grid">
+                  <div className="map-intelligence-panel__metric">
+                    <div className="map-intelligence-panel__metric-label">Site Name</div>
+                    <div className="map-intelligence-panel__metric-value map-intelligence-panel__metric-value--truncate" title={siteDisplay}>
+                      {siteDisplay}
+                    </div>
+                  </div>
+                  <div className="map-intelligence-panel__metric">
+                    <div className="map-intelligence-panel__metric-label">Endpoint</div>
+                    <div
+                      className="map-intelligence-panel__metric-value map-intelligence-panel__metric-value--truncate"
+                      title={ep?.name ? String(ep.name) : ""}
+                    >
+                      {ep?.name ? String(ep.name) : "—"}
+                    </div>
+                  </div>
+                  <div className="map-intelligence-panel__metric">
+                    <div className="map-intelligence-panel__metric-label">Devices</div>
+                    <div className="map-intelligence-panel__metric-value">
+                      {typeof ep?.device_count === "number" ? ep.device_count : devices.length}
+                    </div>
+                  </div>
+                  <div className="map-intelligence-panel__metric">
+                    <div className="map-intelligence-panel__metric-label">Refresh</div>
+                    <div className="map-intelligence-panel__metric-value map-intelligence-panel__metric-value--sm">
+                      every {refreshSec}s
+                      {typeof payload?.observable_window_sec === "number"
+                        ? ` · stale ≥ ${String(payload.observable_window_sec)}s`
+                        : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="map-intelligence-panel__status-row" aria-label="Freshness counts">
+                  <span className="dm-pill dm-pill--neon" title="Active">
+                    A {typeof ep?.active_count === "number" ? ep.active_count : "—"}
+                  </span>
+                  <span className="dm-pill dm-pill--warn" title="Stale">
+                    S {typeof ep?.stale_count === "number" ? ep.stale_count : "—"}
+                  </span>
+                  <span className="dm-pill dm-pill--bad" title="Offline">
+                    O {typeof ep?.offline_count === "number" ? ep.offline_count : "—"}
+                  </span>
+                  <span className="dm-pill dm-pill--muted" title="Unknown">
+                    ? {typeof ep?.unknown_count === "number" ? ep.unknown_count : "—"}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+
+        <section className="dash-map-widget__device-list dash-map-widget__panel">
+          <header className="dash-map-widget__panel-head">
+            <h3 className="dash-map-widget__panel-title">Device list</h3>
+          </header>
+          <div className="dash-map-widget__panel-body">
+            <div className="map-intelligence-panel__device-toolbar">
+              <div className="map-intelligence-panel__segment" role="group" aria-label="List source">
+                <button
+                  type="button"
+                  className={`map-intelligence-panel__segment-btn ${listKind === "devices" ? "map-intelligence-panel__segment-btn--on" : ""}`}
+                  onClick={() => setListKind("devices")}
+                >
+                  Devices
+                </button>
+                <button
+                  type="button"
+                  className={`map-intelligence-panel__segment-btn ${listKind === "endpoint" ? "map-intelligence-panel__segment-btn--on" : ""}`}
+                  onClick={() => setListKind("endpoint")}
+                >
+                  Endpoint
+                </button>
+              </div>
+              {listKind === "devices" ? (
+                <div className="map-intelligence-panel__filter-inline dm-filter-field">
+                  <label className="dm-filter-field__label" htmlFor={searchId}>
+                    Filter devices
+                  </label>
+                  <input
+                    id={searchId}
+                    type="search"
+                    placeholder="Name or id…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+              ) : null}
+            </div>
         {listKind === "devices" ? (
           <>
-            <label className="dash-map-intel__search-label" htmlFor={searchId}>
-              Filter devices
-            </label>
-            <input
-              id={searchId}
-              type="search"
-              className="dash-map-intel__search"
-              placeholder="Name or id…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="dash-map-intel__table-wrap">
-              <table className="dash-map-intel__data-table">
+            <div className="map-intelligence-panel__table-shell">
+              <table className="dm-data-table map-intelligence-panel__device-table">
                 <thead>
                   <tr>
-                    <th scope="col">Device</th>
-                    <th scope="col">State</th>
-                    <th scope="col">Mobility</th>
-                    <th scope="col">Last seen</th>
+                    <th className="dm-data-table__th" scope="col">
+                      Device
+                    </th>
+                    <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                      State
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Mobility
+                    </th>
+                    <th className="dm-data-table__th" scope="col">
+                      Last seen
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {pageSlice.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="dash-map-intel__td-empty">
+                    <tr className="dm-data-table__row">
+                      <td className="dm-data-table__td dm-data-table__td--muted" colSpan={4}>
                         {loading && !payload
                           ? "Loading…"
                           : err
                             ? String(err)
                             : devices.length === 0
-                              ? "No devices in this scope. Check map binding or refresh."
+                              ? "No devices in this scope."
                               : "No matches. Clear the filter."}
                       </td>
                     </tr>
@@ -571,24 +828,18 @@ export function MapIntelligencePanel({
                     pageSlice.map((d) => (
                       <tr
                         key={d.source_id}
-                        className={selected?.source_id === d.source_id ? "dash-map-intel__tr--sel" : undefined}
+                        className={`dm-data-table__row ${selected?.source_id === d.source_id ? "map-intelligence-panel__tr--selected" : ""}`}
                       >
-                        <td className="dash-map-intel__td-wrap">
-                          <button
-                            type="button"
-                            className="dash-map-intel__row-btn"
-                            onClick={() => void loadDetail(d)}
-                          >
+                        <td className="dm-data-table__td">
+                          <button type="button" className="map-intelligence-panel__device-link" onClick={() => void loadDetail(d, true)}>
                             {d.display_name ?? d.entityId}
                           </button>
                         </td>
-                        <td>
-                          <span className={`dash-map-intel__pill ${freshnessClass(d.freshness_status)}`}>
-                            {d.freshness_status ?? "—"}
-                          </span>
+                        <td className="dm-data-table__td dm-data-table__td--center">
+                          <span className={freshnessPillClass(d.freshness_status)}>{d.freshness_status ?? "—"}</span>
                         </td>
-                        <td className="dash-map-intel__td-wrap">{d.mobility_type ?? "—"}</td>
-                        <td className="dash-map-intel__td-nowrap">
+                        <td className="dm-data-table__td">{d.mobility_type ?? "—"}</td>
+                        <td className="dm-data-table__td map-intelligence-panel__td-compact">
                           {d.last_observed_at ? new Date(d.last_observed_at).toLocaleString() : "—"}
                         </td>
                       </tr>
@@ -598,44 +849,54 @@ export function MapIntelligencePanel({
               </table>
             </div>
             {sortedDevices.length > PAGE_SIZE ? (
-              <div className="dash-map-intel__pager">
-                <button
-                  type="button"
-                  className="dash-map-intel__pager-btn"
-                  disabled={devicePageClamped <= 1}
-                  onClick={() => setDevicePage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <span className="dash-map-intel__pager-meta">
-                  Page {devicePageClamped} / {deviceTotalPages} · {sortedDevices.length} devices (newest first)
+              <div className="dm-table-pager map-intelligence-panel__pager">
+                <div className="dm-table-pager__controls">
+                  <button
+                    type="button"
+                    className="dm-act-grid__btn dm-act-grid__btn--text"
+                    disabled={devicePageClamped <= 1}
+                    onClick={() => setDevicePage((p) => Math.max(1, p - 1))}
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    className="dm-act-grid__btn dm-act-grid__btn--text"
+                    disabled={devicePageClamped >= deviceTotalPages}
+                    onClick={() => setDevicePage((p) => Math.min(deviceTotalPages, p + 1))}
+                  >
+                    Next
+                  </button>
+                </div>
+                <span className="map-intelligence-panel__pager-note">
+                  {devicePageClamped} / {deviceTotalPages} · {sortedDevices.length} devices
                 </span>
-                <button
-                  type="button"
-                  className="dash-map-intel__pager-btn"
-                  disabled={devicePageClamped >= deviceTotalPages}
-                  onClick={() => setDevicePage((p) => Math.min(deviceTotalPages, p + 1))}
-                >
-                  Next
-                </button>
               </div>
             ) : null}
           </>
         ) : (
-          <div className="dash-map-intel__table-wrap">
-            <table className="dash-map-intel__data-table">
+          <div className="map-intelligence-panel__table-shell">
+            <table className="dm-data-table map-intelligence-panel__device-table">
               <thead>
                 <tr>
-                  <th scope="col">Endpoint</th>
-                  <th scope="col">Devices</th>
-                  <th scope="col">Active / stale / off / ?</th>
+                  <th className="dm-data-table__th" scope="col">
+                    Endpoint
+                  </th>
+                  <th className="dm-data-table__th dm-data-table__th--center" scope="col">
+                    Devices
+                  </th>
+                  <th className="dm-data-table__th" scope="col">
+                    A / S / O / ?
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td className="dash-map-intel__td-wrap">{ep?.name ? String(ep.name) : "—"}</td>
-                  <td>{typeof ep?.device_count === "number" ? ep.device_count : devices.length}</td>
-                  <td className="dash-map-intel__td-wrap">
+                <tr className="dm-data-table__row">
+                  <td className="dm-data-table__td">{ep?.name ? String(ep.name) : "—"}</td>
+                  <td className="dm-data-table__td dm-data-table__td--center">
+                    {typeof ep?.device_count === "number" ? ep.device_count : devices.length}
+                  </td>
+                  <td className="dm-data-table__td dm-data-table__td--muted">
                     {typeof ep?.active_count === "number" ? ep.active_count : "—"} /{" "}
                     {typeof ep?.stale_count === "number" ? ep.stale_count : "—"} /{" "}
                     {typeof ep?.offline_count === "number" ? ep.offline_count : "—"} /{" "}
@@ -644,50 +905,49 @@ export function MapIntelligencePanel({
                 </tr>
               </tbody>
             </table>
-            <p className="dash-map-intel__hint">Use the Devices tab to pick a row for detail and path tools.</p>
+            <p className="map-intelligence-panel__hint">Open the Devices tab to select a row for detail and trace tools.</p>
           </div>
         )}
-        {mode === "historical" && selected ? (
-          <div className="dash-map-intel__path-actions">
-            <button type="button" className="dash-map-intel__btn" disabled={pathLoading} onClick={() => void loadPath()}>
-              {pathLoading ? "Loading path…" : "Load 24h footprint"}
-            </button>
-            <button
-              type="button"
-              className="dash-map-intel__btn"
-              disabled={!pathPolyline || pathPolyline.length < 2 || pathLoading}
-              title="Replay: moving head along the selected route; all loaded traces stay full length"
-              onClick={() => setReplayFrame(0)}
-            >
-              Replay path
-            </button>
-            {pathErr ? <p className="dash-map-intel__err">{pathErr}</p> : null}
           </div>
-        ) : null}
-      </section>
+        </section>
 
-      <section className="dash-map-intel__section" aria-labelledby="dash-map-intel-detail">
-        <h5 id="dash-map-intel-detail" className="dash-map-intel__section-title">
-          Selected device
-        </h5>
+      </div>
+
+      <AppModalShell
+        open={detailModalOpen}
+        title={selected ? String(selected.display_name ?? selected.entityId ?? "Device") : "Device detail"}
+        subtitle={selected?.entityId ? `Entity: ${selected.entityId}` : undefined}
+        onClose={() => setDetailModalOpen(false)}
+        size="lg"
+        dialogClassName="map-intelligence-panel__detail-modal"
+      >
         {!selected ? (
-          <p className="dash-map-intel__muted">No row selected — use the Devices table above.</p>
+          <p className="map-intelligence-panel__muted">No device selected.</p>
         ) : detailLoading ? (
-          <p className="dash-map-intel__muted">Loading detail…</p>
+          <p className="map-intelligence-panel__muted">Loading detail…</p>
         ) : (
           <>
-            <p className="dash-map-intel__muted">
-              <strong>{selected.display_name ?? selected.entityId}</strong> · mobility{" "}
-              <span className="dash-map-intel__mono">{selected.mobility_type ?? "unknown"}</span>
-            </p>
-            {detail ? (
-              <pre className="dash-map-intel__pre">{JSON.stringify(detail, null, 2).slice(0, 2400)}</pre>
+            <div className="map-intelligence-panel__selected-head">
+              <span className="map-intelligence-panel__selected-name">{selected.display_name ?? selected.entityId}</span>
+              <span className="dm-pill dm-pill--muted">{selected.mobility_type ?? "unknown"}</span>
+            </div>
+            {modalDetailRows.length > 0 ? (
+              <div className="map-intelligence-panel__kv map-intelligence-panel__kv--modal">
+                {modalDetailRows.map((row) => (
+                  <div key={row.key} className="map-intelligence-panel__row">
+                    <span className="map-intelligence-panel__row-k">{row.key}</span>
+                    <span className="map-intelligence-panel__row-v" title={row.value}>
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p className="dash-map-intel__muted">No detail payload.</p>
+              <p className="map-intelligence-panel__muted">No detail payload.</p>
             )}
           </>
         )}
-      </section>
-    </aside>
+      </AppModalShell>
+    </div>
   );
 }
