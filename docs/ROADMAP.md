@@ -13,3 +13,5 @@ Release **8.0.0** marks the start of a coordinated versioning, lineage, and OTA 
 | **4** | **OTA campaign tracking**, **rollback visibility**, and **audit hardening**. |
 
 Implementation order and scope may be adjusted per delivery; this document tracks the agreed phase intent.
+
+**Normative contract (versioning, schema, pipelines, dashboards):** [DEVICE_VERSIONING_SPEC.md](./DEVICE_VERSIONING_SPEC.md).
