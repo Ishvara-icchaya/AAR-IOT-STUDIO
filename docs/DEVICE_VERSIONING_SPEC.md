@@ -256,6 +256,16 @@ The platform treats every device version as an immutable, schema-bound snapshot,
 
 ---
 
+## 12. Existing data & migration (v1 constraint)
+
+🔒 **Final rule — no required migration**
+
+The versioning, schema-evolution, compatibility, routing, and UI capabilities described in this contract MUST be deliverable **without a mandatory bulk migration or rewrite of existing production data** (historical raw ingest, scrubbed stores, workflow outputs, dashboard bindings, and related artifacts remain valid as stored).
+
+New structures (for example `device_version` records, candidate/isolated stores, routing policy, `attribute_id` metadata) MUST **layer on alongside** current data. Backfills, re-keys, or ETL MAY be used **optionally** for quality or performance, but MUST NOT be a prerequisite to ship or operate v1 of this model.
+
+---
+
 ## What you now have
 
 You now have a production-grade, enterprise-safe contract that:
