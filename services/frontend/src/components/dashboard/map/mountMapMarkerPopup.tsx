@@ -1,11 +1,17 @@
 import { createRoot, type Root } from "react-dom/client";
-import maplibregl from "maplibre-gl";
+import type maplibregl from "maplibre-gl";
+import { AppModalShell } from "@/components/app/AppModalShell";
+import { DEFAULT_MAP_STYLE_URL } from "@/lib/dashboardMapStyle";
+import { MapMarkerModalSplit, normalizeLngLatLike } from "./MapMarkerModalSplit";
 import { MapMarkerPopupRoot } from "./MapMarkerPopupRoot";
 
 export function openDashboardMapMarkerPopup(
-  map: maplibregl.Map,
+  _map: maplibregl.Map,
   opts: {
-    lngLat: maplibregl.LngLatLike;
+    /** Device location for the right-hand preview map in the modal. */
+    lngLat?: maplibregl.LngLatLike;
+    /** Basemap for the preview map (dashboard runtime style when provided). */
+    mapStyleUrl?: string;
     title: string;
     siteId: string;
     sourceType: string;
@@ -18,27 +24,12 @@ export function openDashboardMapMarkerPopup(
     /** When popup is mounted outside DashboardLiveProvider, pass live refresh meta from the map widget. */
     detailRefreshIntervalSec?: number;
     detailRenderEpoch?: string;
-    /**
-     * Expanded map (Advanced column): popups must sit above panels and avoid tight max-width
-     * so tables are usable; grid map uses a compact card.
-     */
+    /** Wider modal when opened from the intelligence map (tables / trends). */
     expandedMapIntel?: boolean;
   },
-): maplibregl.Popup {
+): void {
   const host = document.createElement("div");
-  const intel = opts.expandedMapIntel === true;
-  const popup = new maplibregl.Popup({
-    anchor: intel ? "bottom" : "top",
-    offset: intel ? 12 : 10,
-    maxWidth: intel ? "520px" : "380px",
-    className: `dash-map-popup-shell${intel ? " dash-map-popup-shell--intel-view" : " dash-map-popup-shell--grid"}`,
-    closeButton: true,
-    closeOnClick: false,
-  })
-    .setLngLat(opts.lngLat)
-    .setDOMContent(host)
-    .addTo(map);
-
+  document.body.appendChild(host);
   const root: Root = createRoot(host);
   let cleaned = false;
   const cleanup = () => {
@@ -49,22 +40,40 @@ export function openDashboardMapMarkerPopup(
     } catch {
       /* noop */
     }
+    host.remove();
   };
-  popup.on("close", cleanup);
+
+  const size = opts.expandedMapIntel === true ? "xl" : "lg";
+  const dialogClass = "dash-map-marker-detail-modal";
+  const mapCenter = normalizeLngLatLike(opts.lngLat);
+  const mapStyleUrl = opts.mapStyleUrl?.trim() || DEFAULT_MAP_STYLE_URL;
 
   root.render(
-    <MapMarkerPopupRoot
-      siteId={opts.siteId}
-      sourceType={opts.sourceType}
-      sourceId={opts.sourceId}
+    <AppModalShell
+      open
       title={opts.title}
-      blockedMessage={opts.blockedMessage}
-      trendScope={opts.trendScope}
-      kpiKeys={opts.kpiKeys}
-      detailRefreshIntervalSec={opts.detailRefreshIntervalSec}
-      detailRenderEpoch={opts.detailRenderEpoch}
-    />,
+      onClose={cleanup}
+      size={size}
+      dialogClassName={dialogClass}
+    >
+      <MapMarkerModalSplit
+        mapCenter={mapCenter}
+        mapStyleUrl={mapStyleUrl}
+        detail={
+          <MapMarkerPopupRoot
+            inModal
+            siteId={opts.siteId}
+            sourceType={opts.sourceType}
+            sourceId={opts.sourceId}
+            title={opts.title}
+            blockedMessage={opts.blockedMessage}
+            trendScope={opts.trendScope}
+            kpiKeys={opts.kpiKeys}
+            detailRefreshIntervalSec={opts.detailRefreshIntervalSec}
+            detailRenderEpoch={opts.detailRenderEpoch}
+          />
+        }
+      />
+    </AppModalShell>,
   );
-
-  return popup;
 }

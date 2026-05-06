@@ -27,7 +27,6 @@ import type { RichMapPoint } from "@/types/mapTransport";
 import type { MarkerRec } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { apiMarkersToMarkerRecs } from "@/lib/dashboard/adapters/apiMarkersToRec";
 import { markersToViewModels, type MapPointVM, type MapProfile } from "@/lib/dashboard/mapViewModel";
-import { MapMarkerPopupRoot } from "@/components/dashboard/map/MapMarkerPopupRoot";
 import { openDashboardMapMarkerPopup } from "@/components/dashboard/map/mountMapMarkerPopup";
 import { MapIntelligencePanel, type MapIntelMode } from "@/components/dashboard/map/MapIntelligencePanel";
 import {
@@ -37,17 +36,6 @@ import {
   type MapLayerControls,
 } from "@/lib/dashboard/mapLayerControls";
 import "@/pages/device-register-page.css";
-
-/** Docked marker detail (non–Intelligence standard map); same props shape as MapMarkerPopupRoot. */
-type MapInlineMarkerDetail = {
-  siteId: string;
-  sourceType: string;
-  sourceId: string;
-  title: string;
-  blockedMessage?: string;
-  trendScope?: "resolved_device" | "endpoint" | "site";
-  kpiKeys?: string[];
-};
 
 function computeClusterEffective(list: MarkerRec[], controls: MapControlsVM): boolean {
   const n = list.length;
@@ -98,6 +86,7 @@ function openMapPopupForVm(
     expandedMapIntel?: boolean;
     detailRefreshIntervalSec?: number;
     detailRenderEpoch?: string;
+    mapStyleUrl?: string;
   },
 ) {
   const lngLat: maplibregl.LngLatLike = [vm.longitude, vm.latitude];
@@ -109,6 +98,7 @@ function openMapPopupForVm(
   if (!siteId || !st || !sid) {
     openDashboardMapMarkerPopup(map, {
       lngLat,
+      mapStyleUrl: extra?.mapStyleUrl,
       title: displayName,
       siteId: siteId ?? "",
       sourceType: String(st ?? ""),
@@ -123,6 +113,7 @@ function openMapPopupForVm(
 
   openDashboardMapMarkerPopup(map, {
     lngLat,
+    mapStyleUrl: extra?.mapStyleUrl,
     title: displayName,
     siteId,
     sourceType: String(st),
@@ -298,6 +289,9 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   const { mapStyleUrl, enterpriseMode, renderedAt, refreshIntervalSec } = useDashboardLiveRuntime();
   const enterpriseModeRef = useRef(enterpriseMode);
   enterpriseModeRef.current = enterpriseMode;
+  /** Site map uses the intelligence cockpit (marker picks → intel popups, freeze auto-fit on refresh). */
+  const intelCockpitRef = useRef(!enterpriseMode);
+  intelCockpitRef.current = !enterpriseMode;
   const livePopupMetaRef = useRef({ renderedAt, refreshIntervalSec });
   livePopupMetaRef.current = { renderedAt, refreshIntervalSec };
 
@@ -311,10 +305,8 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   const d = block.data ?? {};
   const [styleNotice, setStyleNotice] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const [intelMode, setIntelMode] = useState<MapIntelMode>("runtime");
   const [intelOverlay, setIntelOverlay] = useState<IntelOverlayState | null>(null);
-  const [inlineMarkerDetail, setInlineMarkerDetail] = useState<MapInlineMarkerDetail | null>(null);
 
   const chrome = adaptMapChrome(block);
   const fetchKey = mapChromeFetchKey(chrome);
@@ -348,8 +340,6 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
 
   const layerControlsRef = useRef(layerControls);
   layerControlsRef.current = layerControls;
-  const expandedRef = useRef(expanded);
-  expandedRef.current = expanded;
   const markerPickTsRef = useRef(0);
 
   const smoothMarkersRef = useRef(smoothMarkers);
@@ -364,24 +354,24 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   );
 
   /**
-   * Snap filtered markers into `smoothMarkers` before paint when Advanced is open (or smoothing is off).
+   * Snap filtered markers into `smoothMarkers` before paint when the intel cockpit is active (or smoothing is off).
    * Otherwise the deck `useEffect` can run in the same commit with a stale `smoothMarkersRef` after
    * layer/filter changes — map layers (Trace, filters, color) appear broken.
    */
   useLayoutEffect(() => {
     const ch = adaptMapChrome(block);
-    if (!ch.mapSmoothMarkers || expandedRef.current) {
+    if (!ch.mapSmoothMarkers || intelCockpitRef.current) {
       setSmoothMarkers(filteredMarkers);
     }
-  }, [filteredMarkers, block, expanded]);
+  }, [filteredMarkers, block, enterpriseMode]);
 
   useEffect(() => {
     const ch = adaptMapChrome(block);
-    if (!ch.mapSmoothMarkers || expandedRef.current) return;
+    if (!ch.mapSmoothMarkers || intelCockpitRef.current) return;
     const start = smoothMarkersRef.current;
     let step = 0;
     const id = window.setInterval(() => {
-      if (expandedRef.current) {
+      if (intelCockpitRef.current) {
         window.clearInterval(id);
         setSmoothMarkers(filteredMarkers);
         return;
@@ -403,7 +393,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       if (step >= 14) window.clearInterval(id);
     }, 32);
     return () => window.clearInterval(id);
-  }, [filteredMarkers, block, expanded]);
+  }, [filteredMarkers, block, enterpriseMode]);
 
   useEffect(() => {
     if (d.error) return;
@@ -454,7 +444,6 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       if (!body) return;
       void postMapMarkersQuery(body)
         .then((r) => {
-          if (expandedRef.current) return;
           if (!r?.markers) return;
           setMarkerList(apiMarkersToMarkerRecs(r.markers));
           if (r.map_init) setMapInitApi(parseMapInit(r.map_init));
@@ -474,7 +463,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     const container = containerRef.current;
     if (!container) return;
 
-    /** New MapLibre instance whenever Advanced toggles — the map div can remount across layout branches. */
+    /** New MapLibre instance when site vs enterprise layout switches — the map div can remount across layout branches. */
     firstFitDoneRef.current = false;
 
     let styleFallbackUsed = false;
@@ -532,24 +521,15 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     });
     ro.observe(container);
 
-    const onMapClick = () => {
-      if (expandedRef.current) return;
-      if (enterpriseModeRef.current) return;
-      if (Date.now() - markerPickTsRef.current < 320) return;
-      setInlineMarkerDetail(null);
-    };
-    map.on("click", onMapClick);
-
     return () => {
       if (resizeRaf != null) cancelAnimationFrame(resizeRaf);
-      map.off("click", onMapClick);
       ro.disconnect();
       deckHandleRef.current?.dispose();
       deckHandleRef.current = null;
       map.remove();
       mapRef.current = null;
     };
-  }, [mapStyleUrl, block.widget_id, expanded, enterpriseMode]);
+  }, [mapStyleUrl, block.widget_id, enterpriseMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -579,19 +559,15 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               vm.source_type === "latest_device_state" && ch.mapDefaultTrendScope
                 ? ch.mapDefaultTrendScope
                 : undefined;
-            const siteRaw = latestBlockRef.current.data?.site_id;
-            const siteId = typeof siteRaw === "string" ? siteRaw : undefined;
-            const st = vm.source_type;
-            const sid = vm.source_id;
-            const title = vm.label || "Object";
 
             const popExtra = {
               kpiKeys,
               trendScope,
+              mapStyleUrl,
               detailRefreshIntervalSec: livePopupMetaRef.current.refreshIntervalSec,
               detailRenderEpoch: livePopupMetaRef.current.renderedAt,
             };
-            if (expandedRef.current) {
+            if (intelCockpitRef.current) {
               openMapPopupForVm(
                 map,
                 vm,
@@ -603,38 +579,15 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               );
               return;
             }
-            if (enterpriseModeRef.current) {
-              openMapPopupForVm(
-                map,
-                vm,
-                () => {
-                  const site = latestBlockRef.current.data?.site_id;
-                  return typeof site === "string" ? site : undefined;
-                },
-                { ...popExtra, expandedMapIntel: false },
-              );
-              return;
-            }
-            if (!siteId || !st || !sid) {
-              setInlineMarkerDetail({
-                siteId: siteId ?? "",
-                sourceType: String(st ?? ""),
-                sourceId: String(sid ?? ""),
-                title,
-                blockedMessage: "No detail link (missing site or source).",
-                kpiKeys,
-                trendScope,
-              });
-              return;
-            }
-            setInlineMarkerDetail({
-              siteId,
-              sourceType: String(st),
-              sourceId: String(sid),
-              title,
-              kpiKeys,
-              trendScope,
-            });
+            openMapPopupForVm(
+              map,
+              vm,
+              () => {
+                const site = latestBlockRef.current.data?.site_id;
+                return typeof site === "string" ? site : undefined;
+              },
+              { ...popExtra, expandedMapIntel: false },
+            );
           },
           onClusterPick: (clusterId, lngLat, expansionZoom) => {
             const deck = deckHandleRef.current;
@@ -664,9 +617,10 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
                   detailRefreshIntervalSec: livePopupMetaRef.current.refreshIntervalSec,
                   detailRenderEpoch: livePopupMetaRef.current.renderedAt,
                 };
-                if (expandedRef.current) {
+                if (intelCockpitRef.current) {
                   openDashboardMapMarkerPopup(map, {
                     lngLat,
+                    mapStyleUrl,
                     title,
                     siteId: siteStr,
                     sourceType: "latest_device_state",
@@ -678,27 +632,17 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
                   });
                   return;
                 }
-                if (enterpriseModeRef.current) {
-                  openDashboardMapMarkerPopup(map, {
-                    lngLat,
-                    title,
-                    siteId: siteStr,
-                    sourceType: "latest_device_state",
-                    sourceId: sid,
-                    trendScope: "endpoint",
-                    kpiKeys,
-                    expandedMapIntel: false,
-                    ...clusterPopMeta,
-                  });
-                  return;
-                }
-                setInlineMarkerDetail({
+                openDashboardMapMarkerPopup(map, {
+                  lngLat,
+                  mapStyleUrl,
+                  title,
                   siteId: siteStr,
                   sourceType: "latest_device_state",
                   sourceId: sid,
-                  title,
                   trendScope: "endpoint",
                   kpiKeys,
+                  expandedMapIntel: false,
+                  ...clusterPopMeta,
                 });
                 return;
               }
@@ -720,7 +664,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         ctrl,
         firstFitDoneRef,
         chromeNow.aggregateByDevice,
-        expandedRef.current,
+        intelCockpitRef.current,
       );
     };
 
@@ -734,7 +678,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       cancelled = true;
       map.off("load", run);
     };
-  }, [syncKey, mapStyleUrl, block.widget_id, markerFetch, expanded, enterpriseMode]);
+  }, [syncKey, mapStyleUrl, block.widget_id, markerFetch, enterpriseMode]);
 
   useEffect(() => {
     const deck = deckHandleRef.current;
@@ -756,9 +700,10 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         detailRefreshIntervalSec: livePopupMetaRef.current.refreshIntervalSec,
         detailRenderEpoch: livePopupMetaRef.current.renderedAt,
       };
-      if (expandedRef.current) {
+      if (intelCockpitRef.current) {
         openDashboardMapMarkerPopup(map, {
           lngLat: [p.lng, p.lat],
+          mapStyleUrl,
           title,
           siteId,
           sourceType: "latest_device_state",
@@ -768,31 +713,21 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
         });
         return;
       }
-      if (enterpriseModeRef.current) {
-        openDashboardMapMarkerPopup(map, {
-          lngLat: [p.lng, p.lat],
-          title,
-          siteId,
-          sourceType: "latest_device_state",
-          sourceId: ldsId,
-          expandedMapIntel: false,
-          ...popExtra,
-        });
-        return;
-      }
-      setInlineMarkerDetail({
+      openDashboardMapMarkerPopup(map, {
+        lngLat: [p.lng, p.lat],
+        mapStyleUrl,
+        title,
         siteId,
         sourceType: "latest_device_state",
         sourceId: ldsId,
-        title,
-        kpiKeys: popExtra.kpiKeys,
-        trendScope: popExtra.trendScope,
+        expandedMapIntel: false,
+        ...popExtra,
       });
     });
     return () => {
       deck.setIntelRichSamplePick(undefined);
     };
-  }, [markerFetch, syncKey, expanded, enterpriseMode, block.widget_id]);
+  }, [markerFetch, syncKey, enterpriseMode, block.widget_id, mapStyleUrl]);
 
   useLayoutEffect(() => {
     const map = mapRef.current;
@@ -801,9 +736,9 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     const outerRaf = requestAnimationFrame(() => {
       innerRaf = requestAnimationFrame(() => map.resize());
     });
-    /** Advanced view moves the map in the flex tree; MapLibre needs several resizes as layout settles. */
+    /** Cockpit grid moves the map in the flex tree; MapLibre needs several resizes as layout settles. */
     const delayed =
-      expanded &&
+      !enterpriseMode &&
       [160, 420].map((ms) =>
         window.setTimeout(() => {
           try {
@@ -818,37 +753,12 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       if (innerRaf) cancelAnimationFrame(innerRaf);
       if (delayed) delayed.forEach((id) => window.clearTimeout(id));
     };
-  }, [expanded]);
-
-  useLayoutEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    let innerRaf = 0;
-    const outerRaf = requestAnimationFrame(() => {
-      innerRaf = requestAnimationFrame(() => map.resize());
-    });
-    return () => {
-      cancelAnimationFrame(outerRaf);
-      if (innerRaf) cancelAnimationFrame(innerRaf);
-    };
-  }, [inlineMarkerDetail]);
+  }, [enterpriseMode]);
 
   useEffect(() => {
-    if (expanded) setInlineMarkerDetail(null);
-  }, [expanded]);
-
-  useEffect(() => {
-    setInlineMarkerDetail(null);
+    setIntelOverlay(null);
+    setIntelMode("runtime");
   }, [block.widget_id]);
-
-  useEffect(() => {
-    if (!inlineMarkerDetail) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setInlineMarkerDetail(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [inlineMarkerDetail]);
 
   /** Push intelligence overlay + layer toggles whenever either changes (deck `refresh` reads both). */
   useEffect(() => {
@@ -856,32 +766,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     if (!deck) return;
     deck.setIntelligenceOverlay(intelOverlay);
     deck.applyLayerControls(layerControls);
-  }, [intelOverlay, layerControls, syncKey, expanded]);
-
-  useEffect(() => {
-    if (!expanded) {
-      setIntelOverlay(null);
-      setIntelMode("runtime");
-    }
-  }, [expanded]);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [expanded]);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [expanded]);
+  }, [intelOverlay, layerControls, syncKey]);
 
   if (d.error) {
     return (
@@ -910,7 +795,7 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     setLayerControls((lc) => ({ ...lc, colorMode: m }));
   }, []);
 
-  const mapHostKey = expanded ? "advanced" : enterpriseMode ? "enterprise" : "inline";
+  const mapHostKey = enterpriseMode ? "enterprise" : "intel-cockpit";
 
   const mapNotices = (
     <>
@@ -929,6 +814,8 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
       ) : null}
     </>
   );
+
+  const hasMapNotices = Boolean(styleNotice || markerStatusNote || (chrome.degraded && chrome.warning));
 
   const mapEl = (
     <div
@@ -959,66 +846,25 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   const mapModifiers = [
     "dash-widget--map",
     "widget--map",
-    isEnterprise ? "dash-map-widget--enterprise" : "",
-    expanded ? "dash-map-widget--expanded" : "",
-    !expanded && !isEnterprise && inlineMarkerDetail ? "dash-map-widget--inline-detail" : "",
+    isEnterprise ? "dash-map-widget--enterprise" : "dash-map-widget--intel-cockpit",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const expandBtn = (
-    <button
-      type="button"
-      className="dash-map-widget__expand-btn"
-      onClick={() => setExpanded((x) => !x)}
-      aria-expanded={expanded}
-      title={expanded ? "Close expanded advanced view" : "Open expanded map (split layout: map display and advanced)"}
-    >
-      {expanded ? "Close view" : "Advanced"}
-    </button>
-  );
-
   return (
-    <>
-      {expanded ? (
-        <button
-          type="button"
-          className="dash-map-widget__backdrop"
-          aria-label="Close expanded map"
-          onClick={() => setExpanded(false)}
-        />
-      ) : null}
-      <DashboardWidgetFrame
-        block={block}
-        presentation={pres}
-        state="normal"
-        widgetKind="map"
-        bodyFill
-        className={mapModifiers}
-        headerExtra={expandBtn}
-        rootProps={
-          expanded
-            ? {
-                role: "dialog",
-                "aria-modal": true,
-                "aria-label": `Expanded map — ${block.title}`,
-              }
-            : undefined
-        }
-      >
-        {expanded ? (
-          <div className="dash-map-widget__expanded-notices" aria-live="polite">
-            {mapNotices}
-          </div>
-        ) : (
-          mapNotices
-        )}
-        {expanded ? (
+    <DashboardWidgetFrame block={block} presentation={pres} state="normal" widgetKind="map" bodyFill className={mapModifiers}>
+      {!isEnterprise ? (
+        <>
+          {hasMapNotices ? (
+            <div className="dash-map-widget__expanded-notices" aria-live="polite">
+              {mapNotices}
+            </div>
+          ) : null}
           <MapIntelligencePanel
             siteId={intelSiteId}
             kpiKeys={chrome.kpiFields ?? []}
             endpointId={intelEndpointId}
-            expanded={expanded}
+            expanded
             intelMode={intelMode}
             onIntelModeChange={setIntelMode}
             onIntelOverlay={setIntelOverlay}
@@ -1040,55 +886,17 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
               </div>
             }
           />
-        ) : isEnterprise ? (
+        </>
+      ) : (
+        <>
+          {mapNotices}
           <div className="dash-map-widget__enterprise-grid">
             <div className="dash-map-widget__map-col">{mapEl}</div>
             <EnterpriseSiteCountsPanel />
           </div>
-        ) : (
-          <div
-            className={`dash-map-widget__inline-split ${inlineMarkerDetail ? "dash-map-widget__inline-split--open" : ""}`}
-          >
-            <div className="dash-map-widget__inline-split-map">
-              <div className="dash-map-widget__single-map-wrap dash-map-widget__single-map-wrap--inline">
-                {mapEl}
-              </div>
-            </div>
-            <aside
-              className="dash-map-widget__inline-detail"
-              aria-hidden={!inlineMarkerDetail}
-              aria-label={inlineMarkerDetail ? "Marker detail" : undefined}
-            >
-              {inlineMarkerDetail ? (
-                <>
-                  <div className="dash-map-widget__inline-detail-head">
-                    <button
-                      type="button"
-                      className="dash-map-widget__inline-detail-close"
-                      onClick={() => setInlineMarkerDetail(null)}
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <div className="dash-map-widget__inline-detail-body">
-                    <MapMarkerPopupRoot
-                      key={`${inlineMarkerDetail.sourceType}:${inlineMarkerDetail.sourceId}`}
-                      siteId={inlineMarkerDetail.siteId}
-                      sourceType={inlineMarkerDetail.sourceType}
-                      sourceId={inlineMarkerDetail.sourceId}
-                      title={inlineMarkerDetail.title}
-                      blockedMessage={inlineMarkerDetail.blockedMessage}
-                      trendScope={inlineMarkerDetail.trendScope}
-                      kpiKeys={inlineMarkerDetail.kpiKeys}
-                    />
-                  </div>
-                </>
-              ) : null}
-            </aside>
-          </div>
-        )}
-      </DashboardWidgetFrame>
-    </>
+        </>
+      )}
+    </DashboardWidgetFrame>
   );
 }
 

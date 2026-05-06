@@ -3911,8 +3911,12 @@ a:hover {
 }
 
 /* Map widget: recommended baseline — min usable height + 16:9 preview; row/column grows vertically. */
-.widget--map.dash-widget--map:not(.dash-map-widget--expanded) {
+.widget--map.dash-widget--map:not(.dash-map-widget--expanded):not(.dash-map-widget--intel-cockpit) {
   min-height: 320px;
+}
+
+.widget--map.dash-widget--map.dash-map-widget--intel-cockpit {
+  min-height: min(360px, 44dvh);
 }
 
 .dash-widget--map:not(.dash-map-widget--expanded) {
@@ -3920,7 +3924,8 @@ a:hover {
 }
 
 /* Single-site map: 16:9 region from cell width; never shrink below parent min-height floor. */
-.dash-widget--map:not(.dash-map-widget--expanded) .dash-map-widget__single-map-wrap {
+.dash-widget--map:not(.dash-map-widget--expanded)
+  .dash-map-widget__single-map-wrap:not(.dash-map-widget__single-map-wrap--expanded-intel) {
   width: 100%;
   max-width: 100%;
   margin-inline: auto;
@@ -3932,7 +3937,9 @@ a:hover {
   flex-direction: column;
 }
 
-.dash-widget--map:not(.dash-map-widget--expanded) .dash-map-widget__single-map-wrap > .dash-map-widget__map {
+.dash-widget--map:not(.dash-map-widget--expanded)
+  .dash-map-widget__single-map-wrap:not(.dash-map-widget__single-map-wrap--expanded-intel)
+  > .dash-map-widget__map {
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;
@@ -4202,23 +4209,59 @@ a:hover {
   scrollbar-gutter: stable;
 }
 
-/* Fixed strip: style/loading/warning lines used to mount/unmount and shift the whole cockpit (panel heads “bounce”). */
+/* Style/loading/warning strip (only mounted when non-empty — avoids a gap under the widget title). */
 .dash-map-widget__expanded-notices {
   flex: 0 0 auto;
   flex-shrink: 0;
-  height: 2.75rem;
+  max-height: 2.75rem;
   overflow: hidden auto;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.12rem;
   justify-content: center;
   box-sizing: border-box;
+  padding-block: 0.1rem;
 }
 
 .dash-map-widget__expanded-notices .dash-wf-map__notice {
   margin: 0;
   flex-shrink: 0;
   line-height: 1.25;
+}
+
+/* In-dashboard intelligence map: no dead strip under the widget title; taller map band; compact panel chrome. */
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-wf__header {
+  margin-bottom: 0.1rem;
+}
+
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__expanded-split .dash-map-widget__panel-head {
+  padding: 0.3rem 0.5rem;
+}
+
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__expanded-split .dash-map-widget__panel-head--split {
+  min-height: 0;
+}
+
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__layers-panel .dash-map-widget__layers-stack {
+  gap: 0.26rem;
+}
+
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__layers-panel .dash-map-widget__layers-legend-body {
+  padding-top: 0.26rem;
+  padding-bottom: 0.38rem;
+}
+
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__expanded-map .dash-map-widget__map-canvas.dash-map-widget__panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (min-width: 1101px) {
+  .dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__expanded-split {
+    row-gap: 7px;
+    column-gap: 10px;
+    grid-template-rows: minmax(0, 2.95fr) minmax(0, 0.78fr);
+  }
 }
 
 .dash-map-widget__expanded-split *,
@@ -5953,7 +5996,8 @@ a:hover {
 }
 
 /* Intelligence expanded: clip widget body so the map cell does not show its own scrollbar (popups use high z-index). */
-.dash-widget--map.dash-map-widget--expanded .dash-wf__body.dash-wf__body--fill {
+.dash-widget--map.dash-map-widget--expanded .dash-wf__body.dash-wf__body--fill,
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-wf__body.dash-wf__body--fill {
   overflow: hidden !important;
   height: 100%;
   min-height: 0;
@@ -5967,8 +6011,9 @@ a:hover {
   overflow: visible !important;
 }
 
-/* Keep the expanded shell clipping the layout; map marker popups use portal + high z-index. */
-.dash-live .dash-widget--map.dash-map-widget--expanded {
+/* Keep the expanded shell clipping the layout; map marker detail uses `AppModalShell` (body portal). */
+.dash-live .dash-widget--map.dash-map-widget--expanded,
+.dash-live .dash-widget--map.dash-map-widget--intel-cockpit {
   overflow-x: visible !important;
   overflow-y: hidden !important;
 }
@@ -6006,6 +6051,95 @@ a:hover {
 
 .dash-map-popup-shell .maplibregl-popup-tip {
   border-top-color: color-mix(in oklab, var(--color-surface-elevated) 98%, #000 2%);
+}
+
+/* Map marker detail — centered modal (`mountMapMarkerPopup` + `AppModalShell`). */
+.dash-map-marker-detail-modal {
+  max-height: min(92vh, 900px);
+}
+
+.dash-map-marker-detail-modal .app-modal__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dash-map-marker-modal__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 34%);
+  gap: 0.75rem 1rem;
+  align-items: stretch;
+  min-height: min(400px, 52vh);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dash-map-marker-modal__detail-only {
+  min-height: 0;
+  min-width: 0;
+}
+
+.dash-map-marker-modal__col--detail {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dash-map-marker-modal__col--map {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 0.35rem;
+}
+
+.dash-map-marker-modal__map-heading {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.dash-map-marker-modal__map-canvas {
+  flex: 1 1 auto;
+  min-height: 220px;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--color-border) 82%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 96%, transparent);
+}
+
+@media (max-width: 720px) {
+  .dash-map-marker-modal__split {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(200px, 34vh);
+    min-height: 0;
+  }
+}
+
+.dash-map-popup--in-modal {
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.dash-map-popup__modal-inline-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  min-height: 0;
+}
+
+.dash-map-popup__hint--modal-loading {
+  margin: 0;
 }
 
 .dash-map-popup {
@@ -6930,6 +7064,12 @@ a:hover {
   flex-direction: column;
 }
 
+/* Default map: intelligence cockpit in-flow (not fullscreen); cap height so the tile stays in view. */
+.dash-live .dash-widget--map.dash-map-widget--intel-cockpit {
+  min-height: min(400px, 48dvh);
+  max-height: min(80dvh, 56rem);
+}
+
 .dash-live .dash-widget--map:not(.dash-map-widget--enterprise) .dash-map-widget__single-map-wrap {
   flex: 1 1 auto;
   min-height: 0;
@@ -6954,7 +7094,11 @@ a:hover {
   min-height: 0;
 }
 
-.dash-live .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded) .dash-map-widget__map {
+.dash-live
+  .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded):not(
+    .dash-map-widget--intel-cockpit
+  )
+  .dash-map-widget__map {
   flex: 1 1 auto;
   width: 100%;
   height: 100%;
@@ -6986,12 +7130,14 @@ a:hover {
   box-shadow: 0 28px 90px color-mix(in oklab, #000 38%, transparent);
 }
 
-.dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__expanded-split {
+.dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__expanded-split,
+.dash-live .dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__expanded-split {
   flex: 1 1 auto;
   height: 100%;
   min-height: 0;
   min-width: 0;
   max-width: 100%;
+  max-height: 100%;
 }
 
 .dash-live .dash-widget--map.dash-map-widget--expanded .dash-map-widget__enterprise-grid {
@@ -7000,13 +7146,19 @@ a:hover {
   max-height: none !important;
 }
 
-.dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__single-map-wrap {
+.dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__single-map-wrap,
+.dash-live
+  .dash-widget--map.dash-map-widget--intel-cockpit:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap {
   flex: 1 1 0;
   min-height: 0;
 }
 
 .dash-live
   .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap--expanded-intel,
+.dash-live
+  .dash-widget--map.dash-map-widget--intel-cockpit:not(.dash-map-widget--enterprise)
   .dash-map-widget__single-map-wrap--expanded-intel {
   min-height: 0;
   height: 100%;
@@ -7016,6 +7168,10 @@ a:hover {
 /* Advanced expanded: absolute-fill map — flex+height:100% on the host was skewing the WebGL canvas (stretched tiles). */
 .dash-live
   .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap--expanded-intel
+  .dash-map-widget__map,
+.dash-live
+  .dash-widget--map.dash-map-widget--intel-cockpit:not(.dash-map-widget--enterprise)
   .dash-map-widget__single-map-wrap--expanded-intel
   .dash-map-widget__map {
   position: absolute !important;
@@ -7029,6 +7185,9 @@ a:hover {
 }
 
 .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
+  .dash-map-widget__single-map-wrap--expanded-intel
+  .dash-map-widget__map,
+.dash-widget--map.dash-map-widget--intel-cockpit:not(.dash-map-widget--enterprise)
   .dash-map-widget__single-map-wrap--expanded-intel
   .dash-map-widget__map {
   position: absolute !important;
@@ -7049,11 +7208,18 @@ a:hover {
   height: auto !important;
 }
 
+/* Cockpit map: stretch WebGL host to the full map cell (avoids short canvas vs panel chrome). */
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__single-map-wrap--expanded-intel .maplibregl-canvas-container {
+  min-height: 100%;
+  min-width: 100%;
+}
+
 .dash-map-widget__single-map-wrap--expanded-intel .maplibregl-canvas {
   display: block;
 }
 
-.dash-widget--map.dash-map-widget--expanded .dash-map-widget__single-map-wrap {
+.dash-widget--map.dash-map-widget--expanded .dash-map-widget__single-map-wrap,
+.dash-widget--map.dash-map-widget--intel-cockpit .dash-map-widget__single-map-wrap {
   width: 100% !important;
   max-width: none !important;
   margin-inline: 0 !important;
@@ -7070,15 +7236,23 @@ a:hover {
   max-height: none !important;
 }
 
-.page-card.dash-live-page .dash-live .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded)
-  .dash-map-widget__single-map-wrap {
+.page-card.dash-live-page
+  .dash-live
+  .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded):not(
+    .dash-map-widget--intel-cockpit
+  )
+  .dash-map-widget__single-map-wrap:not(.dash-map-widget__single-map-wrap--expanded-intel) {
   aspect-ratio: 16 / 9;
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
 }
 
-.page-card.dash-live-page .dash-live .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded)
+.page-card.dash-live-page
+  .dash-live
+  .dash-widget--map:not(.dash-map-widget--enterprise):not(.dash-map-widget--expanded):not(
+    .dash-map-widget--intel-cockpit
+  )
   .dash-map-widget__map {
   height: 100% !important;
   max-height: none !important;

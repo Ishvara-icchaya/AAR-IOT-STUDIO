@@ -550,7 +550,7 @@ export function MapIntelligencePanel({
   const modalDetailRows = useMemo(() => detailSummaryRows(detail), [detail]);
 
   return (
-    <div className="dash-map-widget__expanded-split" role="region" aria-label="Advanced map intelligence">
+    <div className="dash-map-widget__expanded-split" role="region" aria-label="Map intelligence">
       <section className="dash-map-widget__expanded-map dash-map-widget__panel">
         <header className="dash-map-widget__panel-head dash-map-widget__panel-head--split">
           <h3 className="dash-map-widget__panel-title">Map</h3>

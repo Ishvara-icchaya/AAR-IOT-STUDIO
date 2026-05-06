@@ -11,6 +11,8 @@ type Props = {
   sourceType: string;
   sourceId: string;
   title: string;
+  /** When true, title is shown in `AppModalShell`; omit duplicate popup chrome. */
+  inModal?: boolean;
   /** When set, skip fetch and show this message only */
   blockedMessage?: string;
   /** Passed to map detail API for LDS trend_context (cluster → endpoint). */
@@ -37,6 +39,7 @@ export function MapMarkerPopupRoot(props: Props) {
     sourceType,
     sourceId,
     title,
+    inModal = false,
     blockedMessage,
     trendScope,
     kpiKeys,
@@ -138,10 +141,12 @@ export function MapMarkerPopupRoot(props: Props) {
 
   if (blockedMessage) {
     return (
-      <div className="dash-map-popup dash-map-popup--bare">
-        <div className="dash-map-popup__head">
-          <span className="dash-map-popup__title">{title}</span>
-        </div>
+      <div className={`dash-map-popup dash-map-popup--bare${inModal ? " dash-map-popup--in-modal" : ""}`}>
+        {!inModal ? (
+          <div className="dash-map-popup__head">
+            <span className="dash-map-popup__title">{title}</span>
+          </div>
+        ) : null}
         <p className="dash-map-popup__msg">{blockedMessage}</p>
       </div>
     );
@@ -149,23 +154,29 @@ export function MapMarkerPopupRoot(props: Props) {
 
   if (loading) {
     return (
-      <div className="dash-map-popup">
-        <div className="dash-map-popup__loading">
-          <div className="dash-map-popup__head">
-            <span className="dash-map-popup__title">{title}</span>
+      <div className={`dash-map-popup${inModal ? " dash-map-popup--in-modal" : ""}`}>
+        {inModal ? (
+          <p className="dash-map-popup__hint dash-map-popup__hint--modal-loading">Loading asset details…</p>
+        ) : (
+          <div className="dash-map-popup__loading">
+            <div className="dash-map-popup__head">
+              <span className="dash-map-popup__title">{title}</span>
+            </div>
+            <p className="dash-map-popup__hint">Loading asset details…</p>
           </div>
-          <p className="dash-map-popup__hint">Loading asset details…</p>
-        </div>
+        )}
       </div>
     );
   }
 
   if (err || !detail) {
     return (
-      <div className="dash-map-popup">
-        <div className="dash-map-popup__head">
-          <span className="dash-map-popup__title">{title}</span>
-        </div>
+      <div className={`dash-map-popup${inModal ? " dash-map-popup--in-modal" : ""}`}>
+        {!inModal ? (
+          <div className="dash-map-popup__head">
+            <span className="dash-map-popup__title">{title}</span>
+          </div>
+        ) : null}
         <p className="dash-map-popup__msg">{err ?? "No detail available."}</p>
       </div>
     );
@@ -208,11 +219,17 @@ export function MapMarkerPopupRoot(props: Props) {
   })();
 
   return (
-    <div className="dash-map-popup">
-      <div className="dash-map-popup__head">
-        <span className="dash-map-popup__title">{title}</span>
-        {hs ? <span className={healthBadgeClass(hs)}>{hs}</span> : null}
-      </div>
+    <div className={`dash-map-popup${inModal ? " dash-map-popup--in-modal" : ""}`}>
+      {inModal ? (
+        <div className="dash-map-popup__modal-inline-head">
+          {hs ? <span className={healthBadgeClass(hs)}>{hs}</span> : null}
+        </div>
+      ) : (
+        <div className="dash-map-popup__head">
+          <span className="dash-map-popup__title">{title}</span>
+          {hs ? <span className={healthBadgeClass(hs)}>{hs}</span> : null}
+        </div>
+      )}
       {deviceDisplay ? (
         <p className="dash-map-popup__hint dash-map-popup__device-line">{deviceDisplay}</p>
       ) : null}
