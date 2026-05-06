@@ -220,6 +220,8 @@ ANY change in:
 
 → MUST create new `device_version`
 
+**Normative enumeration of version-creation triggers** (MUST be treated as creating a new `device_version` when applicable) — see **§13** for the closed list used by product and ingestion.
+
 🚫 **Forbidden**
 
 mutating existing version
@@ -237,6 +239,9 @@ mutating existing version
 | Simulation | Replay Engine |
 | Prediction | Advisory Only |
 | Dashboard Binding | schema_version + attribute_id |
+| Superseded operational artifacts | `Frozen-Inoperable` (§14) |
+| Lineage | Immutable version graph + explicit user/system events (§15) |
+| KPI compare | Paired `device_version` snapshots + attribute_id-first alignment (§15) |
 
 ---
 
@@ -247,12 +252,14 @@ mutating existing version
 3. No silent dashboard changes  
 4. No shared pipeline contamination  
 5. No version mutation  
+6. No spurious `device_version` when **§8** and **§13** triggers are absent  
+7. No parallel operational use of superseded scrubber/endpoint/workflow/dashboard once **`Frozen-Inoperable`** (**§14**)  
 
 ---
 
 ## 11. Final One-Line System Definition
 
-The platform treats every device version as an immutable, schema-bound snapshot, and any change must be validated through a unified compatibility and simulation engine before it is allowed to influence shared workflows or dashboards.
+The platform treats every device version as an immutable, schema-bound snapshot; creating a new version freezes prior operational bindings as **`Frozen-Inoperable`**, carries forward **only** the scrubber definition as a copy, requires **explicit** endpoint wiring for the new version, and records **lineage** plus **KPI before/after** comparison; any promotion to shared workflows or dashboards still passes through the unified compatibility and simulation engine.
 
 ---
 
@@ -266,6 +273,73 @@ New structures (for example `device_version` records, candidate/isolated stores,
 
 ---
 
+## 13. Version creation triggers (closed list)
+
+A **new** `device_version` MUST be created when **any** of the following holds:
+
+| # | Trigger | Definition |
+|---|---------|------------|
+| **1** | **Ingesting payload shape change** | The normalized ingest payload for the device (or resolved binding) **changes structure** in a way that affects schema or scrubber inputs (new/removed/retyped fields at the contract boundary — not mere value changes within the same shape). Detection MUST be deterministic (e.g. hash or structural diff of the ingest contract), not heuristic “silent widen”. |
+| **2** | **Explicit version creation** | A user or API **explicitly** requests a new device version (e.g. “Create version”, branch for validation, promotion checkpoint). |
+| **3** | **OTA updates** | Any **OTA-delivered** change that would alter firmware, config, or other versioned surface per **§8** MUST create a new `device_version` (OTA is not exempt from immutability). |
+
+🔒 **Final Rule**
+
+If none of **1–3** apply and no **§8** drift event applies, the platform MUST NOT mint a spurious `device_version`.
+
+---
+
+## 14. Prior version freeze on new version (Frozen-Inoperable)
+
+When a **new** `device_version` is created (for any trigger in **§8** or **§13**):
+
+✅ **Final Rule — prior version attachments**
+
+For the **immediately previous** `device_version` (the superseded snapshot), each of the following MUST be transitioned to status **`Frozen-Inoperable`**:
+
+- the **scrubber** definition bound to that version  
+- the **endpoint** bound to that version  
+- any **workflow** bindings scoped to that version  
+- any **dashboard** bindings scoped to that version  
+
+**Semantics of `Frozen-Inoperable`**
+
+- MUST NOT participate in **live** ingestion, shared pipeline routing, or operational execution.  
+- MUST remain **readable** for audit, lineage, compare, and rollback visibility.  
+- Promotion back to operability MUST follow an **explicit** lifecycle (out of scope of this subsection, but MUST NOT auto-unfreeze on unrelated events).
+
+✅ **Final Rule — what carries forward**
+
+- **Only** the **previous scrubber definition** (the superseded version’s scrubber snapshot) MUST be **copied** onto the new version as the **starting** scrubber draft (immutable copy of definition text/config as of cut-over — not a live pointer to the frozen row).  
+- **Endpoint**, **workflow**, and **dashboard** attachments for the **new** version MUST **NOT** auto-copy from the prior version.  
+- The user MUST **explicitly** complete: **Freeze** (where applicable in the product flow) and **create / attach an Endpoint** for the new version before that version can be considered operationally wired for live traffic (no implicit re-bind).
+
+🚫 **Forbidden**
+
+- leaving the superseded version’s scrubber/endpoint/workflow/dashboard **active** alongside the new version for shared operational use  
+- silently cloning endpoint or dashboard bindings onto the new version  
+
+---
+
+## 15. Lineage & KPI comparison
+
+✅ **Lineage (final rule)**
+
+- **Lineage** MUST record: version creation triggers (**§13**), supersession links (**previous** `device_version` → **new**), transitions to **`Frozen-Inoperable`**, explicit endpoint/scrubber actions, and OTA identifiers where applicable.  
+- Lineage MUST be sufficient to answer: *why* this version exists, *what* changed at the contract boundary, and *which* artifacts were frozen.
+
+✅ **KPI comparison (final rule)**
+
+- The product MUST provide a **before / after** comparison of **KPIs** between two selected `device_version` records (typically **previous vs new** immediately after a version cut, and arbitrary pairs for audit).  
+- Comparison SHOULD align metrics by **`attribute_id`** where bound to dashboards; where not available, path-aligned fallback per **§1** ordering (**attribute_id first**, **path** second).  
+- Missing KPI on one side MUST render as **explicit null / “not present”**, not as zero or silent match.
+
+🔒 **Implementation note**
+
+Heavy diff/compare remains subject to **§6** (async job pattern where appropriate).
+
+---
+
 ## What you now have
 
 You now have a production-grade, enterprise-safe contract that:
@@ -275,3 +349,6 @@ You now have a production-grade, enterprise-safe contract that:
 - ✔ Handles mixed fleet versions  
 - ✔ Enables simulation before promotion  
 - ✔ Prevents silent drift  
+- ✔ Defines explicit **version-creation triggers** (payload shape, explicit create, OTA) — §13  
+- ✔ Freezes superseded **scrubber / endpoint / workflow / dashboard** as **`Frozen-Inoperable`**, copies **only** the prior scrubber forward, and requires **explicit** endpoint (re)creation — §14  
+- ✔ Requires **lineage** and **KPI before/after** comparison across versions — §15  
