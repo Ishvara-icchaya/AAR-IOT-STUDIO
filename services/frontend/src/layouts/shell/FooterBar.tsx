@@ -7,7 +7,7 @@ import { UserMenu } from "./UserMenu";
 import { titleFromPath, userIsAdmin } from "./navigation";
 import { useShellMessage } from "./ShellMessageContext";
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "8.0.0";
 
 export function FooterBar() {
   const env = import.meta.env.MODE === "production" ? "production" : "development";
