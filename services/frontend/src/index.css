@@ -4247,7 +4247,8 @@ a:hover {
   grid-column: 1 / 3;
   grid-row: 2 / 3;
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(260px, 1fr);
+  /* minmax(240px)+minmax(260px) forced ~512px min — wider than many map+layers columns, so panel borders were clipped by .dash-map-widget__expanded-split overflow. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
   min-width: 0;
@@ -4329,6 +4330,8 @@ a:hover {
   display: flex;
   flex-direction: column;
   padding: 0;
+  /* Inherits overflow:auto from .dash-map-widget__panel-body — scrollbar + scroll region skew MapLibre sizing. */
+  overflow: hidden;
 }
 
 .dash-map-widget__map-canvas .dash-map-widget__single-map-wrap--expanded-intel {
@@ -4712,6 +4715,30 @@ a:hover {
 
 .dash-map-widget__expanded-split .map-intelligence-panel__device-table.dm-data-table {
   font-size: 0.7rem;
+  table-layout: fixed;
+}
+
+.dash-map-widget__mid-grid .dash-map-widget__panel-body {
+  min-width: 0;
+}
+
+.dash-map-widget__mid-grid .map-intelligence-panel__metric-value--sm,
+.dash-map-widget__mid-grid .map-intelligence-panel__metric-value--truncate {
+  overflow-wrap: anywhere;
+}
+
+.dash-map-widget__expanded-split .map-intelligence-panel__device-table .dm-data-table__td {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.dash-map-widget__expanded-split .map-intelligence-panel__device-table .map-intelligence-panel__device-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 .dash-map-widget__expanded-split .map-intelligence-panel__device-table .dm-data-table__th,
@@ -6939,14 +6966,17 @@ a:hover {
 .dash-widget--map.dash-map-widget--expanded.dash-wf {
   position: fixed;
   z-index: 8000;
-  left: max(0.5rem, env(safe-area-inset-left, 0px));
-  right: max(0.5rem, env(safe-area-inset-right, 0px));
-  top: max(0.5rem, env(safe-area-inset-top, 0px));
-  bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  /*
+   * One inset rectangle = viewport minus margins + safe areas.
+   * Do not add a separate max-height vs top/bottom — that double-counts and can exceed
+   * the visible shell (page-card / .shell__content only affects in-flow tiles, not this box).
+   */
+  inset: max(0.5rem, env(safe-area-inset-top, 0px)) max(0.5rem, env(safe-area-inset-right, 0px))
+    max(0.5rem, env(safe-area-inset-bottom, 0px)) max(0.5rem, env(safe-area-inset-left, 0px));
   width: auto;
+  height: auto;
   max-width: none;
-  /* Cap to viewport; single dvh avoids dvh/svh/vh disagreeing (height jitter as bars show/hide). */
-  max-height: calc(100dvh - 1rem);
+  max-height: none;
   min-height: 0;
   margin: 0;
   overflow: hidden;
@@ -6983,34 +7013,44 @@ a:hover {
   max-height: none;
 }
 
-.dash-live .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  height: 100% !important;
-  max-height: none !important;
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
+/* Advanced expanded: absolute-fill map — flex+height:100% on the host was skewing the WebGL canvas (stretched tiles). */
 .dash-live
   .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
   .dash-map-widget__single-map-wrap--expanded-intel
   .dash-map-widget__map {
-  flex: 1 1 auto !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  flex: none !important;
   min-height: 0 !important;
-  max-height: 100% !important;
-  height: 100% !important;
-}
-
-.dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise) .dash-map-widget__map {
-  min-height: 0;
 }
 
 .dash-widget--map.dash-map-widget--expanded:not(.dash-map-widget--enterprise)
   .dash-map-widget__single-map-wrap--expanded-intel
   .dash-map-widget__map {
-  min-height: 0;
-  max-height: 100%;
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  flex: none !important;
+  min-height: 0 !important;
+}
+
+.dash-map-widget__single-map-wrap--expanded-intel .maplibregl-map,
+.dash-map-widget__single-map-wrap--expanded-intel .maplibregl-canvas-container {
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+.dash-map-widget__single-map-wrap--expanded-intel .maplibregl-canvas {
+  display: block;
 }
 
 .dash-widget--map.dash-map-widget--expanded .dash-map-widget__single-map-wrap {

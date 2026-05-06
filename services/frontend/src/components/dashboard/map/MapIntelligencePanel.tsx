@@ -354,7 +354,7 @@ export function MapIntelligencePanel({
     (typeof payload?.site_name === "string" && payload.site_name.trim()) ||
     (typeof payload?.site_display_name === "string" && payload.site_display_name.trim()) ||
     (typeof ep?.site_name === "string" && String(ep.site_name).trim()) ||
-    siteId;
+    "—";
 
   const rollupStorageKey = `map-intel-rollup-keys:${siteId}:${endpointId ?? "all"}`;
   const rollupAllKeys = useMemo(

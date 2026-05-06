@@ -13,6 +13,7 @@ from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
+from app.models.site import Site
 from app.services.trend_metrics_policy import filter_metric_keys_for_site
 
 
@@ -239,6 +240,9 @@ def build_expanded_intelligence(
 
     observable_window_sec = max(15, refresh_min * 3)
 
+    site_row = db.get(Site, site_id)
+    site_name_human = (site_row.name or "").strip() if site_row else ""
+
     if endpoint_id:
         ep = db.get(Endpoint, endpoint_id)
         if not ep or ep.site_id != site_id or ep.customer_id != customer_id:
@@ -249,6 +253,8 @@ def build_expanded_intelligence(
                 "id": str(ep.id),
                 "name": ep.endpoint_name,
                 "object_name": ep.object_name,
+                "site_id": str(site_id),
+                "site_name": site_name_human or None,
                 "mobility_type_default": mob_ep or "unknown",
                 "expected_frequency_sec": exp_ep,
                 "device_count": len(devices_full),
@@ -261,6 +267,8 @@ def build_expanded_intelligence(
         ep_block = {
             "id": None,
             "name": "Site (all endpoints)",
+            "site_id": str(site_id),
+            "site_name": site_name_human or None,
             "device_count": len(devices_full),
             "active_count": counts["active"],
             "stale_count": counts["stale"],
@@ -279,6 +287,8 @@ def build_expanded_intelligence(
         "mode": mode,
         "refresh_interval_sec": max(5, min(refresh_min, 300)),
         "observable_window_sec": observable_window_sec,
+        "site_id": str(site_id),
+        "site_name": site_name_human or None,
         "endpoint": ep_block,
         "aggregate_kpis": aggregate_kpis,
         "devices": devices_page,
