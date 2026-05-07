@@ -2,6 +2,8 @@
 
 Normative addenda. Implementation MUST conform to these locks.
 
+**Implementation sequencing** (OTA, immutable `device_versions`, lineage extensions, routing): [OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md).
+
 ---
 
 ## 1. What exactly do Dashboards bind to?
