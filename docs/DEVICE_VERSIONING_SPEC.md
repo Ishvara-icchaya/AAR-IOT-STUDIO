@@ -287,6 +287,8 @@ A **new** `device_version` MUST be created when **any** of the following holds:
 
 If none of **1–3** apply and no **§8** drift event applies, the platform MUST NOT mint a spurious `device_version`.
 
+**v1 API (row 1):** `PATCH` to the device **`device_object`** mapping uses a deterministic fingerprint of **`fieldCatalog`** field entries (`path` / `attribute_id` / `type`) plus the frozen scrubber pipeline token; when it changes, the service mints a new `device_version` and appends lineage with `trigger_code=ingest_shape` (requires **`devices.write`** on the site). Pure ingest path shape drift without a mapping update is not yet wired to this trigger.
+
 ---
 
 ## 14. Prior version freeze on new version (Frozen-Inoperable)
@@ -338,6 +340,67 @@ For the **immediately previous** `device_version` (the superseded snapshot), eac
 
 Heavy diff/compare remains subject to **§6** (async job pattern where appropriate).
 
+### 15.1 Bootstrap lineage persistence (v1 backend)
+
+The first persisted row for a device (bootstrap trigger) may be created when a read path needs lineage but no row exists yet (for example **`GET /devices/{id}/version-lineage`**), via **`ensure_bootstrap_lineage_row()`**.
+
+**v1 behavior:** that helper **commits the SQLAlchemy session internally** after inserting the bootstrap row, so the row survives even when the surrounding request would otherwise roll back. That intentionally supports **read-triggered bootstrap persistence** for devices created before lineage tables existed or before write paths guaranteed a row.
+
+**Review before broader lineage rollout:** internal **`commit()`** can surprise transaction boundaries, nested savepoints in tests, middleware/session lifecycle, and “partial commit” mental models. The preferred long-term shape is **mutate the session only and let the caller commit**, or a **dedicated bootstrap task**; until then, treat this as **documented, isolated v1 behavior** rather than the default pattern for new lineage writes.
+
+---
+
+## 16. v8 Device Registration (metadata-only slice)
+
+Normative addendum for the **v8** “Manage Devices” registration/edit flow: persist **identity**, **device profile**, and **declared OTA readiness** only (no endpoint linking, no scrubber mapping, no OTA job execution). This section **narrows** when that flow may mint a `device_version` relative to the general triggers in **§8** and **§13**; it does **not** relax OTA-delivered versioning (**§13** row **3**) or ingest/shape triggers elsewhere.
+
+### 16.1 Initial version on register
+
+On successful **device registration**, the platform **already creates** an initial `device_version` (bootstrap lineage). Subsequent edits use the rules below unless superseded by **§13** / **§8** from other subsystems (e.g. OTA completion, ingest shape change).
+
+### 16.2 Semantics of `firmware_channel = custom`
+
+**`custom`** means: the device’s firmware was **updated outside OTA campaigns** (operator- or integration-declared lane). It is **not** a policy approval flag; campaign policy remains a separate concern.
+
+Allowed values elsewhere in v8 metadata: `stable` \| `beta` \| `dev` \| `custom` (default `stable`).
+
+### 16.3 When Tab 3 edits mint a new `device_version` (v8 carve-out)
+
+**For changes applied only through the v8 Device Registration modal (Tab 3 — declared metadata):**
+
+- A **new** `device_version` MUST be created when **`ota_supported`** changes (material readiness change).
+- A **new** `device_version` MUST be created when **§13** row **2** applies — **Explicit version creation** (user or API explicitly requests a new device version).
+
+**v1 API:** `PATCH /devices` bumps `device_version` when `ota_supported` changes and the client did not supply a new label in the same request, and records lineage with `trigger_code=ota`.
+
+**For v8, do not** auto-mint a `device_version` solely from Tab 3 edits to **`hardware_version`**, **`firmware_version`**, **`firmware_channel`**, or **`rollback_supported`** (declared strings/booleans/channel without an explicit version action). Telemetry or OTA-driven updates remain governed by **§8** / **§13** outside this subsection.
+
+### 16.4 Save UX (create and edit)
+
+The same modal and tabs are used for **create** and **edit**. There is **one** primary action (**Create Device** / **Save Changes**); **no** per-tab save.
+
+On submit:
+
+- Validate **all** tabs.
+- On failure, **focus** the first invalid control and **navigate** to the tab that contains it.
+- Keep validation messages **attached to fields** (programmatic association for assistive tech).
+
+Accessibility for tabs: **tablist** / **tab** / **tabpanel**, keyboard navigation, **`aria-selected`**, **`aria-controls`** (and related patterns per platform guidelines).
+
+### 16.5 Uniqueness (per `site_id`)
+
+Enforce **uniqueness per site** among devices for:
+
+- **Device Name** (required; stable operator-facing name for list, logs, admin UI).
+- **Display Label** — when set (non-empty), MUST be unique at that site alongside name rules as implemented (no duplicate label text for two devices at the same site).
+- **Device ID** — the stable **device identifier** field intended for integrations (distinct from display label and human-facing name); when non-null, MUST be unique per site. **Note:** the platform-assigned primary key (`id`, UUID) is globally unique by definition; per-site uniqueness rules apply to the **business** identifiers above, not to re-validating the UUID.
+
+### 16.6 Version compare, simulation, and impact analysis (not in registration)
+
+**v8 registration** remains **identity + readiness metadata** only. It MUST NOT grow into a **versioning cockpit** (paired KPI compare, simulation targets, promote/rollback, or impact analysis).
+
+Those flows belong on **Operational lineage** / **Device details** / **Version history** (and later Phase 2+ workflows), where **`device_version`** selections and snapshots are the primary model. Deep links may open related drawers from elsewhere; **query parameters such as `compareA` / `compareB` on the registration URL are intentionally unused** by the registration UI until a later phase explicitly scopes them.
+
 ---
 
 ## What you now have
@@ -352,3 +415,4 @@ You now have a production-grade, enterprise-safe contract that:
 - ✔ Defines explicit **version-creation triggers** (payload shape, explicit create, OTA) — §13  
 - ✔ Freezes superseded **scrubber / endpoint / workflow / dashboard** as **`Frozen-Inoperable`**, copies **only** the prior scrubber forward, and requires **explicit** endpoint (re)creation — §14  
 - ✔ Requires **lineage** and **KPI before/after** comparison across versions — §15  
+- ✔ Locks **v8 device registration** semantics: initial version on register, `custom` channel meaning, narrowed Tab 3 version bumps, global save + tab-aware validation, per-site uniqueness — §16  
