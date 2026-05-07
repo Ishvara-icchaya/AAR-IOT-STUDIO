@@ -146,7 +146,14 @@ def batch_dashboard_references(
             if dash.id in seen[dev_id]:
                 continue
             seen[dev_id].add(dash.id)
-            out[dev_id].append({"id": str(dash.id), "name": dash.name, "status": dash.status})
+            out[dev_id].append(
+                {
+                    "id": str(dash.id),
+                    "name": dash.name,
+                    "status": dash.status,
+                    "site_id": str(dash.site_id) if dash.site_id else None,
+                }
+            )
     return out
 
 
@@ -158,6 +165,36 @@ def batch_dashboard_association_counts(
     return {did: len(lst) for did, lst in refs.items()}
 
 
+def _workflow_node_references_device(
+    cfg: dict[str, Any],
+    *,
+    device_id_str: str,
+    resolved_device_ids: set[str],
+    latest_state_ids: set[str],
+    endpoint_row_id_str: str | None,
+    device_endpoint_id_str: str | None,
+) -> bool:
+    if not isinstance(cfg, dict):
+        return False
+    rd = cfg.get("resolved_device_id")
+    if rd is not None and str(rd) in resolved_device_ids:
+        return True
+    ldi = cfg.get("latest_device_state_id")
+    if ldi is not None and str(ldi) in latest_state_ids:
+        return True
+    did = cfg.get("device_id")
+    if did is not None and str(did) == device_id_str:
+        return True
+    ep_id = cfg.get("endpoint_id")
+    if ep_id is not None:
+        se = str(ep_id)
+        if endpoint_row_id_str and se == endpoint_row_id_str:
+            return True
+        if device_endpoint_id_str and se == device_endpoint_id_str:
+            return True
+    return False
+
+
 def workflows_for_device(
     db: Session,
     *,
@@ -165,53 +202,61 @@ def workflows_for_device(
     device: Device,
     ep_by_de: dict[uuid.UUID, Endpoint],
 ) -> list[dict[str, Any]]:
-    """Workflows with an input node bound to this device's resolved identity (v2)."""
+    """Workflows whose graph references this device (any node + v2 resolved/latest binding)."""
+    device_id_str = str(device.id)
     ep = device.endpoint
-    if not ep:
-        return []
-    endpoint_row = ep_by_de.get(ep.id)
-    if endpoint_row is None:
-        return []
-    res_ids = list(
-        db.scalars(select(ResolvedDevice.id).where(ResolvedDevice.endpoint_id == endpoint_row.id)).all()
-    )
-    if not res_ids:
-        return []
-    lds_ids = list(
-        db.scalars(select(LatestDeviceState.id).where(LatestDeviceState.resolved_device_id.in_(res_ids))).all()
-    )
-    res_str = {str(x) for x in res_ids}
-    lds_str = {str(x) for x in lds_ids}
+    endpoint_row = ep_by_de.get(ep.id) if ep else None
+    device_endpoint_id_str = str(ep.id) if ep else None
+    endpoint_row_id_str = str(endpoint_row.id) if endpoint_row else None
+
+    resolved_device_ids: set[str] = set()
+    latest_state_ids: set[str] = set()
+    if endpoint_row:
+        res_ids = list(
+            db.scalars(select(ResolvedDevice.id).where(ResolvedDevice.endpoint_id == endpoint_row.id)).all()
+        )
+        resolved_device_ids = {str(x) for x in res_ids}
+        if res_ids:
+            lds_ids = list(
+                db.scalars(
+                    select(LatestDeviceState.id).where(LatestDeviceState.resolved_device_id.in_(res_ids))
+                ).all()
+            )
+            latest_state_ids = {str(x) for x in lds_ids}
 
     rows = db.execute(
         select(WorkflowNode, Workflow)
         .join(Workflow, Workflow.id == WorkflowNode.workflow_id)
-        .where(Workflow.customer_id == customer_id, WorkflowNode.node_type == "input")
+        .where(Workflow.customer_id == customer_id)
     ).all()
 
-    seen_wf: set[uuid.UUID] = set()
-    out: list[dict[str, Any]] = []
+    wf_by_id: dict[uuid.UUID, Workflow] = {}
     for node, wf in rows:
-        if wf.id in seen_wf:
-            continue
         if wf.site_id is not None and wf.site_id != device.site_id:
             continue
         cfg = node.config_json or {}
-        rd = cfg.get("resolved_device_id")
-        ldi = cfg.get("latest_device_state_id")
-        ok = (rd is not None and str(rd) in res_str) or (ldi is not None and str(ldi) in lds_str)
-        if not ok:
+        if not _workflow_node_references_device(
+            cfg,
+            device_id_str=device_id_str,
+            resolved_device_ids=resolved_device_ids,
+            latest_state_ids=latest_state_ids,
+            endpoint_row_id_str=endpoint_row_id_str,
+            device_endpoint_id_str=device_endpoint_id_str,
+        ):
             continue
-        seen_wf.add(wf.id)
-        out.append(
-            {
-                "id": str(wf.id),
-                "name": wf.name,
-                "lifecycle_status": wf.lifecycle_status,
-                "is_published": wf.is_published,
-            }
-        )
-    return out
+        wf_by_id[wf.id] = wf
+
+    return [
+        {
+            "id": str(wf.id),
+            "name": wf.name,
+            "lifecycle_status": wf.lifecycle_status,
+            "is_published": wf.is_published,
+            "site_id": str(wf.site_id) if wf.site_id else None,
+            "definition_version": wf.version,
+        }
+        for wf in sorted(wf_by_id.values(), key=lambda w: (w.name or "").lower())
+    ]
 
 
 def batch_load_footprint_sidecars(
