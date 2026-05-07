@@ -206,6 +206,7 @@ def register_device(
         customer_id=str(user.customer_id),
     )
     ensure_bootstrap_lineage_row(db, d, fp=None)
+    db.commit()
     return _device_reads_with_footprint(db, user, [d])[0]
 
 
@@ -302,7 +303,9 @@ def get_device_version_lineage(
         dashboard_counts=dash_counts,
         dashboard_ref_list=dash_refs[device.id],
     )
-    return build_version_lineage_response(db, device, fp)
+    out = build_version_lineage_response(db, device, fp)
+    db.commit()
+    return out
 
 
 @router.patch("/{device_id}", response_model=DeviceRead)
@@ -394,6 +397,7 @@ def update_device(
             trigger_code=trigger,
             kpi_snapshot=kpi_snapshot_from_footprint_dict(fp_snap),
             ota_external_ref=None,
+            created_by=user.id,
         )
 
     db.commit()

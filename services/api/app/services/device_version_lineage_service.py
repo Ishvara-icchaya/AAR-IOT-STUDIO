@@ -1,4 +1,4 @@
-"""Persisted device version timeline (§13 / §15) + KPI snapshots."""
+"""Persisted device version timeline (§13 / §15) + immutable device_versions (Phase 3)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
+from app.models.device_version import DeviceVersion
 from app.models.device_version_lineage import DeviceVersionLineage
 from app.schemas.device import VersionLineageResponse, VersionLineageVersionItem
 
@@ -56,11 +57,92 @@ def _lineage_metadata_from_device(device: Device) -> dict[str, Any]:
     }
 
 
-def ensure_bootstrap_lineage_row(db: Session, device: Device, *, fp: dict[str, Any] | None = None) -> None:
-    """If no lineage rows exist for this device, insert bootstrap (post-migration devices).
+def event_type_for_trigger(trigger_code: str) -> str:
+    if trigger_code == "bootstrap":
+        return "device_registered"
+    return "metadata_updated"
 
-    Commits internally so the row persists on read/bootstrap paths; see DEVICE_VERSIONING_SPEC.md §15.1.
-    Prefer caller-owned commits for new call sites once lineage rollout hardens.
+
+def _version_source_for_trigger(trigger_code: str) -> str:
+    if trigger_code == "explicit":
+        return "manual"
+    if trigger_code == "ingest_shape":
+        return "system"
+    return "system"
+
+
+def _latest_device_version_for_label(db: Session, device_id: uuid.UUID, version_label: str) -> DeviceVersion | None:
+    return db.execute(
+        select(DeviceVersion)
+        .where(DeviceVersion.device_id == device_id, DeviceVersion.version_label == version_label)
+        .order_by(DeviceVersion.created_at.desc(), DeviceVersion.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _create_device_version_snapshot(
+    db: Session,
+    device: Device,
+    *,
+    version_label: str,
+    previous_device_version_id: uuid.UUID | None,
+    version_source: str,
+    created_by: uuid.UUID | None,
+) -> DeviceVersion:
+    now = datetime.now(timezone.utc)
+    row = DeviceVersion(
+        id=uuid.uuid4(),
+        device_id=device.id,
+        version_label=version_label,
+        resolved_device_id=None,
+        previous_device_version_id=previous_device_version_id,
+        firmware_version=device.firmware_version,
+        hardware_version=None,
+        config_version=None,
+        endpoint_version=None,
+        scrubber_version=None,
+        schema_version=None,
+        manifest_hash=None,
+        version_source=version_source,
+        firmware_channel=device.firmware_channel or "stable",
+        status=(device.version_status or "active")[:32],
+        created_at=now,
+        created_by=created_by,
+        activated_at=now,
+        deprecated_at=None,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def ensure_device_version_row_for_label(
+    db: Session,
+    device: Device,
+    *,
+    version_label: str,
+    version_source: str = "system",
+    created_by: uuid.UUID | None = None,
+    previous_device_version_id: uuid.UUID | None = None,
+) -> DeviceVersion:
+    """Idempotent: return existing row for this device+label if present, else insert one snapshot."""
+    existing = _latest_device_version_for_label(db, device.id, version_label)
+    if existing:
+        return existing
+    return _create_device_version_snapshot(
+        db,
+        device,
+        version_label=version_label,
+        previous_device_version_id=previous_device_version_id,
+        version_source=version_source,
+        created_by=created_by,
+    )
+
+
+def ensure_bootstrap_lineage_row(db: Session, device: Device, *, fp: dict[str, Any] | None = None) -> None:
+    """If no lineage rows exist for this device, insert bootstrap + link ``device_versions``.
+
+    Uses ``flush`` only; caller must ``commit()`` (Phase 1).
     """
     exists_id = db.scalar(select(DeviceVersionLineage.id).where(DeviceVersionLineage.device_id == device.id).limit(1))
     if exists_id:
@@ -68,6 +150,7 @@ def ensure_bootstrap_lineage_row(db: Session, device: Device, *, fp: dict[str, A
     vlabel = (device.device_version or "").strip() or "1"
     recorded = device.updated_at or device.created_at
     kpi = kpi_snapshot_from_footprint_dict(fp) if fp else None
+    dv = ensure_device_version_row_for_label(db, device, version_label=vlabel, version_source="system", created_by=None)
     row = DeviceVersionLineage(
         id=uuid.uuid4(),
         device_id=device.id,
@@ -78,9 +161,18 @@ def ensure_bootstrap_lineage_row(db: Session, device: Device, *, fp: dict[str, A
         ota_external_ref=None,
         kpi_snapshot=kpi,
         metadata_=_lineage_metadata_from_device(device),
+        event_type="device_registered",
+        source_type="system",
+        source_id=None,
+        status="completed",
+        previous_device_version_id=None,
+        target_device_version_id=dv.id,
+        ota_campaign_id=None,
+        payload_json=None,
+        created_by=None,
     )
     db.add(row)
-    db.commit()
+    db.flush()
     log.info("device_version_lineage bootstrap inserted device_id=%s", device.id)
 
 
@@ -93,11 +185,27 @@ def record_version_lineage_transition(
     trigger_code: str,
     kpi_snapshot: dict[str, Any] | None,
     ota_external_ref: str | None = None,
+    created_by: uuid.UUID | None = None,
+    source_type: str | None = None,
+    event_type: str | None = None,
+    payload_json: dict[str, Any] | None = None,
 ) -> None:
-    """Mark prior head row superseded and append a new lineage row (§13 / §15)."""
+    """Mark prior head row superseded and append a new lineage row + immutable ``device_versions`` row."""
     if previous_label == new_label:
         return
     now = datetime.now(timezone.utc)
+    ev_type = event_type or event_type_for_trigger(trigger_code)
+    src = source_type or "api"
+    prev_dv = _latest_device_version_for_label(db, device.id, previous_label)
+    prev_id = prev_dv.id if prev_dv else None
+    new_dv = _create_device_version_snapshot(
+        db,
+        device,
+        version_label=new_label,
+        previous_device_version_id=prev_id,
+        version_source=_version_source_for_trigger(trigger_code),
+        created_by=created_by,
+    )
     last = db.execute(
         select(DeviceVersionLineage)
         .where(DeviceVersionLineage.device_id == device.id)
@@ -119,6 +227,15 @@ def record_version_lineage_transition(
             ota_external_ref=(ota_external_ref.strip()[:255] if ota_external_ref and ota_external_ref.strip() else None),
             kpi_snapshot=kpi_snapshot,
             metadata_=meta,
+            event_type=ev_type,
+            source_type=src,
+            source_id=None,
+            status="completed",
+            previous_device_version_id=prev_id,
+            target_device_version_id=new_dv.id,
+            ota_campaign_id=None,
+            payload_json=payload_json,
+            created_by=created_by,
         )
     )
     db.flush()
@@ -138,6 +255,7 @@ def record_explicit_version_change(
     previous_label: str,
     new_label: str,
     kpi_snapshot: dict[str, Any] | None,
+    created_by: uuid.UUID | None = None,
 ) -> None:
     """Mark prior head row superseded and append a new lineage entry (explicit version / PATCH)."""
     record_version_lineage_transition(
@@ -148,6 +266,10 @@ def record_explicit_version_change(
         trigger_code="explicit",
         kpi_snapshot=kpi_snapshot,
         ota_external_ref=None,
+        created_by=created_by,
+        source_type="api",
+        event_type=None,
+        payload_json=None,
     )
 
 
@@ -188,6 +310,13 @@ def build_version_lineage_response(db: Session, device: Device, fp: dict[str, An
                 superseded_by_label=r.superseded_by_label,
                 ota_external_ref=r.ota_external_ref,
                 metadata=meta,
+                event_type=r.event_type,
+                source_type=r.source_type,
+                status=r.status,
+                target_device_version_id=str(r.target_device_version_id) if r.target_device_version_id else None,
+                previous_device_version_id=str(r.previous_device_version_id)
+                if r.previous_device_version_id
+                else None,
             )
         )
 

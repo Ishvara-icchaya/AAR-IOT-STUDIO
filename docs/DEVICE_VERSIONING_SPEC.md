@@ -342,13 +342,13 @@ For the **immediately previous** `device_version` (the superseded snapshot), eac
 
 Heavy diff/compare remains subject to **§6** (async job pattern where appropriate).
 
-### 15.1 Bootstrap lineage persistence (v1 backend)
+### 15.1 Bootstrap lineage persistence (caller-owned commit)
 
 The first persisted row for a device (bootstrap trigger) may be created when a read path needs lineage but no row exists yet (for example **`GET /devices/{id}/version-lineage`**), via **`ensure_bootstrap_lineage_row()`**.
 
-**v1 behavior:** that helper **commits the SQLAlchemy session internally** after inserting the bootstrap row, so the row survives even when the surrounding request would otherwise roll back. That intentionally supports **read-triggered bootstrap persistence** for devices created before lineage tables existed or before write paths guaranteed a row.
+**Current behavior:** that helper **only `flush()`**es; it **does not** `commit()`. The **caller** must commit the session so the bootstrap row (and linked **`device_versions`** row) persists. Examples: **`GET /devices/{id}/version-lineage`** commits after building the response; **`register_device`** and **CSV import** commit after bootstrap; write paths that record lineage already commit at the end of the handler.
 
-**Review before broader lineage rollout:** internal **`commit()`** can surprise transaction boundaries, nested savepoints in tests, middleware/session lifecycle, and “partial commit” mental models. The preferred long-term shape is **mutate the session only and let the caller commit**, or a **dedicated bootstrap task**; until then, treat this as **documented, isolated v1 behavior** rather than the default pattern for new lineage writes.
+**Tests** should treat read-triggered bootstrap as an intentional side effect of the lineage GET when documenting session behavior.
 
 ---
 

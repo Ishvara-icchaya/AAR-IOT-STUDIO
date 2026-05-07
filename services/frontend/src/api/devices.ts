@@ -111,6 +111,11 @@ export type DeviceVersionLineageVersion = {
   superseded_by_label: string | null;
   ota_external_ref?: string | null;
   metadata: Record<string, unknown>;
+  event_type?: string | null;
+  source_type?: string | null;
+  status?: string | null;
+  target_device_version_id?: string | null;
+  previous_device_version_id?: string | null;
 };
 
 export type DeviceVersionLineageRead = {

@@ -6,7 +6,7 @@ Post–**8.0.0** follow-ups aligned with [DEVICE_VERSIONING_SPEC.md](./DEVICE_VE
 
 ## Delivered in mainline (verify in your deployment)
 
-1. **Version-timeline lineage (§15)** — Table-backed `device_version_lineage` with KPI snapshots; **explicit** cuts from `PATCH /devices` when `device_version` changes; **OTA readiness** per §16.3 when `ota_supported` changes (auto label bump + `trigger_code=ota`); **ingest contract** on `PATCH …/device_objects` when the field-catalog / frozen-scrubber fingerprint changes (`ingest_shape`, requires `devices.write`); bootstrap and CSV import ensure a first row; `GET /devices/{id}/version-lineage` merges live footprint KPIs for the current label.
+1. **Version-timeline lineage (§15) + Phases 1–3 (OTA plan)** — Table-backed `device_version_lineage` with generalized columns (`event_type`, `source_type`, `status`, `target_device_version_id`, `previous_device_version_id`, `payload_json`, `created_by`, `ota_campaign_id`); immutable **`device_versions`** table with backfill from `devices`; KPI snapshots; **explicit** / **OTA readiness** / **ingest_shape** cuts create new `device_versions` rows and lineage links; bootstrap uses **caller `commit()`** (no internal commit on bootstrap); CSV import and register commit after bootstrap; `GET …/version-lineage` **commits** after bootstrap read so first row persists.
 
 2. **Lineage ↔ version history** — Operational lineage UI: footprint modal, version timeline, KPI compare with `compareA` / `compareB` in the URL, deep links to the register table with the version-history drawer, and drawer **Compare KPIs** linking back with lineage-derived compare params.
 
@@ -14,12 +14,11 @@ Post–**8.0.0** follow-ups aligned with [DEVICE_VERSIONING_SPEC.md](./DEVICE_VE
 
 ## Still open (schedule by milestone)
 
-Follow **[OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md)** for order: Phase **1** (bootstrap `commit` removal) before **2** (generalized lineage on `device_version_lineage`); **2–3–4** before OTA execution (**5+**).
+Follow **[OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md)**. Phases **1–3** are implemented in tree (bootstrap caller commit, generalized lineage columns, **`device_versions`**). Next: **Phase 4** (`ota_campaigns` / `ota_campaign_targets`) before OTA execution (**5+**).
 
 Short list:
 
-- **Phase 1** — Bootstrap lineage: caller-owned `commit`, `flush` only in `ensure_bootstrap_lineage_row()`; tests + docs (**DEVICE_VERSIONING_SPEC.md §15.1**).
-- **Phases 2–4** — Generalized lineage columns + immutable **`device_versions`** + **`ota_campaigns` / `ota_campaign_targets`**.
+- **Phase 4** — `ota_campaigns`, `ota_campaign_targets`, optional `ota_events`.
 - **Phases 5–7** — OTA completion API/service, version promote/isolate/rollback, candidate lane routing.
 - **Phases 8–11** — Device Details UI, compare/impact/replay, OTA campaign UI.
 - **Phases 12–13** — RBAC keys for OTA/versioning/simulation/lineage; audit trail separate from lineage.

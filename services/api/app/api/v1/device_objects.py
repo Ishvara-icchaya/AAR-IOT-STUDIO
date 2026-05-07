@@ -123,6 +123,8 @@ def patch_device_object(
             trigger_code="ingest_shape",
             kpi_snapshot=kpi_snapshot_from_footprint_dict(fp_snap),
             ota_external_ref=None,
+            created_by=user.id,
+            payload_json={"kind": "device_object_mapping", "device_object_id": str(row.id)},
         )
 
     if freeze_publish and isinstance(row.mapping, dict):

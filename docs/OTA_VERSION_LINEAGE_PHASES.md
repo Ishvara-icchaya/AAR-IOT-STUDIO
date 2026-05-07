@@ -52,6 +52,8 @@ This document is the **implementation sequencing contract** for OTA execution, i
 - **Caller owns** `commit()`.
 - Update tests and document behavior (see DEVICE_VERSIONING_SPEC.md §15.1 for prior v1 note).
 
+**Status:** Implemented — `GET …/version-lineage`, `register_device`, and import commit after bootstrap; no internal `commit()` in the helper.
+
 ---
 
 ## Phase 2 — Generalized lineage event model
@@ -90,6 +92,8 @@ Add or standardize columns (names subject to DB migration but semantics fixed):
 
 Existing rows remain valid; migrations map legacy `trigger_code` → `event_type` / `trigger_code` as needed.
 
+**Status:** Implemented in migration **`0041_device_versions_and_lineage_events`** (columns + backfill `event_type` from `trigger_code`).
+
 ---
 
 ## Phase 3 — Immutable device versions
@@ -117,6 +121,8 @@ Create **`device_versions`** (first-class table).
 **Backfill:**
 
 - One initial `device_versions` row per existing device, linked from lineage Phase 2 fields when populated.
+
+**Status:** Implemented — table **`device_versions`** + migration backfill; new transitions append rows; API exposes `target_device_version_id` / `previous_device_version_id` on lineage items.
 
 **Version statuses** (align UI and API enums):
 
@@ -256,5 +262,6 @@ Implement audit events **separate** from lineage rows; cross-link by `source_id`
 | Version | Date | Note |
 |--------|------|------|
 | 1.0 (locked) | 2026-05-07 | Phases 0–13 and sequencing rule agreed for implementation backlog. |
+| 1.1 | 2026-05-07 | **Phases 1–3 shipped in API:** migration `0041` (`device_versions` + lineage columns), bootstrap `flush` + caller `commit`, lineage rows link `target_device_version_id`, transitions insert new `device_versions` rows. |
 
 When a phase ships, update **ROADMAP.md** “Delivered” vs “Still open” and reference this file for full phase text.

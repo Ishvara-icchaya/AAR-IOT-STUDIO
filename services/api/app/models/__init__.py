@@ -7,6 +7,9 @@ from app.models.data_object_detail import DataObjectDetail
 from app.models.dashboard import Dashboard
 from app.models.dashboard_user_preference import DashboardUserPreference
 from app.models.device import Device
+from app.models.device_version import DeviceVersion
+from app.models.device_version_lineage import DeviceVersionLineage
+from app.models.device_import_audit import DeviceImportAudit
 from app.models.health_threshold_reference import HealthThresholdReference
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.endpoint import Endpoint
@@ -16,6 +19,7 @@ from app.models.scrubbed_event import ScrubbedEvent
 from app.models.device_object import DeviceObject
 from app.models.monitoring_config import MonitoringConfig
 from app.models.platform_port import PlatformPort, PlatformPortSettings
+from app.models.rbac import Permission, Role, RolePermission, SiteUserRole, TenantUserRole
 from app.models.published_service import PublishedService
 from app.models.published_service_delivery_log import PublishedServiceDeliveryLog
 from app.models.raw_data_object import RawDataObject
@@ -24,6 +28,7 @@ from app.models.site import Site
 from app.models.static_ingestion import StaticIngestion
 from app.models.user import User
 from app.models.user_site import UserSite
+from app.models.workspace_message import WorkspaceMessage
 from app.models.workflow import Workflow
 from app.models.workflow_edge import WorkflowEdge
 from app.models.workflow_execution import WorkflowExecution
@@ -43,6 +48,9 @@ __all__ = [
     "Dashboard",
     "DashboardUserPreference",
     "Device",
+    "DeviceVersion",
+    "DeviceVersionLineage",
+    "DeviceImportAudit",
     "HealthThresholdReference",
     "DeviceEndpoint",
     "Endpoint",
@@ -53,14 +61,20 @@ __all__ = [
     "MonitoringConfig",
     "PlatformPort",
     "PlatformPortSettings",
+    "Permission",
     "PublishedService",
+    "Role",
+    "RolePermission",
     "PublishedServiceDeliveryLog",
     "RawDataObject",
     "ResultObjectDefinition",
     "Site",
+    "SiteUserRole",
+    "TenantUserRole",
     "StaticIngestion",
     "User",
     "UserSite",
+    "WorkspaceMessage",
     "Workflow",
     "WorkflowEdge",
     "WorkflowExecution",
