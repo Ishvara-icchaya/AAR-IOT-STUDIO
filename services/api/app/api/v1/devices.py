@@ -1,5 +1,6 @@
 import logging
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select, exists
@@ -20,17 +21,35 @@ from app.schemas.device import (
     DeviceListResponse,
     DeviceRead,
     DeviceUpdate,
+    VersionLineageResponse,
+)
+from app.schemas.device_import import (
+    DeviceImportCommitRequest,
+    DeviceImportCommitResponse,
+    DeviceImportValidateRequest,
+    DeviceImportValidateResponse,
 )
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.alert_emit import emit_alert
 from app.services.dependency_service import device_delete_dependencies
 from app.services.device_operational_footprint_service import (
     batch_dashboard_association_counts,
+    batch_dashboard_references,
     batch_load_footprint_sidecars,
     build_device_footprint_payload,
     evaluate_footprint_for_device,
 )
+from app.services.device_version_lineage_service import (
+    build_version_lineage_response,
+    bump_device_version_monotonic_label,
+    ensure_bootstrap_lineage_row,
+    kpi_snapshot_from_footprint_dict,
+    record_version_lineage_transition,
+)
+from app.services.device_import_service import commit_device_import as execute_device_import_commit
+from app.services.device_import_service import validate_import_rows
 from app.services.lifecycle_actions import archive_device, deactivate_device, reactivate_device
+from app.services.permission_service import ensure_site_permission, site_ids_with_permission
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -141,6 +160,7 @@ def register_device(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown site")
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot assign device to this site")
+    ensure_site_permission(db, user, body.site_id, "devices.write")
 
     device = Device(
         id=uuid.uuid4(),
@@ -151,6 +171,17 @@ def register_device(
         icon=body.icon,
         is_active=True,
         polling_enabled=True,
+        expected_interval_seconds=body.expected_interval_seconds
+        if body.expected_interval_seconds is not None
+        else 60,
+        late_threshold_seconds=body.late_threshold_seconds if body.late_threshold_seconds is not None else 120,
+        offline_threshold_seconds=body.offline_threshold_seconds
+        if body.offline_threshold_seconds is not None
+        else 300,
+        firmware_version=body.firmware_version,
+        firmware_channel=body.firmware_channel if body.firmware_channel is not None else "stable",
+        ota_supported=False if body.ota_supported is None else body.ota_supported,
+        rollback_supported=False if body.rollback_supported is None else body.rollback_supported,
     )
     db.add(device)
     db.flush()
@@ -174,7 +205,37 @@ def register_device(
         site_id=str(body.site_id),
         customer_id=str(user.customer_id),
     )
+    ensure_bootstrap_lineage_row(db, d, fp=None)
     return _device_reads_with_footprint(db, user, [d])[0]
+
+
+@router.post("/import/validate", response_model=DeviceImportValidateResponse)
+def validate_device_import(
+    body: DeviceImportValidateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Server-side checks for a parsed CSV row set (duplicates, site access, existing names)."""
+    log.debug("devices.validate_device_import rows=%s", len(body.rows))
+    allowed = site_ids_with_permission(db, user, "devices.import")
+    if allowed is not None and len(allowed) == 0:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No site allows device import for this user")
+    ok, row_errors = validate_import_rows(db, user, body.rows, allowed)
+    return DeviceImportValidateResponse(ok=ok, row_errors=row_errors, validated_row_count=len(body.rows))
+
+
+@router.post("/import/commit", response_model=DeviceImportCommitResponse)
+def commit_device_import_batch(
+    body: DeviceImportCommitRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Persist devices from a validated import and record an audit row (success / partial / failed)."""
+    log.debug("devices.commit_device_import rows=%s", len(body.rows))
+    allowed = site_ids_with_permission(db, user, "devices.import")
+    if allowed is not None and len(allowed) == 0:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No site allows device import for this user")
+    return execute_device_import_commit(db, user, body.rows, body.source_label, allowed)
 
 
 @router.get("/{device_id}", response_model=DeviceRead)
@@ -203,13 +264,45 @@ def get_device_footprint(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.footprint.read")
     ep_by_de, dobjs = batch_load_footprint_sidecars(db, [device])
-    dash_counts = batch_dashboard_association_counts(
-        db, customer_id=user.customer_id, device_ids={device.id}
-    )
+    dash_refs = batch_dashboard_references(db, customer_id=user.customer_id, device_ids={device.id})
+    dash_counts = {device.id: len(dash_refs[device.id])}
     return build_device_footprint_payload(
-        db, device, ep_by_de=ep_by_de, dobjs=dobjs, dashboard_counts=dash_counts
+        db,
+        device,
+        ep_by_de=ep_by_de,
+        dobjs=dobjs,
+        dashboard_counts=dash_counts,
+        dashboard_ref_list=dash_refs[device.id],
     )
+
+
+@router.get("/{device_id}/version-lineage", response_model=VersionLineageResponse)
+def get_device_version_lineage(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Version timeline + KPI map from persisted lineage (§15); KPIs merge live footprint for current cut."""
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.footprint.read")
+    ep_by_de, dobjs = batch_load_footprint_sidecars(db, [device])
+    dash_refs = batch_dashboard_references(db, customer_id=user.customer_id, device_ids={device.id})
+    dash_counts = {device.id: len(dash_refs[device.id])}
+    fp = build_device_footprint_payload(
+        db,
+        device,
+        ep_by_de=ep_by_de,
+        dobjs=dobjs,
+        dashboard_counts=dash_counts,
+        dashboard_ref_list=dash_refs[device.id],
+    )
+    return build_version_lineage_response(db, device, fp)
 
 
 @router.patch("/{device_id}", response_model=DeviceRead)
@@ -225,7 +318,10 @@ def update_device(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.write")
     was_active = device.is_active
+    prev_ota_supported = device.ota_supported
+    old_device_version = (device.device_version or "").strip() or "1"
 
     if body.site_id is not None:
         site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
@@ -233,6 +329,7 @@ def update_device(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown site")
         if not user_may_access_site(user, body.site_id, allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot move device to this site")
+        ensure_site_permission(db, user, body.site_id, "devices.write")
         device.site_id = body.site_id
 
     if body.name is not None:
@@ -245,8 +342,60 @@ def update_device(
         device.is_active = body.is_active
     if body.polling_enabled is not None:
         device.polling_enabled = body.polling_enabled
+    if body.expected_interval_seconds is not None:
+        device.expected_interval_seconds = body.expected_interval_seconds
+    if body.late_threshold_seconds is not None:
+        device.late_threshold_seconds = body.late_threshold_seconds
+    if body.offline_threshold_seconds is not None:
+        device.offline_threshold_seconds = body.offline_threshold_seconds
+    if body.firmware_version is not None:
+        device.firmware_version = body.firmware_version
+    if body.firmware_channel is not None:
+        device.firmware_channel = body.firmware_channel
+    if body.ota_supported is not None:
+        device.ota_supported = body.ota_supported
+    if body.rollback_supported is not None:
+        device.rollback_supported = body.rollback_supported
+    if body.device_version is not None:
+        device.device_version = body.device_version.strip() or "1"
+    if body.version_status is not None:
+        device.version_status = body.version_status.strip() or "active"
+
+    ota_changed = body.ota_supported is not None and device.ota_supported != prev_ota_supported
+    if ota_changed:
+        cur_ver = (device.device_version or "").strip() or "1"
+        if cur_ver == old_device_version:
+            device.device_version = bump_device_version_monotonic_label(old_device_version)
+
+    new_device_version = (device.device_version or "").strip() or "1"
+    version_label_changed = new_device_version != old_device_version
 
     db.add(device)
+    db.flush()
+
+    if version_label_changed:
+        trigger = "explicit" if body.device_version is not None else ("ota" if ota_changed else "explicit")
+        ep_by_de, dobjs = batch_load_footprint_sidecars(db, [device])
+        dash_refs = batch_dashboard_references(db, customer_id=user.customer_id, device_ids={device.id})
+        dash_counts = {device.id: len(dash_refs[device.id])}
+        fp_snap = build_device_footprint_payload(
+            db,
+            device,
+            ep_by_de=ep_by_de,
+            dobjs=dobjs,
+            dashboard_counts=dash_counts,
+            dashboard_ref_list=dash_refs[device.id],
+        )
+        record_version_lineage_transition(
+            db,
+            device,
+            previous_label=old_device_version,
+            new_label=new_device_version,
+            trigger_code=trigger,
+            kpi_snapshot=kpi_snapshot_from_footprint_dict(fp_snap),
+            ota_external_ref=None,
+        )
+
     db.commit()
     d = _load_device(db, device_id, user.customer_id)
     assert d
@@ -297,6 +446,7 @@ def post_deactivate_device(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.write")
     deactivate_device(db, device)
     db.commit()
     db.refresh(device)
@@ -314,6 +464,7 @@ def post_reactivate_device(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.write")
     reactivate_device(db, device)
     db.commit()
     db.refresh(device)
@@ -331,6 +482,7 @@ def post_archive_device(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.write")
     archive_device(db, device)
     db.commit()
     db.refresh(device)
@@ -349,6 +501,7 @@ def delete_device(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.write")
 
     deps = device_delete_dependencies(db, customer_id=user.customer_id, device_id=device_id)
     raise_conflict_if_in_use(

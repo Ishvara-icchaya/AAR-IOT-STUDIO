@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -21,10 +23,38 @@ from app.models.device import Device
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.device_object import DeviceObject
 from app.models.endpoint import Endpoint
+from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
+from app.models.workflow import Workflow
+from app.models.workflow_node import WorkflowNode
 from app.services.dashboard_dependency_service import _layout_refs
 
 log = logging.getLogger(__name__)
+
+
+def ingest_contract_fingerprint(mapping: dict[str, Any] | None) -> str:
+    """Deterministic signature for field catalog + frozen scrubber identity (§13 row 1)."""
+    m = mapping if isinstance(mapping, dict) else {}
+    fc = m.get("fieldCatalog") if isinstance(m.get("fieldCatalog"), dict) else {}
+    ss = m.get("scrubberStudio") if isinstance(m.get("scrubberStudio"), dict) else {}
+    fields = fc.get("fields") if isinstance(fc.get("fields"), list) else []
+    normed: list[dict[str, Any]] = []
+    for f in fields:
+        if not isinstance(f, dict):
+            continue
+        normed.append(
+            {
+                "path": f.get("path"),
+                "attribute_id": f.get("attributeId") if f.get("attributeId") is not None else f.get("attribute_id"),
+                "type": f.get("type"),
+            }
+        )
+    normed.sort(key=lambda x: (str(x.get("attribute_id") or ""), str(x.get("path") or "")))
+    frozen = ss.get("frozenPipelineVersion") if ss.get("frozenPipelineVersion") is not None else ss.get(
+        "frozen_pipeline_version"
+    )
+    blob = json.dumps({"fields": normed, "frozen": frozen}, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def _last_ingested_at(device: Device, ep: DeviceEndpoint | None) -> datetime | None:
@@ -95,13 +125,14 @@ def load_operational_footprint_context(
     )
 
 
-def batch_dashboard_association_counts(
+def batch_dashboard_references(
     db: Session, *, customer_id: uuid.UUID, device_ids: set[uuid.UUID]
-) -> dict[uuid.UUID, int]:
-    """Count dashboards whose layout references each device (same semantics as ``dashboards_referencing_device``)."""
+) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """Dashboards whose layout references each device id (id, name, status)."""
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {did: [] for did in device_ids}
     if not device_ids:
-        return {}
-    counts: dict[uuid.UUID, int] = {did: 0 for did in device_ids}
+        return out
+    seen: dict[uuid.UUID, set[uuid.UUID]] = {did: set() for did in device_ids}
     dashboards = db.scalars(select(Dashboard).where(Dashboard.customer_id == customer_id)).all()
     for dash in dashboards:
         layout = dict(dash.layout or {})
@@ -112,8 +143,75 @@ def batch_dashboard_association_counts(
             if row and row.device_id in device_ids:
                 referenced.add(row.device_id)
         for dev_id in referenced & device_ids:
-            counts[dev_id] += 1
-    return counts
+            if dash.id in seen[dev_id]:
+                continue
+            seen[dev_id].add(dash.id)
+            out[dev_id].append({"id": str(dash.id), "name": dash.name, "status": dash.status})
+    return out
+
+
+def batch_dashboard_association_counts(
+    db: Session, *, customer_id: uuid.UUID, device_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Count dashboards whose layout references each device."""
+    refs = batch_dashboard_references(db, customer_id=customer_id, device_ids=device_ids)
+    return {did: len(lst) for did, lst in refs.items()}
+
+
+def workflows_for_device(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    device: Device,
+    ep_by_de: dict[uuid.UUID, Endpoint],
+) -> list[dict[str, Any]]:
+    """Workflows with an input node bound to this device's resolved identity (v2)."""
+    ep = device.endpoint
+    if not ep:
+        return []
+    endpoint_row = ep_by_de.get(ep.id)
+    if endpoint_row is None:
+        return []
+    res_ids = list(
+        db.scalars(select(ResolvedDevice.id).where(ResolvedDevice.endpoint_id == endpoint_row.id)).all()
+    )
+    if not res_ids:
+        return []
+    lds_ids = list(
+        db.scalars(select(LatestDeviceState.id).where(LatestDeviceState.resolved_device_id.in_(res_ids))).all()
+    )
+    res_str = {str(x) for x in res_ids}
+    lds_str = {str(x) for x in lds_ids}
+
+    rows = db.execute(
+        select(WorkflowNode, Workflow)
+        .join(Workflow, Workflow.id == WorkflowNode.workflow_id)
+        .where(Workflow.customer_id == customer_id, WorkflowNode.node_type == "input")
+    ).all()
+
+    seen_wf: set[uuid.UUID] = set()
+    out: list[dict[str, Any]] = []
+    for node, wf in rows:
+        if wf.id in seen_wf:
+            continue
+        if wf.site_id is not None and wf.site_id != device.site_id:
+            continue
+        cfg = node.config_json or {}
+        rd = cfg.get("resolved_device_id")
+        ldi = cfg.get("latest_device_state_id")
+        ok = (rd is not None and str(rd) in res_str) or (ldi is not None and str(ldi) in lds_str)
+        if not ok:
+            continue
+        seen_wf.add(wf.id)
+        out.append(
+            {
+                "id": str(wf.id),
+                "name": wf.name,
+                "lifecycle_status": wf.lifecycle_status,
+                "is_published": wf.is_published,
+            }
+        )
+    return out
 
 
 def batch_load_footprint_sidecars(
@@ -187,6 +285,7 @@ def build_device_footprint_payload(
     ep_by_de: dict[uuid.UUID, Endpoint],
     dobjs: dict[uuid.UUID, DeviceObject],
     dashboard_counts: dict[uuid.UUID, int] | None = None,
+    dashboard_ref_list: list[dict[str, Any]] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Response body for GET /devices/{id}/footprint (v1 minimal shape)."""
@@ -196,6 +295,8 @@ def build_device_footprint_payload(
     code, msg = derive_recommendation(ctx, st, now=n)
     ep = device.endpoint
     endpoint_row = ep_by_de.get(ep.id) if ep else None
+    wf_rows = workflows_for_device(db, customer_id=device.customer_id, device=device, ep_by_de=ep_by_de)
+    dash_list = dashboard_ref_list if dashboard_ref_list is not None else []
     return {
         "device": {
             "device_id": str(device.id),
@@ -224,10 +325,10 @@ def build_device_footprint_payload(
             "last_output_at": None,
             "status": "ok" if ctx.scrubber_configured else "not_configured",
         },
-        "workflow": {"associated": False, "workflows": []},
+        "workflow": {"associated": len(wf_rows) > 0, "workflows": wf_rows},
         "dashboard": {
             "count": ctx.dashboard_association_count,
-            "dashboards": [],
+            "dashboards": dash_list,
         },
         "trends": {
             "device_trend_available": False,
