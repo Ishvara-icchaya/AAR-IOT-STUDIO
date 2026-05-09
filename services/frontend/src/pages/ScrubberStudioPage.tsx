@@ -10,6 +10,7 @@ import { HealthStepEditor } from "@/components/scrubber/HealthStepEditor";
 import { KpiStepEditor } from "@/components/scrubber/KpiStepEditor";
 import { AppCard, AppGrid } from "@/components/app";
 import { PageShell } from "@/layouts/PageShell";
+import { applyDecodeSeriesSteps } from "@/lib/scrubberDecodeSeries";
 import { buildKpiOutput, evaluateHealth } from "@/lib/scrubberKpiHealth";
 import type { PipelineStepId } from "@/types/scrubberPipeline";
 import type { StudioDraftForm } from "@/types/scrubberStudioForm";
@@ -198,6 +199,7 @@ function defaultStudioForm(): StudioDraftForm {
     healthRawLegacy: null,
     kpiDisplayFields: [],
     kpiMetrics: [],
+    decodeSeriesSteps: [],
   };
 }
 
@@ -347,6 +349,9 @@ function formToActiveDraft(form: StudioDraftForm): Record<string, unknown> {
     kpi,
   };
   if (form.selectPath.trim()) out.selectPath = form.selectPath.trim();
+  if (Array.isArray(form.decodeSeriesSteps) && form.decodeSeriesSteps.length > 0) {
+    out.decodeSeriesSteps = form.decodeSeriesSteps.map((s) => ({ ...s }));
+  }
   return out;
 }
 
@@ -520,6 +525,12 @@ function activeDraftToForm(d: Record<string, unknown>): StudioDraftForm {
       }
       if (f.kpiDisplayFields.length === 0 && paths.length) f.kpiDisplayFields = paths;
     }
+  }
+  const dss = d.decodeSeriesSteps;
+  if (Array.isArray(dss) && dss.length && dss.every((x) => x && typeof x === "object" && !Array.isArray(x))) {
+    f.decodeSeriesSteps = dss as Record<string, unknown>[];
+  } else {
+    f.decodeSeriesSteps = [];
   }
   return f;
 }
@@ -875,6 +886,7 @@ function applyClientTransformExtensions(payload: Record<string, unknown>, active
   }
 
   applyScalarFieldsToPayload(p, active.scalarFields);
+  applyDecodeSeriesSteps(p, active.decodeSeriesSteps);
 
   const fb = active.functionBased;
   if (fb && typeof fb === "object" && !Array.isArray(fb) && Boolean((fb as { enabled?: boolean }).enabled)) {
@@ -908,9 +920,15 @@ function computeLiveScrubberOutput(
     else payload = { _error: "selectPath not found", _path: sel };
   }
 
-  const hasExt = ["dropPaths", "flatten", "addAttributes", "scalarFields", "functionBased", "gpsMapping"].some(
-    (k) => active[k] !== undefined && active[k] !== null,
-  );
+  const hasExt = [
+    "dropPaths",
+    "flatten",
+    "addAttributes",
+    "scalarFields",
+    "decodeSeriesSteps",
+    "functionBased",
+    "gpsMapping",
+  ].some((k) => active[k] !== undefined && active[k] !== null);
   let working = payload;
   if (hasExt) {
     working = applyClientTransformExtensions(payload, active);

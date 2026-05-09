@@ -12,6 +12,16 @@
 |--------|--------|
 | `step_type` | `decode_series` |
 
+### Where this lives in `scrubberStudio`
+
+Under **`scrubberStudio.draft`** (or **`publishedBody`** when frozen), add an optional array:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `decodeSeriesSteps` | `object[]` | Ordered list of step configs. Each object with `step_type: "decode_series"` is executed after **Derived Fields** (`scalarFields`) and before **Function Based** (`functionBased`). |
+
+Field names may be **snake_case** (spec) or **camelCase** (`sourcePath`, `dataType`, …); the engine accepts both.
+
 ---
 
 ## v1 supported modes
@@ -240,6 +250,7 @@ Errors returned from the scrubber runtime should be structured and include ident
 | `INVALID_CSV_TOKEN` | CSV token not parseable as number |
 | `BINARY_LENGTH_MISMATCH` | Byte length not a multiple of type width |
 | `MAX_SAMPLES_EXCEEDED` | Decoded sample count exceeds security `max_samples` |
+| `MAX_PROCESSING_TIME` | Step exceeded `SCRUBBER_DECODE_SERIES_MAX_PROCESSING_MS` (default 50 ms) |
 | `NON_NUMERIC_VALUE` | Scalar/array element cannot be coerced to numeric |
 
 ---

@@ -19,6 +19,7 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.scrubber_decode_series import apply_decode_series_steps
 from app.scrubber_health_service import evaluate_health
 from app.scrubber_kpi_service import build_kpi_output
 
@@ -434,6 +435,7 @@ def _apply_transform_extensions(payload: dict[str, Any], active: dict[str, Any])
             _merge_from_payload_template(p, fp, p)
 
     _apply_scalar_fields(p, active.get("scalarFields"))
+    apply_decode_series_steps(p, active.get("decodeSeriesSteps"))
     _exec_function_based(p, active.get("functionBased"))
     _apply_gps_mapping(p, active.get("gpsMapping"))
 
@@ -659,7 +661,15 @@ def run_scrubber(
 
     has_extensions = any(
         k in active
-        for k in ("dropPaths", "flatten", "addAttributes", "scalarFields", "functionBased", "gpsMapping")
+        for k in (
+            "dropPaths",
+            "flatten",
+            "addAttributes",
+            "scalarFields",
+            "decodeSeriesSteps",
+            "functionBased",
+            "gpsMapping",
+        )
     )
     if has_extensions:
         payload = _apply_transform_extensions(payload, active)

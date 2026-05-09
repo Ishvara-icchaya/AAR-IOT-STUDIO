@@ -26,9 +26,10 @@ Post–**8.0.0** follow-ups aligned with [DEVICE_VERSIONING_SPEC.md](./DEVICE_VE
 
 Follow **[OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md)** for full phase narrative. Short list:
 
-### Scrubber — **Decode Series** (spec locked; implementation next)
+### Scrubber — **Decode Series** (spec locked; v1 implemented)
 
 - **Locked spec:** [SCRUBBER_DECODE_SERIES_SPEC.md](./SCRUBBER_DECODE_SERIES_SPEC.md) — generic `step_type: decode_series` (no Base64-only primitive); v1 modes `scalar`, `array`, `base64_binary`, `csv_numbers`, `hex_binary`; standard `{ samples, meta, aggregations }` output; validation, error codes, and security limits as documented.
+- **Runtime:** `decodeSeriesSteps` on `scrubberStudio.draft` / `publishedBody` — worker + API `run_scrubber` (`scrubber_decode_series.py`); order: after `scalarFields`, before `functionBased`. Studio live preview mirrors logic in `scrubberDecodeSeries.ts`. API tests: `tests/test_scrubber_decode_series.py`.
 - **Deferred modes** (same step family, future): `object_array`, `timestamp_value_pair`, `gzip_base64_binary`, protobuf / schema-packed binary — listed under *Scrubber → to be supported modes* in that spec.
 
 - **Firmware artifact library** — First-class binaries / manifests and OTA binding beyond free-text target FW.

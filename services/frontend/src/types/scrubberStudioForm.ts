@@ -61,6 +61,8 @@ export type StudioDraftForm = {
   healthDetailsKey: string;
   kpiDisplayFields: string[];
   kpiMetrics: KpiMetricRow[];
+  /** Optional `decode_series` pipeline steps (see docs/SCRUBBER_DECODE_SERIES_SPEC.md). */
+  decodeSeriesSteps: Record<string, unknown>[];
   /** When set, draft keeps pre–v4 health list until user edits the health step. */
   healthRawLegacy: unknown | null;
 };
