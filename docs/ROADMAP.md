@@ -1,5 +1,7 @@
 # Operational lineage and versioning backlog
 
+**Version 8 objectives — complete** (lineage + immutable versions + OTA control plane + static impact + replay simulation MVP + RBAC/audit foundations + UI permission gates; see git history around migrations **`0045`–`0047`** and related API/UI). Ongoing work is **post–v8** polish and net-new features below.
+
 Post–**8.0.0** follow-ups aligned with [DEVICE_VERSIONING_SPEC.md](./DEVICE_VERSIONING_SPEC.md).
 
 **Locked implementation phases** (OTA, immutable versions, lineage extension, routing, UI, RBAC, audit): [OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md).
@@ -12,13 +14,44 @@ Post–**8.0.0** follow-ups aligned with [DEVICE_VERSIONING_SPEC.md](./DEVICE_VE
 
 3. **Richer `GET /devices/{id}/footprint`** — Workflow association scans **all** nodes for `device_id`, `endpoint_id`, `resolved_device_id`, and `latest_device_state_id`; each workflow row includes `site_id` and `definition_version`. Dashboard references include **`site_id`** as well as id, name, and status.
 
-## Still open (schedule by milestone)
+4. **OTA campaigns + candidate routing (Phases 4–7)** — Migration **`0042`**: `ota_campaigns`, `ota_campaign_targets`, `ota_events`; `device_versions.routing_lane` / `compatibility`; candidate mirror tables. **`0043`**: RBAC rows for `device_versions.*`, `simulation.run`, and `ota.launch` on `device_operator`. **`POST /api/v1/ota/status`** completes targets and appends `ota_job_completed` lineage (no auto-promote). **`POST /api/v1/device-versions/{id}/promote`**, **`/isolate`**, **`/rollback`** with matching lineage events. Worker resolution writes **`candidate_latest_device_state`** when the active version is on the candidate lane instead of shared **`latest_device_state`**.
 
-Follow **[OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md)**. Phases **1–3** are implemented in tree (bootstrap caller commit, generalized lineage columns, **`device_versions`**). Next: **Phase 4** (`ota_campaigns` / `ota_campaign_targets`) before OTA execution (**5+**).
+5. **Device Details UI + static impact (Phases 8–9)** — **`/devices/detail/:deviceId`** hub (Overview, Versions, Lineage, OTA History, **Simulation** tab calling **`POST /simulations/replay`**). APIs: **`GET /api/v1/devices/{id}/device-versions`**, **`GET …/device-versions/{version_id}/impact`** (baseline = prior **active** row; field diff; **per-widget attribute/metric refs vs device field catalog** for `data_object`-bound widgets; workflows + dashboards blast radius; schema drift notes), **`GET …/ota-target-history`**. Registration stays minimal; table links to the hub.
 
-Short list:
+6. **OTA campaign control plane + UI (Phase 11 v1 + polish)** — **`ota_campaign_service`** + REST under **`/api/v1/ota/campaigns`** (list/create/detail/patch, targets, submit/approve/launch/pause/resume/cancel, **`GET …/events`**). UI: **`/devices/ota`**, **`/devices/ota/new`** (multi-step wizard + optional replay), **`/devices/ota/:id`** (rollout timeline, summary cards, targets, lifecycle, event log, **`POST /ota/status`** test hook). Migration **`0044`**: **`device_operator`** gets **`ota.create`** + **`ota.approve`** in DB (aligned with `permission_catalog`).
 
-- **Phase 4** — `ota_campaigns`, `ota_campaign_targets`, optional `ota_events`.
-- **Phases 5–7** — OTA completion API/service, version promote/isolate/rollback, candidate lane routing.
-- **Phases 8–11** — Device Details UI, compare/impact/replay, OTA campaign UI.
-- **Phases 12–13** — RBAC keys for OTA/versioning/simulation/lineage; audit trail separate from lineage.
+7. **Phase 10 + 12–13 (MVP in tree)** — **`simulation_jobs`**, **`POST /simulations/replay`** / **`GET /simulations/{id}`**; **`control_plane_audit_events`**, **`GET /audit/events`**, UI **Administration → Control plane audit**; catalog keys **`lineage.read`**, **`audit.read`**, **`device_versions.deprecate`**, **`POST /device-versions/{id}/deprecate`**; OTA/version lifecycle **audit emits**; **`docs/CANDIDATE_LANE_CONSUMERS.md`**.
+
+## Still open (post–v8 / next milestones)
+
+Follow **[OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md)** for full phase narrative. Short list:
+
+### Scrubber — **Decode Series** (spec locked; implementation next)
+
+- **Locked spec:** [SCRUBBER_DECODE_SERIES_SPEC.md](./SCRUBBER_DECODE_SERIES_SPEC.md) — generic `step_type: decode_series` (no Base64-only primitive); v1 modes `scalar`, `array`, `base64_binary`, `csv_numbers`, `hex_binary`; standard `{ samples, meta, aggregations }` output; validation, error codes, and security limits as documented.
+- **Deferred modes** (same step family, future): `object_array`, `timestamp_value_pair`, `gzip_base64_binary`, protobuf / schema-packed binary — listed under *Scrubber → to be supported modes* in that spec.
+
+- **Firmware artifact library** — First-class binaries / manifests and OTA binding beyond free-text target FW.
+- **Simulation depth** — Full scrubber/workflow re-execution vs current structural + static-impact MVP.
+- **Dashboard live candidate lane** — Read path for widgets against **`candidate_latest_device_state`** (see [CANDIDATE_LANE_CONSUMERS.md](./CANDIDATE_LANE_CONSUMERS.md)).
+- **Audit + RBAC hardening** — Broader **`audit.read`** grants, richer audit payloads, and any remaining API/UI action → permission mapping.
+
+## Retire / legacy
+
+Backlog from a codebase pass (dead code, duplicates, and paths that need a migration plan before removal).
+
+### Safe cleanup (low risk)
+
+- **Frontend CSS** — Remove unused **`.ops-status-badge`** rules in `services/frontend/src/index.css` (status UI is `AarStatusPill` / `OpsStatusPill` only; no TSX references to the old classes).
+- **Worker stubs** — `services/workers/app/ai_suggestions.py` and `services/workers/app/ai_maintenance.py` are Phase‑1 no-ops: not referenced by `ai_worker.py`, not a Compose `command`. **Remove** or replace with a short note in `ai_worker.py` until async AI jobs exist.
+- **Thin re-export** — `services/frontend/src/pages/ScrubberCreatePage.tsx` only re-exports `ScrubberStudioPage`; optional **delete** and import `ScrubberStudioPage` directly from `App.tsx`.
+
+### Consolidation (keep behavior; reduce drift)
+
+- **`LEGACY_MQTT_BRIDGE_LAST_INGEST_REDIS_KEY`** — Duplicated in `services/workers/app/ingest_archive.py` and `services/workers/app/monitoring_probes.py` (monitoring still reads it). **Single shared constant** (e.g. small `legacy_redis_keys` module) so keys cannot diverge.
+
+### Do not remove until product / tenant migration
+
+- **`DataObject` and dashboard / published-service `data_object` sources** — API routes and models remain for legacy bindings; v2 policy already discourages `data_object` widgets in places. **Retirement** = coordinated API deprecation + tenant rebinds, not a blind delete.
+- **Dual scrubber entry points** — **`/scrubber/create`** (classic `ScrubberStudioPage`) vs **`/scrubber/v2/create`** (`Scrubber2Page`). Retire classic UI only after **redirect + comms** and confirmation nothing depends on the old route alone.
+- **`scheduler` / `worker-ai` Compose services** — Idle scaffolds with heartbeats; not redundant modules; replace only when real scheduled or async AI work replaces the placeholder loops.
