@@ -11,6 +11,7 @@ from app.models.mixins import TimestampMixin
 if TYPE_CHECKING:
     from app.models.customer import Customer
     from app.models.device import Device
+    from app.models.rbac import SiteUserRole
     from app.models.user_site import UserSite
 
 
@@ -37,3 +38,6 @@ class Site(Base, TimestampMixin):
     customer: Mapped["Customer"] = relationship(back_populates="sites")
     devices: Mapped[list["Device"]] = relationship(back_populates="site")
     user_links: Mapped[list["UserSite"]] = relationship(back_populates="site")
+    site_user_roles: Mapped[list["SiteUserRole"]] = relationship(
+        "SiteUserRole", back_populates="site", cascade="all, delete-orphan"
+    )

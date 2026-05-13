@@ -10,6 +10,7 @@ All emitters must use only these values (``normalize_alert_category`` maps anyth
 - monitoring
 - ai
 - device_health
+- audit (functional create/update audit; informational alerts)
 - system
 """
 
@@ -25,6 +26,7 @@ ALLOWED_ALERT_CATEGORIES: frozenset[str] = frozenset(
         "monitoring",
         "ai",
         "device_health",
+        "audit",
         "system",
     }
 )

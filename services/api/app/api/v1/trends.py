@@ -7,7 +7,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
@@ -41,7 +42,7 @@ def get_trends_window(
     db: Session = Depends(get_db),
 ):
     """Authorized trend read: same site gate as map runtime; entity must belong to site_id."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")

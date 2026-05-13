@@ -11,7 +11,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.device import Device
@@ -40,7 +41,7 @@ def _collect_validation_errors(body: StaticIngestionValidateRequest) -> list[str
 
 
 def _accessible_device(db: Session, user: User, device_id: uuid.UUID) -> Device | None:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     stmt = select(Device).where(Device.id == device_id, Device.customer_id == user.customer_id)
     dev = db.execute(stmt).scalar_one_or_none()
     if not dev:
@@ -53,7 +54,7 @@ def _accessible_device(db: Session, user: User, device_id: uuid.UUID) -> Device 
 def _ensure_row_access(db: Session, user: User, row: StaticIngestion | None) -> StaticIngestion:
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Static ingestion not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     return row
@@ -82,7 +83,7 @@ def validate_static_ingestion(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -110,7 +111,7 @@ def list_static_ingestions(
             detail="Provide exactly one of site_id or device_id",
         )
 
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
 
     if device_id is not None:
         dev = _accessible_device(db, user, device_id)
@@ -159,7 +160,7 @@ def create_static_ingestion(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")

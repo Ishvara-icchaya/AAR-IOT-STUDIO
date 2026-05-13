@@ -143,6 +143,7 @@ class LatestDeviceStateRead(BaseModel):
     kpi_json: dict[str, Any]
     health_json: dict[str, Any] | None
     location_json: dict[str, Any] | None
+    system_json: dict[str, Any] = Field(default_factory=dict)
     scrubbed_event_id: uuid.UUID | None
     updated_at: datetime
 

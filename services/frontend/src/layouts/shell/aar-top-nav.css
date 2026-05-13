@@ -296,14 +296,15 @@ button.aar-topnav__brand-home:focus-visible {
   color: color-mix(in oklab, #ede9fe 58%, #a78bfa);
 }
 
+/* Dashboards — cool slate/blue (avoid orange-on-bright “list” chrome) */
 .aar-topnav__item .aar-topnav__item-icon--dashboards {
-  color: color-mix(in oklab, #fb923c 78%, #fdba74);
+  color: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 62%, #94a3b8);
 }
 .aar-topnav__item:hover .aar-topnav__item-icon--dashboards {
-  color: color-mix(in oklab, #fdba74 72%, #ffedd5);
+  color: color-mix(in oklab, var(--aar-accent-blue, #1d76ff) 48%, #cbd5e1);
 }
 .aar-topnav__item--active .aar-topnav__item-icon--dashboards {
-  color: color-mix(in oklab, #ffedd5 55%, #fb923c);
+  color: color-mix(in oklab, #bfdbfe 55%, var(--aar-accent-blue, #1d76ff));
 }
 
 .aar-topnav__item .aar-topnav__item-icon--ai {

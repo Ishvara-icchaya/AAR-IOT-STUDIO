@@ -69,6 +69,8 @@ export type AarTopNavProps = {
   alertCount: number;
   alertTone: "none" | "critical" | "warning" | "info";
   onRefresh: () => void;
+  /** When provided, return false to hide a primary nav item (RBAC-driven). */
+  navItemVisible?: (key: NavDef["key"]) => boolean;
 };
 
 export function AarTopNav({
@@ -80,6 +82,7 @@ export function AarTopNav({
   alertCount,
   alertTone,
   onRefresh,
+  navItemVisible,
 }: AarTopNavProps) {
   const { pathname } = useLocation();
   const [siteOpen, setSiteOpen] = useState(false);
@@ -198,7 +201,7 @@ export function AarTopNav({
         className={`aar-topnav__nav${mobileOpen ? " aar-topnav__nav--mobile-open" : ""}`}
         aria-label="Primary navigation"
       >
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => (navItemVisible ? navItemVisible(item.key) : true)).map((item) => {
           const Icon = NAV_ICONS[item.key];
           const active = item.isActive(pathname);
           const iconMod = item.key === "registerEndpoint" ? "register-endpoint" : item.key;

@@ -14,13 +14,24 @@ from app.db.session import get_db
 from app.models.device import Device
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.device_object import DeviceObject
+from app.models.device_version import DeviceVersion
 from app.models.user import User
 from app.schemas.device import (
     DeviceCreate,
     DeviceDeleteResponse,
     DeviceListResponse,
+    DeviceOtaTargetHistoryResponse,
     DeviceRead,
     DeviceUpdate,
+    DeviceVersionImpactNote,
+    DeviceVersionImpactResponse,
+    DeviceVersionSnapshotListResponse,
+    DeviceVersionSnapshotRead,
+    ImpactDashboardRef,
+    ImpactWidgetAttributeRow,
+    ImpactWorkflowRef,
+    OtaTargetHistoryItem,
+    VersionFieldDiffEntry,
     VersionLineageResponse,
 )
 from app.schemas.device_import import (
@@ -31,6 +42,7 @@ from app.schemas.device_import import (
 )
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.alert_emit import emit_alert
+from app.services.control_plane_audit_service import emit_control_plane_audit
 from app.services.dependency_service import device_delete_dependencies
 from app.services.device_operational_footprint_service import (
     batch_dashboard_association_counts,
@@ -38,6 +50,11 @@ from app.services.device_operational_footprint_service import (
     batch_load_footprint_sidecars,
     build_device_footprint_payload,
     evaluate_footprint_for_device,
+)
+from app.services.device_version_impact_service import (
+    build_static_impact_payload,
+    list_device_version_snapshots,
+    list_ota_target_history_for_device,
 )
 from app.services.device_version_lineage_service import (
     build_version_lineage_response,
@@ -49,7 +66,8 @@ from app.services.device_version_lineage_service import (
 from app.services.device_import_service import commit_device_import as execute_device_import_commit
 from app.services.device_import_service import validate_import_rows
 from app.services.lifecycle_actions import archive_device, deactivate_device, reactivate_device
-from app.services.permission_service import ensure_site_permission, site_ids_with_permission
+from app.services.functional_audit_alert import emit_functional_audit_alert
+from app.services.permission_service import ensure_site_permission, ensure_site_permission_any, site_ids_with_permission
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -207,6 +225,23 @@ def register_device(
     )
     ensure_bootstrap_lineage_row(db, d, fp=None)
     db.commit()
+    db.refresh(d)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Device",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=d.id,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="device",
+        source_object_id=d.id,
+    )
+    d = _load_device(db, d.id, user.customer_id)
+    assert d
     return _device_reads_with_footprint(db, user, [d])[0]
 
 
@@ -291,7 +326,7 @@ def get_device_version_lineage(
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
     _ensure_device_visible(device, user, allowed)
-    ensure_site_permission(db, user, device.site_id, "devices.footprint.read")
+    ensure_site_permission_any(db, user, device.site_id, ("lineage.read", "devices.footprint.read"))
     ep_by_de, dobjs = batch_load_footprint_sidecars(db, [device])
     dash_refs = batch_dashboard_references(db, customer_id=user.customer_id, device_ids={device.id})
     dash_counts = {device.id: len(dash_refs[device.id])}
@@ -306,6 +341,77 @@ def get_device_version_lineage(
     out = build_version_lineage_response(db, device, fp)
     db.commit()
     return out
+
+
+@router.get("/{device_id}/device-versions", response_model=DeviceVersionSnapshotListResponse)
+def list_device_version_snapshots_endpoint(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Immutable ``device_versions`` rows for Device Details → Versions tab (Phase 8)."""
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "device_versions.read")
+    rows = list_device_version_snapshots(db, device_id)
+    return DeviceVersionSnapshotListResponse(
+        items=[DeviceVersionSnapshotRead.model_validate(r) for r in rows],
+    )
+
+
+@router.get("/{device_id}/device-versions/{version_id}/impact", response_model=DeviceVersionImpactResponse)
+def get_device_version_impact_endpoint(
+    device_id: uuid.UUID,
+    version_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Static impact v1: field diff vs prior active row + workflows + dashboards (Phase 9)."""
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "device_versions.read")
+    candidate = db.get(DeviceVersion, version_id)
+    if not candidate or candidate.device_id != device_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device version not found")
+    raw = build_static_impact_payload(db, customer_id=user.customer_id, device=device, candidate=candidate)
+    return DeviceVersionImpactResponse(
+        device_id=raw["device_id"],
+        candidate_id=raw["candidate_id"],
+        baseline_id=raw["baseline_id"],
+        field_diff=[VersionFieldDiffEntry(**x) for x in raw["field_diff"]],
+        workflows=[ImpactWorkflowRef(**x) for x in raw["workflows"]],
+        dashboards=[ImpactDashboardRef(**x) for x in raw["dashboards"]],
+        catalog_attribute_ids=list(raw.get("catalog_attribute_ids") or []),
+        widget_attribute_impact=[ImpactWidgetAttributeRow(**x) for x in raw.get("widget_attribute_impact") or []],
+        notes=[DeviceVersionImpactNote(**x) for x in raw["notes"]],
+    )
+
+
+@router.get("/{device_id}/ota-target-history", response_model=DeviceOtaTargetHistoryResponse)
+def list_device_ota_target_history_endpoint(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """OTA campaign targets involving this device (Phase 8 OTA History tab)."""
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "ota.read")
+    rows = list_ota_target_history_for_device(
+        db, customer_id=user.customer_id, device_id=device_id, limit=100
+    )
+    return DeviceOtaTargetHistoryResponse(
+        items=[OtaTargetHistoryItem.model_validate(r) for r in rows],
+    )
 
 
 @router.patch("/{device_id}", response_model=DeviceRead)
@@ -400,9 +506,41 @@ def update_device(
             created_by=user.id,
         )
 
+    if body.device_version is not None or body.version_status is not None:
+        emit_control_plane_audit(
+            db,
+            customer_id=user.customer_id,
+            site_id=device.site_id,
+            actor_user_id=user.id,
+            action_type="manual_override",
+            resource_type="device",
+            resource_id=device.id,
+            payload_json={
+                "device_version": new_device_version,
+                "version_status": device.version_status,
+                "device_version_field_set": body.device_version is not None,
+                "version_status_field_set": body.version_status is not None,
+            },
+        )
+
     db.commit()
     d = _load_device(db, device_id, user.customer_id)
     assert d
+    db.refresh(d)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Device",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=d.id,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="device",
+        source_object_id=d.id,
+    )
     if body.is_active is False and was_active:
         try:
             emit_alert(
@@ -454,6 +592,20 @@ def post_deactivate_device(
     deactivate_device(db, device)
     db.commit()
     db.refresh(device)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="deactivated",
+        resource_type="Device",
+        resource_label=device.name,
+        site_id=device.site_id,
+        device_id=device.id,
+        resource_created_at=device.created_at,
+        resource_updated_at=device.updated_at,
+        source_object_type="device",
+        source_object_id=device.id,
+    )
     return {"id": str(device.id), "operational_status": device.operational_status, "is_active": device.is_active}
 
 
@@ -472,6 +624,20 @@ def post_reactivate_device(
     reactivate_device(db, device)
     db.commit()
     db.refresh(device)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="reactivated",
+        resource_type="Device",
+        resource_label=device.name,
+        site_id=device.site_id,
+        device_id=device.id,
+        resource_created_at=device.created_at,
+        resource_updated_at=device.updated_at,
+        source_object_type="device",
+        source_object_id=device.id,
+    )
     return {"id": str(device.id), "operational_status": device.operational_status, "is_active": device.is_active}
 
 
@@ -490,6 +656,20 @@ def post_archive_device(
     archive_device(db, device)
     db.commit()
     db.refresh(device)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="archived",
+        resource_type="Device",
+        resource_label=device.name,
+        site_id=device.site_id,
+        device_id=device.id,
+        resource_created_at=device.created_at,
+        resource_updated_at=device.updated_at,
+        source_object_type="device",
+        source_object_id=device.id,
+    )
     return {"id": str(device.id), "operational_status": device.operational_status, "is_active": device.is_active}
 
 

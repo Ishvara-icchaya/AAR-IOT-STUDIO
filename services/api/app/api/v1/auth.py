@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -60,6 +61,19 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
             reason="inactive_user",
         )
         raise HTTPException(status.HTTP_403_FORBIDDEN, "User is inactive")
+    if user.account_status == "disabled":
+        pipeline_emit(
+            log,
+            component="api.auth",
+            action="login",
+            status="denied",
+            duration_ms=(time.perf_counter() - t0) * 1000,
+            reason="disabled_user",
+        )
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is disabled")
+    user.last_login_at = datetime.now(timezone.utc)
+    db.add(user)
+    db.commit()
     token = create_access_token(
         str(user.id),
         extra={"cid": str(user.customer_id), "email": user.email, "role": user.role},

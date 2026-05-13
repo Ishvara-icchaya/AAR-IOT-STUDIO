@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.core.pipeline_log import emit as pipeline_emit
 from app.db.session import get_db
@@ -41,6 +42,7 @@ from app.services.lifecycle_actions import (
 from app.services.scrubber_engine import apply_llm_health_kpi_overlay_public
 from app.services.scrubber_generate_health_service import generate_health_mapping
 from app.services.scrubber_preview_service import scrubber_preview
+from app.services.functional_audit_alert import emit_functional_audit_alert
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ def _require_data_object_access(
     dev = db.get(Device, row.device_id)
     if not dev:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "device not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if allowed is not None and dev.site_id not in allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     return row
@@ -245,7 +247,7 @@ def get_data_object_dependencies(
     device = db.get(Device, row.device_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if not user_may_access_site(user, device.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     deps = data_object_delete_dependencies(db, customer_id=user.customer_id, data_object_id=data_object_id)
@@ -264,7 +266,7 @@ def post_deactivate_data_object(
     device = db.get(Device, row.device_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if not user_may_access_site(user, device.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     deactivate_data_object(db, row)
@@ -285,7 +287,7 @@ def post_reactivate_data_object(
     device = db.get(Device, row.device_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if not user_may_access_site(user, device.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     reactivate_data_object(db, row)
@@ -306,7 +308,7 @@ def post_archive_data_object(
     device = db.get(Device, row.device_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if not user_may_access_site(user, device.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     archive_data_object(db, row)
@@ -327,7 +329,7 @@ def delete_data_object(
     device = db.get(Device, row.device_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found for data_object")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if not user_may_access_site(user, device.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     deps = data_object_delete_dependencies(db, customer_id=user.customer_id, data_object_id=data_object_id)
@@ -356,7 +358,7 @@ def list_health_threshold_references(
     db: Session = Depends(get_db),
 ):
     """List reusable threshold JSON definitions (customer-wide, site, or device scoped)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     stmt = select(HealthThresholdReference).where(HealthThresholdReference.customer_id == user.customer_id)
     if site_id is not None:
         if not ensure_site_in_tenant(db, user.customer_id, site_id):
@@ -388,7 +390,7 @@ def create_health_threshold_reference(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     site_uuid: uuid.UUID | None = body.site_id
     dev_uuid: uuid.UUID | None = body.device_id
     if site_uuid is not None:
@@ -415,6 +417,20 @@ def create_health_threshold_reference(
     db.add(row)
     db.commit()
     db.refresh(row)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Scrubber health threshold",
+        resource_label=row.reference_name,
+        site_id=row.site_id,
+        device_id=row.device_id,
+        resource_created_at=row.created_at,
+        resource_updated_at=row.updated_at,
+        source_object_type="health_threshold_reference",
+        source_object_id=row.id,
+    )
     return HealthThresholdReferenceRead.model_validate(row)
 
 
@@ -428,7 +444,7 @@ def update_health_threshold_reference(
     row = db.get(HealthThresholdReference, ref_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if row.site_id is not None and allowed is not None and not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     if body.reference_name is not None:
@@ -437,6 +453,20 @@ def update_health_threshold_reference(
         row.body_json = dict(body.body_json)
     db.commit()
     db.refresh(row)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Scrubber health threshold",
+        resource_label=row.reference_name,
+        site_id=row.site_id,
+        device_id=row.device_id,
+        resource_created_at=row.created_at,
+        resource_updated_at=row.updated_at,
+        source_object_type="health_threshold_reference",
+        source_object_id=row.id,
+    )
     return HealthThresholdReferenceRead.model_validate(row)
 
 
@@ -449,9 +479,23 @@ def delete_health_threshold_reference(
     row = db.get(HealthThresholdReference, ref_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     if row.site_id is not None and allowed is not None and not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="deleted",
+        resource_type="Scrubber health threshold",
+        resource_label=row.reference_name,
+        site_id=row.site_id,
+        device_id=row.device_id,
+        resource_created_at=row.created_at,
+        resource_updated_at=row.updated_at,
+        source_object_type="health_threshold_reference",
+        source_object_id=row.id,
+    )
     db.delete(row)
     db.commit()
     return None

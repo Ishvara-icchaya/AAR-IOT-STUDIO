@@ -5,12 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
-from app.models.device_endpoint import DeviceEndpoint
-from app.models.endpoint import Endpoint
 
 from app.services.device_endpoint_connectivity import (
     MQTT_LIVE_ERROR,
@@ -20,39 +17,28 @@ from app.services.device_endpoint_connectivity import (
     mqtt_subscribe_wait_for_message,
     run_connectivity_for_protocol,
 )
-from app.services.device_endpoint_observability import assess_payload_receipt_timeliness, last_raw_ingested_at_iso
+from app.services.device_endpoint_observability import (
+    assess_payload_receipt_timeliness,
+    last_raw_ingested_at_iso,
+    mqtt_raw_archive_guidance,
+)
 
 
-def _mqtt_archive_explain_lines(db: Session, device_id: UUID) -> list[str]:
-    """Why Live MQTT can succeed while raw_data_objects stays empty (API test client vs worker-mqtt-bridge)."""
-    de_id = db.scalar(select(DeviceEndpoint.id).where(DeviceEndpoint.device_id == device_id))
-    if not de_id:
-        return [
-            "Archive (MQTT): save a Manage device endpoint first. The live MQTT check runs only on the API — "
-            "it does not write to MinIO/Postgres; worker-mqtt-bridge performs archiving."
-        ]
-    n = db.scalar(
-        select(func.count())
-        .select_from(Endpoint)
-        .where(
-            Endpoint.device_endpoint_id == de_id,
-            func.lower(Endpoint.protocol) == "mqtt",
-            Endpoint.enabled.is_(True),
+def _mqtt_archive_validation_lines(db: Session, device_id: UUID, *, has_archived_raw: bool) -> list[str]:
+    """Human-readable MQTT archiving context appended to validation_detail."""
+    g = mqtt_raw_archive_guidance(db, device_id)
+    lines: list[str] = []
+    if has_archived_raw:
+        lines.append(
+            "Archive (MQTT): raw payloads are reaching storage for this device. "
+            "If liveness still looks wrong, check timeliness thresholds or downstream scrubbers — not basic broker reachability."
         )
-    )
-    if not n:
-        return [
-            "Archive (MQTT): no enabled v2 MQTT endpoint is linked to this device "
-            "(`endpoints.device_endpoint_id` must point at this device’s device_endpoints row). "
-            "worker-mqtt-bridge subscribes from v2 `endpoints.auth_config` — without that link, messages are never archived "
-            "here even though Validate can read them from the broker."
-        ]
-    return [
-        "Archive (MQTT): Validate only proves the broker delivered a message to this API. "
-        "Ingestion is performed by **worker-mqtt-bridge** using the linked v2 MQTT endpoint’s `auth_config` "
-        "(same broker/topic as Manage device). If the archive is still empty, check bridge logs and resync (~90s) "
-        "after saves, or confirm the v2 row’s topic filter matches what publishers use."
-    ]
+    else:
+        lines.append("Archive (MQTT) — why Validate can look “green” while this panel still shows no raw:")
+        for note in g.get("notes") or []:
+            if isinstance(note, str) and note.strip():
+                lines.append(f"  • {note.strip()}")
+    return lines
 
 
 def run_endpoint_validation(
@@ -88,11 +74,13 @@ def run_endpoint_validation(
         lines.append(f"Live MQTT: {mqtt_live_detail}")
     if last_raw:
         lines.append(f"Payload receipt: latest raw archive at {last_raw} (UTC).")
+        if logical_proto == "mqtt":
+            lines.extend(_mqtt_archive_validation_lines(db, device_id, has_archived_raw=True))
     else:
         lines.append("Payload receipt: no raw object archived for this device yet.")
         p = (protocol or "").lower()
         if logical_proto == "mqtt":
-            lines.extend(_mqtt_archive_explain_lines(db, device_id))
+            lines.extend(_mqtt_archive_validation_lines(db, device_id, has_archived_raw=False))
         elif p in ("http", "https", "rest") and isinstance(config, dict):
             rm = _rest_mode(config)
             if rm != "polling":

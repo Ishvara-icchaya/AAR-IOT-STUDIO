@@ -10,9 +10,73 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.device import Device
+from app.models.device_endpoint import DeviceEndpoint
+from app.models.endpoint import Endpoint
 from app.models.raw_data_object import RawDataObject
 from app.services import ingress_metrics
 from app.services.device_endpoint_connectivity import _rest_mode
+
+
+def mqtt_raw_archive_guidance(db: Session, device_id: UUID) -> dict[str, Any]:
+    """Plain-language reasons Manage Devices users see when MQTT validates but archives stay empty.
+
+    ``linked_mqtt_v2`` means at least one enabled v2 ``endpoints`` row (protocol mqtt) points at this
+    device's ``device_endpoints`` row — required for the MQTT bridge + raw archive pipeline to treat
+    the stream as a first-class ingest channel.
+    """
+    de_id = db.scalar(select(DeviceEndpoint.id).where(DeviceEndpoint.device_id == device_id))
+    if not de_id:
+        return {
+            "linked_mqtt_v2": False,
+            "notes": [
+                "Save this device's MQTT settings first. Until a row exists in Manage Devices, the platform "
+                "cannot attach broker traffic to this device for archiving.",
+                "The Validate action only checks reachability from the API — it does not write raw payloads to storage.",
+            ],
+        }
+    n = db.scalar(
+        select(func.count())
+        .select_from(Endpoint)
+        .where(
+            Endpoint.device_endpoint_id == de_id,
+            func.lower(Endpoint.protocol) == "mqtt",
+            Endpoint.enabled.is_(True),
+        )
+    )
+    cnt = int(n or 0)
+    if cnt < 1:
+        return {
+            "linked_mqtt_v2": False,
+            "notes": [
+                "The broker can deliver messages (Validate / mosquitto_sub may look fine) but the platform will not "
+                "archive raw MQTT payloads until you attach a **platform MQTT endpoint** to this device.",
+                "Create or link an MQTT endpoint for this site whose **device binding** targets this same device "
+                "(for example via Scrubber “Connect” / platform stream, or your site Endpoints admin flow), "
+                "enable it, and save. New topics alone do not create that binding.",
+                "After linking, allow roughly one resync interval (often ~90s) for the MQTT bridge worker to pick up "
+                "subscriptions, or restart the worker if you are in a hurry.",
+                "On current platform builds, saving MQTT settings again in **Manage Devices** creates the platform "
+                "MQTT endpoint automatically if it was never created.",
+            ],
+        }
+    if cnt > 1:
+        return {
+            "linked_mqtt_v2": True,
+            "notes": [
+                f"This device has {cnt} enabled MQTT platform endpoints linked at once. If ingest misbehaves, "
+                "disable or unlink extras so exactly one primary stream is obvious to operators.",
+                "If archives are still empty, confirm publishers use the configured topic (wildcards must match) "
+                "and that worker-mqtt-bridge is running against this database.",
+            ],
+        }
+    return {
+        "linked_mqtt_v2": True,
+        "notes": [
+            "A platform MQTT endpoint is linked to this device — the archive path is configured.",
+            "If you still see no archived raw: wait for the MQTT bridge to reload (~90s after saves by default), "
+            "confirm the topic string matches publishers (including wildcards), and confirm worker-mqtt-bridge is up.",
+        ],
+    }
 
 
 def last_raw_ingested_at_iso(db: Session, device_id: UUID) -> str | None:
@@ -104,7 +168,9 @@ def _mqtt_subscription_state(
     return "pending_resync"
 
 
-def build_mqtt_observability_details(config: dict[str, Any], *, device_id: UUID) -> dict[str, Any]:
+def build_mqtt_observability_details(
+    db: Session, config: dict[str, Any], *, device_id: UUID
+) -> dict[str, Any]:
     topic = config.get("topic")
     topics: list[str] = []
     if isinstance(topic, str) and topic.strip():
@@ -123,6 +189,18 @@ def build_mqtt_observability_details(config: dict[str, Any], *, device_id: UUID)
         active_subscribed_topics=active_s,
         bridge_snapshot_available=bridge_ok,
     )
+    guidance = mqtt_raw_archive_guidance(db, device_id)
+    sub_user_hint: str | None = None
+    if bridge_ok and topics and sub_state == "pending_resync":
+        sub_user_hint = (
+            "The MQTT bridge snapshot does not yet show an active subscription matching your saved topic. "
+            "This is usually a short delay after saves, or a topic/broker profile mismatch — not necessarily a broken ingest engine."
+        )
+    elif not bridge_ok:
+        sub_user_hint = (
+            "Live bridge telemetry is unavailable from this API (Redis snapshot missing). "
+            "You can still validate the broker from here; subscription overlap with the worker is confirmed in deployment logs."
+        )
     return {
         "configured_topics": topics,
         "active_subscribed_topics": active_s,
@@ -131,8 +209,10 @@ def build_mqtt_observability_details(config: dict[str, Any], *, device_id: UUID)
         "resync_note": _mqtt_resync_note(ri),
         "bridge_snapshot_available": bridge_ok,
         "subscription_state": sub_state,
+        "subscription_user_hint": sub_user_hint,
         "mqtt_ingest_broker_connection_count": len(conn_list),
         "device_mqtt_ingest_routes": _device_mqtt_ingest_routes(conn_list, device_id),
+        "raw_archive_guidance": guidance,
     }
 
 
@@ -263,7 +343,7 @@ def build_observability(
     logical = _logical_protocol(protocol)
     details: dict[str, Any] | None = None
     if logical == "mqtt":
-        details = build_mqtt_observability_details(config, device_id=device_id)
+        details = build_mqtt_observability_details(db, config, device_id=device_id)
     elif logical == "rest":
         details = build_rest_observability_details(config)
     elif logical == "coap":

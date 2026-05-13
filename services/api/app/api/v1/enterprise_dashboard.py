@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.core.pipeline_log import emit as pipeline_emit
 from app.core.redis_sync import get_redis
@@ -180,7 +180,7 @@ def get_enterprise_site_object_counts(
     page_size: int = Query(8, ge=1, le=50),
 ):
     """Per-site data_object and workflow_result_object counts; ordered by total desc (paginated)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     rds = get_redis()
     ck = _ent_counts_cache_key(user.id, page, page_size)
     if rds:

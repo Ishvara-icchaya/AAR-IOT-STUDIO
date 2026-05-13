@@ -6,7 +6,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, user_may_access_site
+from app.access_control import user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.models.device import Device
 from app.models.device_object import DeviceObject
 from app.models.raw_data_object import RawDataObject
@@ -26,7 +27,7 @@ def scrubber_preview(
     user: User,
     body: ScrubberPreviewRequest,
 ) -> ScrubberPreviewResponse:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "scrubbers.read")
     row = db.execute(
         select(RawDataObject).where(
             RawDataObject.id == body.raw_object_id,

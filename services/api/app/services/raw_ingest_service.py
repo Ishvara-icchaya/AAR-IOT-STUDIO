@@ -14,7 +14,8 @@ from minio.error import S3Error
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, user_may_access_site
+from app.access_control import user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.core.config import settings
 from app.core.protocol_sources import normalize_protocol_id, raw_row_protocol_source
 from app.core.raw_lifecycle import (
@@ -99,7 +100,7 @@ async def ingest_raw_upload(
             status.HTTP_400_BAD_REQUEST,
             "protocol_id must be [a-z][a-z0-9_-]{0,63} (normalized lowercase)",
         )
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     device = db.execute(
         select(Device).where(Device.id == device_id, Device.customer_id == user.customer_id)
     ).scalar_one_or_none()
@@ -301,7 +302,7 @@ def verify_raw_object(
     raw_id: uuid.UUID,
     rehash: bool,
 ) -> RawObjectVerifyResponse:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     row = db.execute(
         select(RawDataObject).where(
             RawDataObject.id == raw_id,
@@ -409,7 +410,7 @@ def preview_raw_object(
     offset: int,
     max_bytes: int,
 ) -> RawPreviewResponse:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     row = db.execute(
         select(RawDataObject).where(
             RawDataObject.id == raw_id,

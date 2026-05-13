@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 
+import { formatStatusDisplayLabel } from "@/lib/statusDisplay";
+
 /** Must match `app/core/endpoint_activation.py` ACTIVATION_STATUS_VALUES. */
 export const ENDPOINT_ACTIVATION_STATUSES = [
   "configured",
@@ -17,7 +19,7 @@ export function isEndpointActivationStatus(s: string): s is EndpointActivationSt
 
 /** Human-readable label (filter UI, table). */
 export function formatActivationLabel(status: string): string {
-  return status.replace(/_/g, " ");
+  return formatStatusDisplayLabel(status);
 }
 
 /** Consistent emphasis for known statuses; unknown values stay muted. */

@@ -10,6 +10,7 @@ from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.device import Device
+    from app.models.rbac import TenantUserRole
     from app.models.site import Site
     from app.models.user import User
 
@@ -26,3 +27,6 @@ class Customer(Base, TimestampMixin):
     sites: Mapped[list["Site"]] = relationship(back_populates="customer")
     users: Mapped[list["User"]] = relationship(back_populates="customer")
     devices: Mapped[list["Device"]] = relationship(back_populates="customer")
+    tenant_user_roles: Mapped[list["TenantUserRole"]] = relationship(
+        back_populates="customer", cascade="all, delete-orphan"
+    )

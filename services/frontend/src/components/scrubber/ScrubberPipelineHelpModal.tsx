@@ -9,6 +9,7 @@ const TABS: { id: ScrubberHelpTabId; label: string }[] = [
   { id: "drop", label: "Drop" },
   { id: "addAttributes", label: "Add attributes" },
   { id: "scalars", label: "Derived fields" },
+  { id: "decodeSeries", label: "Decode series" },
   { id: "functionBased", label: "Function based" },
   { id: "gps", label: "Location / GPS" },
   { id: "health", label: "Health" },
@@ -74,6 +75,10 @@ function TabPanelOverview() {
         </li>
         <li>
           <strong>Derived fields</strong> — add scalars from paths or literals.
+        </li>
+        <li>
+          <strong>Decode series</strong> — unpack packed telemetry (arrays, CSV, base64/hex binary) into{" "}
+          <code>samples</code>, <code>meta</code>, and <code>aggregations</code> under a <code>target_path</code>.
         </li>
         <li>
           <strong>Function based</strong> — Python <code>transform(payload)</code> (server compile only).
@@ -152,12 +157,29 @@ function TabPanelScalars() {
   );
 }
 
+function TabPanelDecodeSeries() {
+  return (
+    <div style={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
+      <p style={{ marginTop: 0 }}>
+        This step runs <strong>after derived fields</strong> and <strong>before</strong> the Python function step. Each row defines{" "}
+        <code>source_path</code> → <code>target_path</code>, a <code>mode</code> (scalar, array, CSV numbers, base64/hex binary), optional
+        scale/offset/unit, sample rate, and which <code>aggregations</code> to compute (<code>avg</code>, <code>min</code>, <code>max</code>,{" "}
+        <code>latest</code>, <code>count</code>).
+      </p>
+      <p style={{ color: "var(--color-text-muted)", marginBottom: 0 }}>
+        Full field reference: <code>docs/SCRUBBER_DECODE_SERIES_SPEC.md</code>. Incomplete rows (missing source or target) are omitted from
+        the saved draft.
+      </p>
+    </div>
+  );
+}
+
 function TabPanelFunctionBased() {
   return (
     <div style={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
       <p style={{ marginTop: 0 }}>
         Define <code>def transform(payload):</code> returning a dict of <strong>scalar</strong> fields only.{" "}
-        <code>payload</code> is the dict <strong>after</strong> drop, flatten, attributes, and derived fields — use{" "}
+        <code>payload</code> is the dict <strong>after</strong> drop, flatten, attributes, derived fields, and decode series — use{" "}
         <code>{'payload.get("readings_temp_c")'}</code> on flat data, or{" "}
         <code>{'payload.get("readings", {}).get("temp_c")'}</code>{" "}
         if still nested. Normal Python control flow is allowed (<code>if</code>/<code>for</code>/<code>while</code>,{" "}
@@ -199,7 +221,7 @@ function TabPanelGps() {
   return (
     <div style={{ fontSize: "0.82rem", lineHeight: 1.5 }}>
       <p style={{ marginTop: 0 }}>
-        GPS mapping runs after drop/flatten/add-attributes/derived/function steps and writes nested normalized fields:
+        GPS mapping runs after drop/flatten/add-attributes/derived/decode-series/function steps and writes nested normalized fields:
         <code> gps.lat</code>, <code>gps.lon</code>, optional <code>gps.alt</code>, <code>gps.heading</code>, <code>gps.speed</code>,
         <code>gps.timestamp</code>.
       </p>
@@ -249,6 +271,8 @@ function renderPanel(id: ScrubberHelpTabId): ReactNode {
       return <TabPanelAddAttributes />;
     case "scalars":
       return <TabPanelScalars />;
+    case "decodeSeries":
+      return <TabPanelDecodeSeries />;
     case "functionBased":
       return <TabPanelFunctionBased />;
     case "health":

@@ -8,7 +8,12 @@ from app.api.v1 import (
     ai,
     alerts,
     auth,
+    control_plane_audit,
     dashboard,
+    device_versions,
+    permissions_me,
+    roles_catalog,
+    site_members,
     data_pulls,
     device_endpoints,
     device_objects,
@@ -17,12 +22,15 @@ from app.api.v1 import (
     enterprise_dashboard,
     ingest,
     monitoring,
+    ota,
     published_services,
     raw_data_objects,
     result_objects,
     scrubber,
+    simulations,
     static_ingestion,
     workflow,
+    workspace,
 )
 
 log = logging.getLogger(__name__)
@@ -35,9 +43,16 @@ api_router = APIRouter()
 
 _MOUNT = (
     (auth.router, "/auth", "auth"),
+    (roles_catalog.router, "/roles", "roles"),
+    (permissions_me.router, "/permissions", "permissions"),
+    (site_members.router, "/sites", "sites"),
     (ingest.router, "/ingest", "ingest"),
     (raw_data_objects.router, "/raw-data-objects", "raw-data-objects"),
     (devices.router, "/devices", "devices"),
+    (device_versions.router, "/device-versions", "device-versions"),
+    (simulations.router, "/simulations", "simulations"),
+    (control_plane_audit.router, "/audit", "audit"),
+    (ota.router, "/ota", "ota"),
     (device_endpoints.router, "/device-endpoints", "device-endpoints"),
     (endpoints.router, "/endpoints", "endpoints"),
     (device_objects.router, "/device-objects", "device-objects"),
@@ -53,6 +68,7 @@ _MOUNT = (
     (monitoring.router, "/monitoring", "monitoring"),
     (published_services.router, "/published-services", "published-services"),
     (administration.router, "/administration", "administration"),
+    (workspace.router, "/workspace", "workspace"),
     (admin_router, "/admin", "admin"),
 )
 

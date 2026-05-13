@@ -177,3 +177,113 @@ class VersionLineageResponse(BaseModel):
     kpi_by_version: dict[str, dict[str, Any]]
 
 
+class DeviceVersionRead(BaseModel):
+    """Immutable device version row (Phase 3+) for lifecycle APIs."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    device_id: uuid.UUID
+    version_label: str
+    status: str
+    routing_lane: str
+    firmware_version: str | None = None
+    previous_device_version_id: uuid.UUID | None = None
+
+
+class DeviceVersionSnapshotRead(BaseModel):
+    """Full immutable snapshot row for Device Details / compare (Phase 8–9)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    device_id: uuid.UUID
+    version_label: str
+    status: str
+    routing_lane: str
+    compatibility: str | None = None
+    firmware_version: str | None = None
+    hardware_version: str | None = None
+    config_version: str | None = None
+    endpoint_version: str | None = None
+    scrubber_version: str | None = None
+    schema_version: str | None = None
+    manifest_hash: str | None = None
+    firmware_channel: str
+    version_source: str
+    created_at: datetime
+    activated_at: datetime | None = None
+    previous_device_version_id: uuid.UUID | None = None
+
+
+class DeviceVersionSnapshotListResponse(BaseModel):
+    items: list[DeviceVersionSnapshotRead]
+
+
+class VersionFieldDiffEntry(BaseModel):
+    field: str
+    baseline: str | None = None
+    candidate: str | None = None
+    changed: bool = False
+
+
+class ImpactWorkflowRef(BaseModel):
+    id: str
+    name: str
+    lifecycle_status: str
+    is_published: bool
+    site_id: str | None = None
+    definition_version: int | None = None
+
+
+class ImpactDashboardRef(BaseModel):
+    id: str
+    name: str
+    status: str
+    site_id: str | None = None
+
+
+class DeviceVersionImpactNote(BaseModel):
+    code: str
+    message: str
+    dashboard_count: int | None = None
+
+
+class ImpactWidgetAttributeRow(BaseModel):
+    """Per-widget attribute/metric references vs device field catalog (Phase 9)."""
+
+    dashboard_id: str
+    dashboard_name: str
+    widget_id: str | None = None
+    widget_type: str | None = None
+    widget_title: str = ""
+    attribute_ids: list[str] = Field(default_factory=list)
+    missing_from_catalog: list[str] = Field(default_factory=list)
+    review_recommended: bool = False
+
+
+class DeviceVersionImpactResponse(BaseModel):
+    device_id: str
+    candidate_id: str
+    baseline_id: str | None = None
+    field_diff: list[VersionFieldDiffEntry]
+    workflows: list[ImpactWorkflowRef]
+    dashboards: list[ImpactDashboardRef]
+    catalog_attribute_ids: list[str] = Field(default_factory=list)
+    widget_attribute_impact: list[ImpactWidgetAttributeRow] = Field(default_factory=list)
+    notes: list[DeviceVersionImpactNote]
+
+
+class OtaTargetHistoryItem(BaseModel):
+    target_id: str
+    campaign_id: str
+    campaign_name: str
+    campaign_status: str
+    target_status: str
+    target_firmware_version: str | None = None
+    completed_at: datetime | None = None
+
+
+class DeviceOtaTargetHistoryResponse(BaseModel):
+    items: list[OtaTargetHistoryItem]
+

@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, user_may_access_site
+from app.access_control import user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.api.v1.devices import _load_device
 from app.db.session import get_db
@@ -24,9 +25,13 @@ from app.services.device_endpoint_lifecycle import (
     sync_activation_after_save,
     sync_activation_after_validation,
 )
-from app.services.device_endpoint_v2_mqtt_sync import push_mqtt_config_to_linked_v2_endpoint
+from app.services.device_endpoint_v2_mqtt_sync import (
+    ensure_mqtt_v2_endpoint_for_saved_device_endpoint,
+    push_mqtt_config_to_linked_v2_endpoint,
+)
 from app.services.device_endpoint_observability import build_observability
 from app.services.device_endpoint_validation import run_endpoint_validation, validation_timestamp
+from app.services.functional_audit_alert import emit_functional_audit_alert
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -87,7 +92,7 @@ def get_endpoint_for_device(
     db: Session = Depends(get_db),
 ):
     log.debug("device_endpoints.get device_id=%s", device_id)
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     device = _load_device(db, device_id, user.customer_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
@@ -113,7 +118,7 @@ def validate_device_endpoint(
     db: Session = Depends(get_db),
 ):
     """Connectivity + payload-receipt check; does not save configuration."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     device = _load_device(db, body.device_id, user.customer_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
@@ -213,7 +218,7 @@ def upsert_endpoint(
     db: Session = Depends(get_db),
 ):
     log.debug("device_endpoints.upsert device_id=%s", body.device_id)
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     device = _load_device(db, body.device_id, user.customer_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
@@ -223,6 +228,7 @@ def upsert_endpoint(
     ep = db.execute(
         select(DeviceEndpoint).where(DeviceEndpoint.device_id == body.device_id)
     ).scalar_one_or_none()
+    was_create = ep is None
     norm_proto = _normalize_protocol_value(body.protocol)
     if ep:
         ep.protocol = norm_proto
@@ -241,9 +247,25 @@ def upsert_endpoint(
         db.add(ep)
     _invalidate_validation(ep)
     sync_activation_after_save(ep)
+    ensure_mqtt_v2_endpoint_for_saved_device_endpoint(db, device=device, de=ep)
     push_mqtt_config_to_linked_v2_endpoint(db, ep)
     db.commit()
     db.refresh(ep)
+    db.refresh(device)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created" if was_create else "updated",
+        resource_type="Device endpoint",
+        resource_label=f"{device.name} ({ep.protocol})",
+        site_id=device.site_id,
+        device_id=device.id,
+        resource_created_at=ep.created_at,
+        resource_updated_at=ep.updated_at,
+        source_object_type="device_endpoint",
+        source_object_id=ep.id,
+    )
     return DeviceEndpointRead.model_validate(ep)
 
 
@@ -255,7 +277,7 @@ def patch_endpoint(
     db: Session = Depends(get_db),
 ):
     log.debug("device_endpoints.patch %s", endpoint_id)
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = db.get(DeviceEndpoint, endpoint_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -283,7 +305,23 @@ def patch_endpoint(
         _invalidate_validation(ep)
     sync_activation_after_save(ep)
     db.add(ep)
+    ensure_mqtt_v2_endpoint_for_saved_device_endpoint(db, device=device, de=ep)
     push_mqtt_config_to_linked_v2_endpoint(db, ep)
     db.commit()
     db.refresh(ep)
+    db.refresh(device)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Device endpoint",
+        resource_label=f"{device.name} ({ep.protocol})",
+        site_id=device.site_id,
+        device_id=device.id,
+        resource_created_at=ep.created_at,
+        resource_updated_at=ep.updated_at,
+        source_object_type="device_endpoint",
+        source_object_id=ep.id,
+    )
     return DeviceEndpointRead.model_validate(ep)

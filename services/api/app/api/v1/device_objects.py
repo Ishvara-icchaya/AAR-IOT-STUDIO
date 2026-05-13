@@ -30,6 +30,7 @@ from app.services.device_version_lineage_service import (
 )
 from app.services.endpoint_scrubber_semantics_identity_sync import sync_v2_endpoint_identity_from_device_mapping
 from app.services.field_catalog_service import validate_field_catalog
+from app.services.functional_audit_alert import emit_functional_audit_alert
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -136,4 +137,19 @@ def patch_device_object(
         )
     db.commit()
     db.refresh(row)
+    db.refresh(device)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Scrubber (device mapping)",
+        resource_label=device.name,
+        site_id=device.site_id,
+        device_id=device.id,
+        resource_created_at=row.created_at,
+        resource_updated_at=row.updated_at,
+        source_object_type="device_object",
+        source_object_id=row.id,
+    )
     return DeviceObjectRead.model_validate(row)

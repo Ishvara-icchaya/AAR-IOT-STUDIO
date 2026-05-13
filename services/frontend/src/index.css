@@ -308,6 +308,7 @@
 .page-card.workflow-list-page.page-card--list,
 .page-card.published-services-list-page.page-card--list,
 .page-card.admin-users-page.page-card--list,
+.page-card.site-access-page.page-card--list,
 .page-card.admin-sites-page.page-card--list,
 .page-card.scrubber-raw-select-page.page-card--list,
 .page-card.enterprise-ai-page.page-card--list,
@@ -318,6 +319,7 @@
 .page-card.workflow-list-page,
 .page-card.published-services-list-page,
 .page-card.admin-users-page,
+.page-card.site-access-page,
 .page-card.admin-sites-page,
 .page-card.scrubber-raw-select-page,
 .page-card.enterprise-ai-page,
@@ -489,7 +491,7 @@
 }
 
 .scrubber-step-menu__item {
-  text-align: left;
+  text-align: center;
   padding: 0.45rem 0.55rem;
   border: none;
   border-radius: var(--radius);
@@ -771,7 +773,7 @@
 
 .scrubber-step-btn {
   width: 100%;
-  text-align: left;
+  text-align: center;
   padding: 0.45rem 0.55rem;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
@@ -1193,7 +1195,14 @@ a:hover {
 }
 
 :root[data-theme="light"] .shell-nav-module__panel {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: color-mix(in oklab, var(--color-surface-elevated) 92%, var(--color-accent) 8%);
+  border-color: color-mix(in oklab, var(--color-border) 88%, var(--color-accent) 12%);
+  box-shadow: 0 8px 24px rgba(20, 38, 74, 0.1);
+}
+
+:root[data-theme="light"] .shell-nav-module__link--active {
+  background: color-mix(in oklab, var(--color-accent) 14%, var(--color-surface-elevated));
+  color: var(--color-text);
 }
 
 .shell-nav-module__link {
@@ -1281,6 +1290,17 @@ a:hover {
   background: transparent;
   font-family: inherit;
   cursor: pointer;
+}
+
+.shell-dropdown__row--action {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.shell-user-menu__row-icon {
+  flex-shrink: 0;
+  opacity: 0.92;
 }
 
 .shell-tag-soon {
@@ -1783,6 +1803,22 @@ a:hover {
 
 .page-card--list:hover {
   border-color: transparent;
+}
+
+/* List-variant pages — subtle canvas (avoid flat white + loud accent pairing) */
+.page-card--list .dm-root {
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 55%, var(--color-bg) 45%);
+  padding: 0.5rem 0.65rem 0.85rem;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+:root[data-theme="light"] .page-card--list .dm-root {
+  background: color-mix(in oklab, var(--color-bg) 88%, var(--color-accent) 12%);
+  border-color: color-mix(in oklab, var(--color-border) 75%, var(--color-accent) 25%);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--color-border) 35%, transparent);
 }
 
 /** Compact filter + actions row for list pages */
@@ -5335,8 +5371,8 @@ a:hover {
 .dash-map-intel__head-th {
   width: 1%;
   white-space: nowrap;
-  vertical-align: top;
-  text-align: left;
+  vertical-align: middle;
+  text-align: center;
   font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -5432,7 +5468,7 @@ a:hover {
 .dash-map-intel__data-table th,
 .dash-map-intel__data-table td {
   padding: 0.28rem 0.35rem;
-  text-align: left;
+  text-align: center;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 65%, transparent);
   vertical-align: middle;
 }
@@ -5472,7 +5508,7 @@ a:hover {
 .dash-map-intel__row-btn {
   display: block;
   width: 100%;
-  text-align: left;
+  text-align: center;
   font: inherit;
   font-size: inherit;
   font-weight: 600;
@@ -5817,8 +5853,8 @@ a:hover {
 }
 
 .dash-map-widget__count-table th {
-  text-align: left;
-  padding: 0.2rem 0.15rem 0.35rem 0;
+  text-align: center;
+  padding: 0.2rem 0.15rem 0.35rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
   color: var(--color-text-muted);
   font-weight: 600;
@@ -5828,7 +5864,8 @@ a:hover {
 .dash-map-widget__count-table td {
   padding: 0.28rem 0.15rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
-  vertical-align: top;
+  vertical-align: middle;
+  text-align: center;
   background: var(--color-bg);
 }
 
@@ -6266,17 +6303,19 @@ a:hover {
 }
 
 .dash-map-popup__table th {
-  text-align: left;
+  text-align: center;
   font-weight: 600;
   color: var(--color-text-muted);
-  padding: 0.28rem 0.5rem 0.28rem 0;
+  padding: 0.28rem 0.5rem;
   width: 38%;
-  vertical-align: top;
+  vertical-align: middle;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
 }
 
 .dash-map-popup__table td {
-  padding: 0.28rem 0;
+  padding: 0.28rem 0.35rem;
+  text-align: center;
+  vertical-align: middle;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 45%, transparent);
   word-break: break-word;
 }
@@ -6362,7 +6401,7 @@ a:hover {
   width: auto !important;
   white-space: nowrap;
   padding: 0.4rem 0.45rem !important;
-  text-align: left;
+  text-align: center;
   font-weight: 650;
   color: var(--color-text-muted);
   background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
@@ -6375,11 +6414,14 @@ a:hover {
   font-weight: 600;
   color: var(--color-text);
   word-break: break-word;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .dash-map-popup__table--kpi-trend tbody td {
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
+  text-align: center;
 }
 
 .dash-map-popup__td--spark {
@@ -6443,7 +6485,8 @@ a:hover {
 .dash-widget--table td {
   border-bottom: 1px solid var(--color-border);
   padding: 0.35rem 0.45rem;
-  text-align: left;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .dash-widget--table th {
@@ -6844,11 +6887,15 @@ a:hover {
   flex-direction: column;
 }
 
-.page-card.dashboard-list-page .dashboard-list-table-wrap {
-  flex: 1;
+/* Workflow + Dashboard lists: `OpsDataTable` → `dm-table-wrap` fills `dm-root`; scroll in `.dm-table-scroll`. */
+.page-card.workflow-list-page #workflow-list-table.dm-table-wrap,
+.page-card.dashboard-list-page #dashboard-list-table.dm-table-wrap {
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  background: var(--color-bg);
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .dash-widget-stack {
@@ -7459,7 +7506,8 @@ button.shell__alert-link {
 .admin-table td {
   padding: 0.45rem 0.5rem;
   border: 1px solid var(--color-border);
-  text-align: left;
+  text-align: center;
+  vertical-align: middle;
 }
 
 .admin-table td {
@@ -7586,7 +7634,7 @@ button.shell__alert-link {
 }
 
 .ops-data-table thead th {
-  text-align: left;
+  text-align: center;
   padding: 0.55rem 0.65rem;
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text-muted);
@@ -7607,16 +7655,21 @@ button.shell__alert-link {
 }
 
 .table-scroll-sticky thead th,
-.dashboard-list-table-wrap thead th {
+#dashboard-list-table thead th,
+#workflow-list-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
+  text-align: center;
+  vertical-align: middle;
   background: var(--color-surface-elevated);
   box-shadow: 0 1px 0 var(--color-border);
 }
 
 .table-scroll-sticky tbody td,
 .table-scroll-sticky tbody th {
+  text-align: center;
+  vertical-align: middle;
   background: var(--color-bg);
 }
 
@@ -7631,6 +7684,8 @@ button.shell__alert-link {
   padding: 0.5rem 0.65rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 65%, transparent);
   background: var(--color-bg);
+  text-align: center;
+  vertical-align: middle;
   transition: background 0.15s ease;
 }
 

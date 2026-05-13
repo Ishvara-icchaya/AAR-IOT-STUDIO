@@ -73,13 +73,13 @@ def _human_time_preset(preset: str | None) -> str:
 
 
 def effective_role(user: User) -> str:
-    if user.is_superuser or user.role == "admin":
+    if user.is_superuser or user.role in ("admin", "platform_admin"):
         return "admin"
     return "operator"
 
 
 def resolve_site_scope(db: Session, user: User, requested: list[uuid.UUID] | None) -> list[uuid.UUID]:
-    if user.is_superuser or user.role == "admin":
+    if user.is_superuser or user.role in ("admin", "platform_admin"):
         ids = db.scalars(select(Site.id).where(Site.customer_id == user.customer_id)).all()
         allowed = list(ids)
     else:

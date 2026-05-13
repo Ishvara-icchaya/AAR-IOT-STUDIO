@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, user_may_access_site
+from app.access_control import user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.core.pipeline_log import emit as pipeline_emit
 from app.db.session import get_db
@@ -39,7 +40,7 @@ def _require_result_object_access(
     row = db.get(WorkflowResultObject, result_object_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "result_object not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     return row
@@ -131,7 +132,7 @@ def get_result_object_dependencies(
     row = db.get(WorkflowResultObject, result_object_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "result_object not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     deps = result_object_delete_dependencies(db, customer_id=user.customer_id, result_object_id=result_object_id)
@@ -147,7 +148,7 @@ def post_deactivate_result_object(
     row = db.get(WorkflowResultObject, result_object_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "result_object not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     deactivate_result_object(db, row)
@@ -165,7 +166,7 @@ def post_reactivate_result_object(
     row = db.get(WorkflowResultObject, result_object_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "result_object not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     reactivate_result_object(db, row)
@@ -183,7 +184,7 @@ def post_archive_result_object(
     row = db.get(WorkflowResultObject, result_object_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "result_object not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     archive_result_object(db, row)
@@ -201,7 +202,7 @@ def delete_result_object(
     row = db.get(WorkflowResultObject, result_object_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "result_object not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     deps = result_object_delete_dependencies(db, customer_id=user.customer_id, result_object_id=result_object_id)

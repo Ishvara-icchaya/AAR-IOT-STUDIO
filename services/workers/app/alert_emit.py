@@ -109,9 +109,10 @@ def _redis_touch(*, customer_id: str, site_id: str | None, severity: str, alert_
         return
     try:
         # Approximate counters; API reconcile resets on acknowledge.
-        r.incr(f"alerts:unacked:count:{customer_id}")
-        if site_id:
-            r.incr(f"alerts:unacked:site:{site_id}")
+        if severity != "informational":
+            r.incr(f"alerts:unacked:count:{customer_id}")
+            if site_id:
+                r.incr(f"alerts:unacked:site:{site_id}")
         if severity == "critical":
             r.lpush("alerts:latest:critical", json.dumps(alert_blob, default=str))
             r.ltrim("alerts:latest:critical", 0, 99)

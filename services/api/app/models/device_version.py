@@ -49,6 +49,8 @@ class DeviceVersion(Base):
     )
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deprecated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    routing_lane: Mapped[str] = mapped_column(String(16), nullable=False, default="shared")
+    compatibility: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     device: Mapped["Device"] = relationship(back_populates="device_version_rows")
     resolved_device: Mapped["ResolvedDevice | None"] = relationship()

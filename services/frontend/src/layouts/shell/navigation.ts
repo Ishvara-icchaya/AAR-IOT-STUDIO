@@ -26,6 +26,18 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
     alsoActiveOn: ["/devices/manage", "/devices/raw"],
   },
   {
+    id: "devices-lineage",
+    label: "Lineage",
+    to: "/devices/lineage",
+    end: true,
+  },
+  {
+    id: "ota-campaigns",
+    label: "OTA",
+    to: "/devices/ota",
+    alsoActiveOn: ["/devices/ota/new"],
+  },
+  {
     id: "register-endpoints",
     label: "Endpoints",
     to: "/devices/ingest",
@@ -59,6 +71,8 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
 
 export function pathMatchesFlatLink(pathname: string, link: MainNavFlatLink): boolean {
   if (link.alsoActiveOn?.includes(pathname)) return true;
+  if (link.id === "devices" && pathname.startsWith("/devices/detail/")) return true;
+  if (link.id === "ota-campaigns" && pathname.startsWith("/devices/ota/") && pathname !== "/devices/ota") return true;
   if (link.end) return pathname === link.to;
   return pathname === link.to || pathname.startsWith(`${link.to}/`);
 }
@@ -89,6 +103,8 @@ export const MAIN_NAV_GROUPS: NavGroup[] = [
 
 export const ADMIN_NAV_ITEMS: NavChild[] = [
   { to: "/administration/users", label: "Users" },
+  { to: "/administration/site-access", label: "Site Access" },
+  { to: "/administration/audit", label: "Control plane audit" },
   { to: "/administration/sites", label: "Sites" },
   { to: "/administration/clear-data", label: "Clear operational data" },
   { to: "/administration/llm-config", label: "LLM Configuration" },
@@ -135,12 +151,18 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/scrubber/v2/pipelines") return "Scrubber Pipelines";
   if (pathname.startsWith("/scrubber/v2")) return "Scrubber Studio 2.0";
   if (pathname === "/devices/register") return "Manage Devices";
+  if (pathname === "/devices/ota" || pathname === "/devices/ota/new") return "OTA Campaigns";
+  if (pathname.startsWith("/devices/ota/")) return "OTA Campaign";
+  if (pathname.startsWith("/devices/detail/")) return "Device details";
+  if (pathname === "/devices/lineage") return "Operational Lineage";
   if (pathname === "/devices/manage") return "Manage device";
   if (pathname === "/devices/raw") return "Raw Data";
   if (pathname.startsWith("/devices/ingest")) return "Endpoints";
   if (pathname === "/enterprise-ai") return "Enterprise AI";
   if (pathname === "/dashboard" || pathname === "/enterprise-dashboard") return "Primary Dashboard";
   if (pathname === "/administration/users") return "Users";
+  if (pathname === "/administration/site-access") return "Site Access";
+  if (pathname === "/administration/audit") return "Control plane audit";
   if (pathname === "/administration/sites") return "Sites";
   if (pathname.startsWith("/administration/monitoring")) return "Monitoring";
   if (pathname === "/administration/ports") return "Configure Ports";

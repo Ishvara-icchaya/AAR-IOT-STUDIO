@@ -7,6 +7,8 @@ export type AlertRow = {
   /** Tenant site for the registered device (ingest context); preferred for display over ``site_id`` when set. */
   platform_site_id?: string | null;
   platform_site_name?: string | null;
+  /** Resolved device name when ``device_id`` is set (API enrichment). */
+  platform_device_name?: string | null;
   device_id: string | null;
   category: string;
   severity: string;
@@ -30,6 +32,8 @@ export type AlertSummary = {
   critical: number;
   warning: number;
   info: number;
+  /** Unacknowledged DML / audit alerts (``informational`` severity; excluded from ``total_unacknowledged``). */
+  informational?: number;
   total_unacknowledged: number;
   by_site: Record<string, number>;
   has_critical: boolean;

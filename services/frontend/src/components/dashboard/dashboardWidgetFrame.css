@@ -226,11 +226,15 @@
   position: sticky;
   top: 0;
   z-index: 1;
+  text-align: center;
+  vertical-align: middle;
   background: color-mix(in oklab, var(--color-surface-elevated) 96%, var(--color-bg) 4%);
   box-shadow: 0 1px 0 var(--color-border);
 }
 
 .dash-wf-table__scroll .dash-table tbody td {
+  text-align: center;
+  vertical-align: middle;
   background: var(--color-bg);
 }
 
@@ -300,18 +304,19 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 0.35rem;
-  align-items: baseline;
+  align-items: center;
 }
 
 .dash-wf-device__row dt {
   margin: 0;
   color: var(--color-text-muted);
   font-weight: 500;
+  text-align: center;
 }
 
 .dash-wf-device__row dd {
   margin: 0;
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 

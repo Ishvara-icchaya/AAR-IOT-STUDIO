@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Eye, GitBranch, Pencil, RefreshCw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, GitBranch, Pencil, Search } from "lucide-react";
 import { apiFetch } from "@/api/client";
 import { listDevices, type DeviceRead } from "@/api/devices";
 import { listEndpoints } from "@/api/endpoints";
@@ -13,7 +13,7 @@ import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsListPage } from "@/components/ops/OpsListPage";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
-import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
+import { OpsStatusPill, type OpsVariant } from "@/components/ops/OpsStatusPill";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
@@ -73,11 +73,11 @@ function toMs(iso: string | null | undefined): number | null {
   return Number.isFinite(x) ? x : null;
 }
 
-function toneForStatus(s: PipelineStatus): "online" | "degraded" | "offline" | "error" | "muted" {
+function toneForStatus(s: PipelineStatus): OpsVariant {
   if (s === "active") return "online";
   if (s === "draft") return "muted";
-  if (s === "disabled") return "offline";
-  return "error";
+  if (s === "disabled") return "disabled";
+  return "offline";
 }
 
 function deriveStatus(mapping: Record<string, unknown>): PipelineStatus {
@@ -225,15 +225,9 @@ export function ScrubberPipelinesPage() {
           title="Scrubber Pipelines"
           subtitle="Manage active data transformation pipelines."
           actions={
-            <>
-              <AarButton type="button" variant="outline" onClick={() => void load()} disabled={loading}>
-                <RefreshCw size={16} aria-hidden />
-                Refresh
-              </AarButton>
-              <AarButton type="button" variant="primary" onClick={() => navigate("/scrubber/v2/create")} disabled={loading}>
-                Create Pipeline
-              </AarButton>
-            </>
+            <AarButton type="button" variant="primary" onClick={() => navigate("/scrubber/v2/create")} disabled={loading}>
+              Create Pipeline
+            </AarButton>
           }
         />
       }

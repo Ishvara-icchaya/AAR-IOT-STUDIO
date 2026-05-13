@@ -30,6 +30,10 @@ class AlertRead(BaseModel):
         description="Tenant site for the registered device when device_id is set; otherwise alert.site_id.",
     )
     platform_site_name: str | None = Field(default=None, description="Resolved site name for platform_site_id.")
+    platform_device_name: str | None = Field(
+        default=None,
+        description="Resolved device name when device_id is set (for display without exposing raw IDs).",
+    )
     source_component: str | None
     source_object_type: str | None
     source_object_id: uuid.UUID | None
@@ -55,7 +59,14 @@ class AlertUnacknowledgedSummary(BaseModel):
     critical: int = 0
     warning: int = 0
     info: int = 0
-    total_unacknowledged: int
+    informational: int = Field(
+        0,
+        description="Unacknowledged alerts with severity informational (DML / audit; not incident-class).",
+    )
+    total_unacknowledged: int = Field(
+        ...,
+        description="Unacknowledged operational severities only (info + warning + critical), excludes informational.",
+    )
     by_site: dict[str, int] = Field(default_factory=dict)
     has_critical: bool = False
     critical_recent_count: int = 0

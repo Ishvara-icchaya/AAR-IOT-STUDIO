@@ -1,16 +1,23 @@
-"""Canonical alert severities: info | warning | critical."""
+"""Canonical alert severities: info | warning | critical | informational.
+
+``informational`` is for DML / configuration audit rows shown in Alerts without an incident level
+(see ``INFORMATIONAL_SEVERITY``); unacknowledged summaries treat it separately from operational counts.
+"""
 
 from __future__ import annotations
 
 from typing import Literal
 
-AlertSeverity = Literal["info", "warning", "critical"]
+AlertSeverity = Literal["info", "warning", "critical", "informational"]
 
-ALLOWED_SEVERITIES: tuple[str, ...] = ("info", "warning", "critical")
+ALLOWED_SEVERITIES: tuple[str, ...] = ("info", "warning", "critical", "informational")
+
+# Use for emit_alert when recording DML (device created, endpoint created, etc.).
+INFORMATIONAL_SEVERITY: str = "informational"
 
 
 def normalize_severity(raw: str | None) -> str:
-    """Map legacy values to info | warning | critical."""
+    """Map legacy values to info | warning | critical | informational."""
     if not raw:
         return "info"
     x = str(raw).strip().lower()

@@ -6,6 +6,10 @@ REST poller row), that endpoint’s `device_id` is canonical — payload `device
 
 Payload-only resolution (`resolve_device_row`) remains for transports with **no**
 endpoint binding (e.g. CoAP listener). See ``docs/CANONICAL_DEVICE_IDENTITY_INGEST.md``.
+
+**Tracing failed ingest:** grep logs for ``ingest_trace`` (``worker-mqtt-bridge``). Quarantine
+rows land in ``ingest_quarantine`` (``reason_code``, JSON binding). Put ``run_id`` or ``trace_id``
+in upstream JSON to correlate across services.
 """
 
 from __future__ import annotations
@@ -207,6 +211,32 @@ def quarantine_ingest(
     endpoint_id: uuid.UUID | None = None,
     ttl_hours: int = 24,
 ) -> None:
+    """Persist rejected ingest for ops triage. Always logs one ``ingest_trace`` line (grep-friendly)."""
+    bind_s = "—"
+    if attempted_binding_json:
+        try:
+            bind_s = json.dumps(attempted_binding_json, separators=(",", ":"), default=str)[:2000]
+        except Exception:
+            bind_s = repr(attempted_binding_json)[:2000]
+    ident_s = "—"
+    if attempted_payload_identity_json:
+        try:
+            ident_s = json.dumps(attempted_payload_identity_json, separators=(",", ":"), default=str)[:1200]
+        except Exception:
+            ident_s = "—"
+    log.error(
+        "ingest_trace phase=quarantine reason_code=%s transport=%s trace_id=%s customer_id=%s site_id=%s "
+        "endpoint_id=%s message=%s binding=%s payload_identity=%s",
+        (reason_code or "")[:64],
+        (transport or "")[:64],
+        (trace_id or "")[:128] or "—",
+        str(customer_id) if customer_id else "—",
+        str(site_id) if site_id else "—",
+        str(endpoint_id) if endpoint_id else "—",
+        (error_message or "")[:500],
+        bind_s,
+        ident_s,
+    )
     conn = psycopg2.connect(db_url())
     try:
         with conn.cursor() as cur:
@@ -240,7 +270,11 @@ def quarantine_ingest(
         conn.commit()
     except Exception:
         conn.rollback()
-        log.debug("ingest_archive quarantine insert failed", exc_info=True)
+        log.exception(
+            "ingest_trace phase=quarantine_db_insert_failed reason_code=%s transport=%s",
+            (reason_code or "")[:64],
+            (transport or "")[:64],
+        )
     finally:
         conn.close()
 
@@ -366,8 +400,19 @@ def _persist_core(
     registered_endpoint_id: uuid.UUID,
     ingest_metadata: dict[str, Any] | None = None,
 ) -> bool:
-    if len(body) > max_bytes():
-        log.warning("ingest_archive payload too large bytes=%s", len(body))
+    mx = max_bytes()
+    if len(body) > mx:
+        tid = str(payload.get("run_id") or payload.get("trace_id") or "").strip()[:128] or "—"
+        log.error(
+            "ingest_trace phase=persist reason=payload_too_large transport=%s device_id=%s endpoint_id=%s "
+            "bytes=%s max_bytes=%s trace_id=%s",
+            protocol_source,
+            device_id,
+            registered_endpoint_id,
+            len(body),
+            mx,
+            tid,
+        )
         return False
 
     ingested_at = datetime.now(timezone.utc)
@@ -392,7 +437,14 @@ def _persist_core(
             bucket=bkt, key=storage_key_s, data=body, content_type=ct
         )
     except Exception:
-        log.exception("ingest_archive minio put failed key=%s", storage_key_s)
+        log.exception(
+            "ingest_trace phase=persist reason=minio_put_failed transport=%s device_id=%s raw_id=%s key=%s trace_id=%s",
+            protocol_source,
+            device_id,
+            raw_id,
+            storage_key_s,
+            trace_s or "—",
+        )
         try:
             conn_e = psycopg2.connect(db_url())
             try:
@@ -469,7 +521,15 @@ def _persist_core(
                 conn.commit()
             except Exception:
                 conn.rollback()
-                log.exception("ingest_archive db insert failed raw_id=%s", raw_id)
+                log.exception(
+                    "ingest_trace phase=persist reason=db_insert_failed transport=%s raw_id=%s device_id=%s "
+                    "registered_endpoint_id=%s trace_id=%s",
+                    protocol_source,
+                    raw_id,
+                    device_id,
+                    registered_endpoint_id,
+                    trace_s or "—",
+                )
                 try:
                     with conn.cursor() as ec:
                         record_ingest_failure(ec, device_id, protocol_source, "database insert failed")
@@ -530,8 +590,13 @@ def _persist_core(
         )
     except Exception:
         log.exception(
-            "ingest_archive kafka publish failed raw_id=%s (MinIO + Postgres row may still exist; UI list may show it)",
+            "ingest_trace phase=persist reason=kafka_publish_failed transport=%s raw_id=%s device_id=%s "
+            "registered_endpoint_id=%s trace_id=%s (MinIO + Postgres row may still exist)",
+            protocol_source,
             raw_id,
+            device_id,
+            registered_endpoint_id,
+            trace_s or "—",
         )
         return False
 
@@ -547,7 +612,12 @@ def _persist_core(
         conn2.commit()
     except Exception:
         conn2.rollback()
-        log.exception("ingest_archive db status update failed raw_id=%s", raw_id)
+        log.exception(
+            "ingest_trace phase=persist reason=kafka_status_update_failed transport=%s raw_id=%s trace_id=%s",
+            protocol_source,
+            raw_id,
+            trace_s or "—",
+        )
     finally:
         conn2.close()
 
@@ -574,7 +644,6 @@ def ingest_json_payload(
         error_message="Unbound ingest path is disabled: endpoint_id resolution is mandatory.",
         trace_id=str(payload.get("run_id") or "")[:128] or None,
     )
-    log.error("ingest_archive rejected anonymous ingest protocol=%s", protocol_source)
     return False
 
 
@@ -600,7 +669,6 @@ def ingest_json_payload_for_endpoint(
             )
             row = cur.fetchone()
             if not row:
-                log.error("ingest_archive no device_endpoint id=%s", device_endpoint_id)
                 quarantine_ingest(
                     reason_code="endpoint_binding_missing",
                     transport=protocol_source,
@@ -612,7 +680,6 @@ def ingest_json_payload_for_endpoint(
                 return False
             device_id_s, customer_id_s, site_id_s, d_active, e_active = row[0], row[1], row[2], row[3], row[4]
             if not e_active:
-                log.error("ingest_archive endpoint inactive id=%s", device_endpoint_id)
                 quarantine_ingest(
                     reason_code="endpoint_binding_inactive",
                     transport=protocol_source,
@@ -625,7 +692,13 @@ def ingest_json_payload_for_endpoint(
                 )
                 return False
             if not d_active:
-                log.error("ingest_archive device inactive id=%s", device_id_s)
+                tid = str(payload.get("run_id") or payload.get("trace_id") or "").strip()[:128] or None
+                log.error(
+                    "ingest_trace phase=binding reason=device_inactive device_endpoint_id=%s device_id=%s trace_id=%s",
+                    device_endpoint_id,
+                    device_id_s,
+                    tid or "—",
+                )
                 return False
             device_id = uuid.UUID(device_id_s)
             customer_id = uuid.UUID(customer_id_s)
@@ -673,35 +746,90 @@ def ingest_json_payload_for_endpoint(
             else:
                 endpoint_rows = None
             if endpoint_rows is None:
+                # Prefer the v2 `endpoints` row linked to this device endpoint. The MQTT bridge may still
+                # deliver here (device_endpoint route) while subscriptions merge topics; site-wide "pick the
+                # only enabled endpoint" is legacy and fails when zero or many endpoints exist.
+                link_proto_sql = (
+                    "AND lower(trim(COALESCE(e.protocol, ''))) = 'mqtt'"
+                    if protocol_source == "mqtt"
+                    else ""
+                )
+                link_params = (
+                    str(device_endpoint_id),
+                    str(customer_id),
+                    str(site_id),
+                )
                 cur.execute(
-                    """
+                    f"""
                     SELECT e.id::text
                     FROM endpoints e
-                    WHERE e.customer_id = %s::uuid
+                    WHERE e.device_endpoint_id = %s::uuid
+                      AND e.customer_id = %s::uuid
                       AND e.site_id = %s::uuid
                       AND e.enabled = true
+                      {link_proto_sql}
                     ORDER BY e.created_at DESC
                     """,
-                    (str(customer_id), str(site_id)),
+                    link_params,
                 )
-                endpoint_rows = cur.fetchall()
-                if len(endpoint_rows) != 1:
-                    reason = "endpoint_resolution_none" if len(endpoint_rows) == 0 else "endpoint_resolution_ambiguous"
+                link_rows = cur.fetchall()
+                if len(link_rows) == 1:
+                    registered_endpoint_id = uuid.UUID(link_rows[0][0])
+                elif len(link_rows) > 1:
                     quarantine_ingest(
-                        reason_code=reason,
+                        reason_code="endpoint_resolution_ambiguous",
                         transport=protocol_source,
                         attempted_binding_json={
                             "device_endpoint_id": str(device_endpoint_id),
-                            "matching_endpoints_count": len(endpoint_rows),
+                            "matching_endpoints_count": len(link_rows),
+                            "resolution_scope": "device_endpoint_id_link",
                         },
-                        attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=device_endpoint_id),
+                        attempted_payload_identity_json=build_ingest_metadata_from_payload(
+                            payload, device_endpoint_id=device_endpoint_id
+                        ),
                         customer_id=customer_id,
                         site_id=site_id,
-                        error_message="Could not resolve exactly one enabled endpoint for bound device endpoint",
+                        error_message="Multiple enabled endpoints linked to this device_endpoint_id",
                         trace_id=str(payload.get("run_id") or "")[:128] or None,
                     )
                     return False
-                registered_endpoint_id = uuid.UUID(endpoint_rows[0][0])
+                else:
+                    cur.execute(
+                        """
+                        SELECT e.id::text
+                        FROM endpoints e
+                        WHERE e.customer_id = %s::uuid
+                          AND e.site_id = %s::uuid
+                          AND e.enabled = true
+                        ORDER BY e.created_at DESC
+                        """,
+                        (str(customer_id), str(site_id)),
+                    )
+                    endpoint_rows = cur.fetchall()
+                    if len(endpoint_rows) != 1:
+                        reason = (
+                            "endpoint_resolution_none"
+                            if len(endpoint_rows) == 0
+                            else "endpoint_resolution_ambiguous"
+                        )
+                        quarantine_ingest(
+                            reason_code=reason,
+                            transport=protocol_source,
+                            attempted_binding_json={
+                                "device_endpoint_id": str(device_endpoint_id),
+                                "matching_endpoints_count": len(endpoint_rows),
+                                "resolution_scope": "site_singleton_fallback",
+                            },
+                            attempted_payload_identity_json=build_ingest_metadata_from_payload(
+                                payload, device_endpoint_id=device_endpoint_id
+                            ),
+                            customer_id=customer_id,
+                            site_id=site_id,
+                            error_message="Could not resolve exactly one enabled endpoint for bound device endpoint",
+                            trace_id=str(payload.get("run_id") or "")[:128] or None,
+                        )
+                        return False
+                    registered_endpoint_id = uuid.UUID(endpoint_rows[0][0])
     finally:
         conn.close()
 
@@ -859,5 +987,4 @@ def ingest_json_payload_for_device(
         error_message="Device-only ingest path is disabled: endpoint_id resolution is mandatory.",
         trace_id=str(payload.get("run_id") or "")[:128] or None,
     )
-    log.error("ingest_archive rejected device-only ingest device_id=%s protocol=%s", device_id, protocol_source)
     return False

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { AdminDropdown } from "./AdminDropdown";
 import { UserMenu } from "./UserMenu";
+import { useSitePermissionsOptional } from "@/contexts/SitePermissionsContext";
 import { titleFromPath, userIsAdmin } from "./navigation";
 import { useShellMessage } from "./ShellMessageContext";
 
@@ -15,6 +16,14 @@ export function FooterBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const showAdmin = userIsAdmin(me?.role, me?.is_superuser);
+  const sitePerms = useSitePermissionsOptional();
+  const showSiteAccessMenu =
+    sitePerms &&
+    !sitePerms.loading &&
+    (sitePerms.hasUnion("users.read") ||
+      sitePerms.hasUnion("users.invite") ||
+      sitePerms.hasUnion("users.assign_roles"));
+  const showAdminMenu = showAdmin || Boolean(showSiteAccessMenu);
   const { messages, clearMessages } = useShellMessage();
   const pageLabel = titleFromPath(location.pathname);
   const prevPathRef = useRef<string | null>(null);
@@ -49,7 +58,7 @@ export function FooterBar() {
           )}
         </div>
         <div className="shell-footer__toolbar" aria-label="Session">
-          {showAdmin ? <AdminDropdown iconOnly /> : null}
+          {showAdminMenu ? <AdminDropdown iconOnly /> : null}
           <UserMenu iconOnly />
           <button
             type="button"

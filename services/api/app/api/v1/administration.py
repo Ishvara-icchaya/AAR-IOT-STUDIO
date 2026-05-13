@@ -21,6 +21,13 @@ from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in
 from app.schemas.site import SiteCreate, SiteRead
 from app.schemas.user_admin import UserCreate, UserRead
 from app.services.dependency_service import site_delete_dependencies
+from app.services.permission_service import (
+    role_id_for_key,
+    site_ids_with_any_active_binding,
+    upsert_site_user_role,
+    upsert_tenant_user_role,
+)
+from app.services.functional_audit_alert import emit_functional_audit_alert
 from app.services.lifecycle_actions import archive_site, deactivate_site, reactivate_site
 from app.services.tenant_data_clear import clear_operational_data_except_sites
 
@@ -122,6 +129,24 @@ def create_user(
     db.flush()
     for sid in body.site_ids:
         db.add(UserSite(user_id=user.id, site_id=sid))
+    if body.role == "admin":
+        rid = role_id_for_key(db, "customer_admin")
+        if rid:
+            upsert_tenant_user_role(
+                db,
+                customer_id=admin.customer_id,
+                user_id=user.id,
+                role_id=rid,
+                created_by=admin.id,
+            )
+    else:
+        rk_do = "device_operator"
+        rid_do = role_id_for_key(db, rk_do)
+        if rid_do:
+            for sid in body.site_ids:
+                upsert_site_user_role(
+                    db, site_id=sid, user_id=user.id, role_id=rid_do, created_by=admin.id
+                )
     try:
         db.commit()
     except IntegrityError:
@@ -129,6 +154,24 @@ def create_user(
         raise HTTPException(status.HTTP_409_CONFLICT, "Could not create user") from None
     user = db.execute(
         select(User).options(joinedload(User.site_links)).where(User.id == user.id)
+    ).scalar_one()
+    uid = user.id
+    emit_functional_audit_alert(
+        db,
+        customer_id=admin.customer_id,
+        actor=admin,
+        verb="created",
+        resource_type="User",
+        resource_label=user.email,
+        site_id=None,
+        device_id=None,
+        resource_created_at=user.created_at,
+        resource_updated_at=user.updated_at,
+        source_object_type="user",
+        source_object_id=uid,
+    )
+    user = db.execute(
+        select(User).options(joinedload(User.site_links)).where(User.id == uid)
     ).scalar_one()
     return _user_to_read(user)
 
@@ -139,14 +182,14 @@ def list_sites(
     db: Session = Depends(get_db),
 ):
     log.debug("administration.list_sites")
-    if user.is_superuser or user.role == "admin":
+    ids = site_ids_with_any_active_binding(db, user)
+    if ids is None:
         rows = db.scalars(
             select(Site)
             .where(Site.customer_id == user.customer_id)
             .order_by(Site.name)
         ).all()
         return [SiteRead.model_validate(s) for s in rows]
-    ids = [l.site_id for l in user.site_links]
     if not ids:
         return []
     rows = db.scalars(select(Site).where(Site.id.in_(ids)).order_by(Site.name)).all()
@@ -175,6 +218,23 @@ def create_site(
             status.HTTP_409_CONFLICT, "Site name already exists for this customer"
         ) from None
     db.refresh(site)
+    sid = site.id
+    emit_functional_audit_alert(
+        db,
+        customer_id=admin.customer_id,
+        actor=admin,
+        verb="created",
+        resource_type="Site",
+        resource_label=site.name,
+        site_id=sid,
+        device_id=None,
+        resource_created_at=site.created_at,
+        resource_updated_at=site.updated_at,
+        source_object_type="site",
+        source_object_id=sid,
+    )
+    site = db.get(Site, sid)
+    assert site is not None
     return SiteRead.model_validate(site)
 
 
@@ -203,6 +263,20 @@ def post_deactivate_site(
     deactivate_site(db, site)
     db.commit()
     db.refresh(site)
+    emit_functional_audit_alert(
+        db,
+        customer_id=admin.customer_id,
+        actor=admin,
+        verb="deactivated",
+        resource_type="Site",
+        resource_label=site.name,
+        site_id=site.id,
+        device_id=None,
+        resource_created_at=site.created_at,
+        resource_updated_at=site.updated_at,
+        source_object_type="site",
+        source_object_id=site.id,
+    )
     return {"id": str(site.id), "operational_status": site.operational_status}
 
 
@@ -218,6 +292,20 @@ def post_reactivate_site(
     reactivate_site(db, site)
     db.commit()
     db.refresh(site)
+    emit_functional_audit_alert(
+        db,
+        customer_id=admin.customer_id,
+        actor=admin,
+        verb="reactivated",
+        resource_type="Site",
+        resource_label=site.name,
+        site_id=site.id,
+        device_id=None,
+        resource_created_at=site.created_at,
+        resource_updated_at=site.updated_at,
+        source_object_type="site",
+        source_object_id=site.id,
+    )
     return {"id": str(site.id), "operational_status": site.operational_status}
 
 
@@ -233,6 +321,20 @@ def post_archive_site(
     archive_site(db, site)
     db.commit()
     db.refresh(site)
+    emit_functional_audit_alert(
+        db,
+        customer_id=admin.customer_id,
+        actor=admin,
+        verb="archived",
+        resource_type="Site",
+        resource_label=site.name,
+        site_id=site.id,
+        device_id=None,
+        resource_created_at=site.created_at,
+        resource_updated_at=site.updated_at,
+        source_object_type="site",
+        source_object_id=site.id,
+    )
     return {"id": str(site.id), "operational_status": site.operational_status}
 
 
@@ -251,6 +353,20 @@ def delete_site(
         deps,
         message="Site cannot be deleted while dependencies exist",
         deactivate_url=f"/administration/sites/{site_id}/deactivate",
+    )
+    emit_functional_audit_alert(
+        db,
+        customer_id=admin.customer_id,
+        actor=admin,
+        verb="deleted",
+        resource_type="Site",
+        resource_label=site.name,
+        site_id=site.id,
+        device_id=None,
+        resource_created_at=site.created_at,
+        resource_updated_at=site.updated_at,
+        source_object_type="site",
+        source_object_id=site.id,
     )
     db.delete(site)
     db.commit()

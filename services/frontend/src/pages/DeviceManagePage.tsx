@@ -1,6 +1,6 @@
 import type { CSSProperties, FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ClipboardCheck, Loader2, Save } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import type { DeviceRead } from "@/api/devices";
@@ -11,7 +11,7 @@ import {
   type DeviceEndpointRead,
 } from "@/api/deviceEndpoints";
 import { displayLivenessState, lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
-import { AppButton, AppCard, AppEmptyState, AppField, AppGrid, AppInput, AppSelect, AppTabs, AppTextarea, AppToolbar } from "@/components/app";
+import { AppButton, AppCard, AppEmptyState, AppField, AppGrid, AppInput, AppSelect, AppTextarea, AppToolbar } from "@/components/app";
 import { DeviceEndpointStaticJsonPanel } from "@/components/device/DeviceEndpointStaticJsonPanel";
 import { AppModalShell } from "@/components/app/AppModalShell";
 import { PageStatus } from "@/components/PageStatus";
@@ -37,7 +37,8 @@ import {
   parseConfigToFields,
   type WebSocketFields,
 } from "@/lib/deviceEndpointConfig";
-import { activationStatusStyle, formatActivationLabel } from "@/lib/endpointActivation";
+import { activationStatusStyle } from "@/lib/endpointActivation";
+import { formatStatusDisplayLabel } from "@/lib/statusDisplay";
 
 import "./device-register-page.css";
 
@@ -106,6 +107,64 @@ function computePreviewPreText(
   return formatIngestPreviewBody(preview);
 }
 
+type MqttRawArchiveGuidance = {
+  linked_mqtt_v2?: boolean;
+  notes?: unknown[];
+};
+
+function MqttRawArchiveGuidancePanel({ observability }: { observability: DeviceEndpointObservability }) {
+  const d = observability.details;
+  if (!d || typeof d !== "object") return null;
+  const raw = d.raw_archive_guidance as MqttRawArchiveGuidance | undefined;
+  if (!raw || typeof raw !== "object") return null;
+  const linked = raw.linked_mqtt_v2 === true;
+  const notes = Array.isArray(raw.notes)
+    ? raw.notes.filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+    : [];
+  if (notes.length === 0) return null;
+
+  const subHint = typeof d.subscription_user_hint === "string" ? d.subscription_user_hint.trim() : "";
+  const subState = typeof d.subscription_state === "string" ? d.subscription_state.trim() : "";
+
+  return (
+    <AppCard
+      title={
+        linked
+          ? "MQTT → platform archive (linked)"
+          : "MQTT → platform archive (needs a platform endpoint link)"
+      }
+    >
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: "1.15rem",
+          fontSize: "0.8rem",
+          lineHeight: 1.45,
+          color: "var(--color-text)",
+        }}
+      >
+        {notes.map((n, i) => (
+          <li key={i}>{n}</li>
+        ))}
+      </ul>
+      {subState ? (
+        <p style={{ ...muted, fontSize: "0.72rem", margin: "0.45rem 0 0" }}>
+          Bridge subscription state: <strong>{subState}</strong>
+          {subState === "pending_resync" ? " — often a short delay after saving, or a topic/broker mismatch." : null}
+        </p>
+      ) : null}
+      {subHint ? (
+        <p style={{ ...muted, fontSize: "0.72rem", margin: "0.35rem 0 0" }}>{subHint}</p>
+      ) : null}
+      <p style={{ ...muted, fontSize: "0.72rem", margin: "0.45rem 0 0" }}>
+        <strong>Validate</strong> only proves the broker delivered bytes to this API. Archiving uses the{" "}
+        <strong>MQTT bridge</strong> worker and your saved subscription plan — when those differ, the UI can look
+        “fine” while raw storage is still empty.
+      </p>
+    </AppCard>
+  );
+}
+
 function formatOptionalTs(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {
@@ -119,17 +178,6 @@ function formatLastDataReceived(d: DeviceRead): string {
   const ms = lastDataReceivedMs(d);
   if (ms === null) return "—";
   return formatOptionalTs(new Date(ms).toISOString());
-}
-
-function livenessLabel(s: string | null | undefined): string {
-  const x = String(s || "waiting_for_first_payload");
-  if (x === "inactive") return "Inactive";
-  if (x === "waiting_for_first_payload") return "Waiting first payload";
-  if (x === "online") return "Online";
-  if (x === "late") return "Late";
-  if (x === "offline") return "Offline";
-  if (x === "recovered") return "Recovered";
-  return x;
 }
 
 function livenessStyle(s: string | null | undefined): CSSProperties {
@@ -567,7 +615,7 @@ export function DeviceManagePage() {
         <AppModalShell
           open={Boolean(editingDevice || deviceIdFromQuery)}
           onClose={cancelEdit}
-          title="Device & endpoint"
+          title="Devices and Endpoint"
           subtitle={editingDevice?.name ?? (deviceIdFromQuery ? "…" : undefined)}
           size="xl"
           titleId="device-endpoint-modal-title"
@@ -603,6 +651,7 @@ export function DeviceManagePage() {
                     type="button"
                     className="dm-btn dm-btn--outline"
                     disabled={validating || submitting}
+                    aria-busy={validating || undefined}
                     title={
                       "Run validation on the connection settings shown here (including before first save). " +
                       "All protocols: connectivity and receipt checks. MQTT also does a live subscribe on your topic. " +
@@ -610,11 +659,6 @@ export function DeviceManagePage() {
                     }
                     onClick={() => void runValidation()}
                   >
-                    {validating ? (
-                      <Loader2 size={16} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
-                    ) : (
-                      <ClipboardCheck size={16} strokeWidth={2} aria-hidden />
-                    )}
                     {validating ? "Validating…" : "Validate"}
                   </button>
                   <button
@@ -622,6 +666,7 @@ export function DeviceManagePage() {
                     form="device-endpoint-form"
                     className="dm-btn dm-btn--outline"
                     disabled={!canSaveConfiguration || submitting}
+                    aria-busy={submitting || undefined}
                     title={
                       !hasUnsavedChanges
                         ? "No changes to save."
@@ -630,11 +675,6 @@ export function DeviceManagePage() {
                           : "Save configuration — persist protocol, polling, and connection settings."
                     }
                   >
-                    {submitting ? (
-                      <Loader2 size={16} strokeWidth={2} className="device-endpoint-toolbar-spin" aria-hidden />
-                    ) : (
-                      <Save size={16} strokeWidth={2} aria-hidden />
-                    )}
                     {submitting ? "Saving…" : "Save"}
                   </button>
                 </>
@@ -649,16 +689,34 @@ export function DeviceManagePage() {
             <div className="app-section" role="region" aria-label="Endpoint editor layout">
               <AppGrid columns={3}>
                 <AppCard title="Endpoint configuration">
-                  <AppTabs<EndpointConfigTab>
-                    ariaLabel="Endpoint configuration sections"
-                    tabs={[
-                      { id: "connection", label: "Connection" },
-                      { id: "static_json", label: "Static JSON" },
-                    ]}
-                    active={endpointConfigTab}
-                    onChange={(id) => setEndpointConfigTab(id)}
-                    plain
-                  />
+                  <div
+                    className="device-endpoint-config-tabs device-lineage-detail-tabs"
+                    role="region"
+                    aria-label="Endpoint configuration sections"
+                  >
+                    <div className="device-lineage-detail-tabs__bar" role="tablist" aria-label="Endpoint configuration sections">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={endpointConfigTab === "connection"}
+                        id="device-endpoint-tab-connection"
+                        className={`device-lineage-detail-tabs__tab${endpointConfigTab === "connection" ? " device-lineage-detail-tabs__tab--active" : ""}`}
+                        onClick={() => setEndpointConfigTab("connection")}
+                      >
+                        Connection
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={endpointConfigTab === "static_json"}
+                        id="device-endpoint-tab-static-json"
+                        className={`device-lineage-detail-tabs__tab${endpointConfigTab === "static_json" ? " device-lineage-detail-tabs__tab--active" : ""}`}
+                        onClick={() => setEndpointConfigTab("static_json")}
+                      >
+                        Static JSON
+                      </button>
+                    </div>
+                  </div>
                   {endpointConfigTab === "connection" ? (
                     <>
                   {savedEndpoint && savedEndpoint.protocol === protocol && !configStructureMatches ? (
@@ -1179,6 +1237,10 @@ export function DeviceManagePage() {
                   </div>
                 </AppCard>
 
+                {normalizeProtocol(protocol) === "mqtt" && observability ? (
+                  <MqttRawArchiveGuidancePanel observability={observability} />
+                ) : null}
+
                 <AppCard title="Endpoint runtime status">
                   <table style={kvTable} aria-label="Endpoint runtime series">
                     <tbody>
@@ -1188,7 +1250,7 @@ export function DeviceManagePage() {
                         </th>
                         <td style={kvTd}>
                           <span style={livenessStyle(displayLivenessState(editingDevice))}>
-                            {livenessLabel(displayLivenessState(editingDevice))}
+                            {formatStatusDisplayLabel(displayLivenessState(editingDevice))}
                           </span>
                         </td>
                       </tr>
@@ -1221,7 +1283,7 @@ export function DeviceManagePage() {
                         <td style={kvTd}>
                           {savedEndpoint?.activation_status ? (
                             <span style={activationStatusStyle(savedEndpoint.activation_status)}>
-                              {formatActivationLabel(savedEndpoint.activation_status)}
+                              {formatStatusDisplayLabel(savedEndpoint.activation_status)}
                             </span>
                           ) : (
                             "—"

@@ -14,11 +14,19 @@ from app.models.device_import_audit import DeviceImportAudit
 from app.models.device_object import DeviceObject
 from app.schemas.device_import import DeviceImportCommitResponse, DeviceImportRowError, DeviceImportRowIn
 from app.services.device_version_lineage_service import ensure_bootstrap_lineage_row
+from app.services.functional_audit_alert import emit_functional_audit_alert
 
 if TYPE_CHECKING:
     from app.models.user import User
 
 log = logging.getLogger(__name__)
+
+
+def _single_site_id_from_rows(rows: list[DeviceImportRowIn]) -> uuid.UUID | None:
+    ids = {r.site_id for r in rows}
+    if len(ids) == 1:
+        return next(iter(ids))
+    return None
 
 
 def validate_import_rows(
@@ -109,6 +117,24 @@ def commit_device_import(
         )
         db.add(audit)
         db.commit()
+        audit = db.get(DeviceImportAudit, audit.id)
+        if audit:
+            emit_functional_audit_alert(
+                db,
+                customer_id=user.customer_id,
+                actor=user,
+                last_updated_by=user,
+                verb="failed",
+                resource_type="Device import",
+                resource_label="Validation failed before import.",
+                site_id=_single_site_id_from_rows(rows),
+                device_id=None,
+                resource_created_at=audit.created_at,
+                resource_updated_at=audit.updated_at,
+                activity_summary=f"{len(rows)} row(s) rejected. {len(v_errs)} validation issue(s).",
+                source_object_type="device_import_audit",
+                source_object_id=audit.id,
+            )
         return DeviceImportCommitResponse(
             audit_id=audit.id,
             status="failed",
@@ -201,6 +227,40 @@ def commit_device_import(
         ensure_bootstrap_lineage_row(db, d, fp=None)
     if created_devices:
         db.commit()
+    audit = db.get(DeviceImportAudit, audit.id)
+    if audit:
+        n = len(rows)
+        if audit.status == "succeeded":
+            verb = "completed"
+            headline = f"{success} device{'s' if success != 1 else ''} imported successfully."
+        elif audit.status == "partial":
+            verb = "partial"
+            headline = f"{success} of {n} devices imported successfully; {len(failures)} failed."
+        else:
+            verb = "failed"
+            headline = (
+                f"No devices imported; {len(failures)} row(s) failed."
+                if success == 0
+                else f"{success} of {n} devices saved; import still marked failed (see audit)."
+            )
+        src = (source_label or "").strip()
+        activity_summary = f"Source: {src[:500]}" if src else None
+        emit_functional_audit_alert(
+            db,
+            customer_id=user.customer_id,
+            actor=user,
+            last_updated_by=user,
+            verb=verb,
+            resource_type="Device import",
+            resource_label=headline[:500],
+            site_id=_single_site_id_from_rows(rows),
+            device_id=None,
+            resource_created_at=audit.created_at,
+            resource_updated_at=audit.updated_at,
+            activity_summary=activity_summary,
+            source_object_type="device_import_audit",
+            source_object_id=audit.id,
+        )
     return DeviceImportCommitResponse(
         audit_id=audit.id,
         status=audit.status,

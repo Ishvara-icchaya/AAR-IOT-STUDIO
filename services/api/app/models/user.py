@@ -1,7 +1,9 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +12,7 @@ from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.customer import Customer
+    from app.models.rbac import SiteUserRole, TenantUserRole
     from app.models.user_site import UserSite
 
 
@@ -29,11 +32,32 @@ class User(Base, TimestampMixin):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     """Superuser may manage all users/sites for the customer."""
     role: Mapped[str] = mapped_column(String(32), default="operator", nullable=False)
-    """admin | operator — operators are scoped by user_sites when non-empty."""
+    """platform_admin (is_superuser) | admin (tenant UI legacy) | operator — site scope via bindings."""
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     operational_status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    account_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="active"
+    )
+    """invited | active | disabled"""
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     customer: Mapped["Customer"] = relationship(back_populates="users")
     site_links: Mapped[list["UserSite"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+    site_role_bindings: Mapped[list["SiteUserRole"]] = relationship(
+        "SiteUserRole",
+        foreign_keys="SiteUserRole.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    tenant_role_bindings: Mapped[list["TenantUserRole"]] = relationship(
+        "TenantUserRole",
+        foreign_keys="TenantUserRole.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )

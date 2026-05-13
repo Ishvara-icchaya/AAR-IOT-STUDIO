@@ -39,13 +39,15 @@ Do not introduce page-local wrappers that change spacing, section order, or tabl
 
 ## Approved Status Pill Variants
 
-Use `OpsStatusPill` only. Approved variants:
+Use `OpsStatusPill` only. Approved variants (mapped to shared border tiers in `aar-status-pill.css`):
 
-- `online`
-- `degraded`
-- `offline`
-- `error`
-- `muted`
+- `online` — green border (positive)
+- `offline` — red border (hard-negative)
+- `disabled` — red border (disabled lifecycle)
+- `error` — red border (maps to invalid style)
+- `waiting` — white / neutral border
+- `muted` — white / neutral border
+- `degraded` — white / neutral border (maps to muted style)
 
 Avoid page-local status badge implementations for migrated ops pages.
 

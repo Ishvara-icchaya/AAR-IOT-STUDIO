@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -207,6 +209,22 @@ class Settings(BaseSettings):
         ge=1,
         validation_alias="INGEST_INACTIVITY_MIN_PRIOR_MESSAGES",
         description="Minimum archived message_total on adapter snapshot before inactivity alert applies.",
+    )
+
+    ota_api_bearer_token: str | None = Field(
+        default=None,
+        validation_alias="OTA_API_BEARER_TOKEN",
+        description="Shared bearer secret for external OTA workers (GET /ota/targets, optional POST /ota/status).",
+    )
+    ota_api_customer_id: uuid.UUID | None = Field(
+        default=None,
+        validation_alias="OTA_API_CUSTOMER_ID",
+        description="Tenant UUID when using OTA_API_BEARER_TOKEN (required if token is set).",
+    )
+    ota_api_actor_user_id: uuid.UUID | None = Field(
+        default=None,
+        validation_alias="OTA_API_ACTOR_USER_ID",
+        description="User UUID for lineage when POST /ota/status uses OTA_API_BEARER_TOKEN; must belong to OTA_API_CUSTOMER_ID.",
     )
 
 

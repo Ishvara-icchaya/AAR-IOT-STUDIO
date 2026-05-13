@@ -95,6 +95,11 @@ function hydrateV2Model(partial: Partial<Scrubber2Model> | null | undefined): Sc
     },
     kpi: { metrics: Array.isArray(partial.kpi?.metrics) ? partial.kpi!.metrics : d.kpi.metrics },
     location: { ...d.location, ...partial.location },
+    decodeSeriesSteps: Array.isArray(partial.decodeSeriesSteps)
+      ? (partial.decodeSeriesSteps.filter(
+          (x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x),
+        ) as Record<string, unknown>[])
+      : d.decodeSeriesSteps,
   };
 }
 
@@ -185,9 +190,10 @@ export function Scrubber2Page() {
   }, [shapedPayload, samplePayload]);
 
   const pathSamplePreview = useMemo(() => {
-    if (!scrubPreview || scrubPreview.error) return null;
+    if (!scrubPreview) return null;
     const raw = scrubPreview.preview?.output_payload;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    // Do not gate on `scrubPreview.error`: KPI/health can still error while `output_payload` is usable for Semantics.
     return scrubberPreviewPayloadForFieldPickers(raw as Record<string, unknown>);
   }, [scrubPreview]);
 
@@ -341,16 +347,30 @@ export function Scrubber2Page() {
 
   useEffect(() => {
     if (!deviceId) return;
+    let cancelled = false;
     void (async () => {
       setBusy(true);
       try {
         const row = await apiFetch<{ mapping: Record<string, unknown> } | null>(
           `/device-objects?device_id=${encodeURIComponent(deviceId)}`,
         );
+        if (cancelled) return;
         const m = row?.mapping;
         const s2 = m?.scrubber2 as { model?: Partial<Scrubber2Model> } | undefined;
-        if (s2?.model) setModel(hydrateV2Model(s2.model));
         const ss = m?.scrubberStudio as Record<string, unknown> | undefined;
+        const studioDraft = ss?.draft as { decodeSeriesSteps?: unknown; objectName?: unknown } | undefined;
+        if (s2?.model) {
+          let merged = hydrateV2Model(s2.model);
+          const fromModel = Array.isArray(merged.decodeSeriesSteps) && merged.decodeSeriesSteps.length > 0;
+          const fromDraft =
+            Array.isArray(studioDraft?.decodeSeriesSteps) && studioDraft.decodeSeriesSteps.length > 0
+              ? (studioDraft.decodeSeriesSteps.filter(
+                  (x): x is Record<string, unknown> => Boolean(x) && typeof x === "object" && !Array.isArray(x),
+                ) as Record<string, unknown>[])
+              : [];
+          if (!fromModel && fromDraft.length) merged = { ...merged, decodeSeriesSteps: [...fromDraft] };
+          setModel(merged);
+        }
         if (ss && typeof ss === "object") {
           if (typeof ss.version === "string" && ss.version) setMappingVersion(ss.version);
           const pb = ss.publishedBody;
@@ -373,6 +393,9 @@ export function Scrubber2Page() {
         setBusy(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [deviceId]);
 
   const runScrubberPreview = useCallback(async (): Promise<boolean> => {
@@ -753,7 +776,6 @@ export function Scrubber2Page() {
             onSelectAll={explorer.selectAll}
             onClearAll={explorer.clearAll}
             sampledLabel={sampledAt}
-            onRefreshSample={() => void loadRawPreview()}
           />
         }
         center={

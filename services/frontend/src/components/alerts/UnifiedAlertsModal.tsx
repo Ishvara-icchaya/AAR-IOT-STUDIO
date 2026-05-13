@@ -15,6 +15,7 @@ type SiteOpt = { id: string; name: string };
 
 function sevColor(s: string) {
   const x = s.toLowerCase();
+  if (x === "informational") return "var(--color-text-muted)";
   if (x === "critical") return "#c62828";
   if (x === "warning") return "#f9a825";
   if (x === "info") return "#64b5f6";
@@ -23,6 +24,7 @@ function sevColor(s: string) {
 
 function sevIconName(s: string) {
   const x = s.toLowerCase();
+  if (x === "informational") return "online";
   if (x === "critical") return "offline";
   if (x === "warning") return "degraded";
   if (x === "info") return "online";
@@ -39,6 +41,7 @@ const CATEGORIES = [
   "monitoring",
   "ai",
   "device_health",
+  "audit",
   "system",
 ] as const;
 
@@ -93,13 +96,20 @@ export function UnifiedAlertsModal() {
     return [
       {
         id: "severity",
-        header: "Severity",
+        header: "Level",
         cell: (a) => {
-          const s = a.severity ?? "";
+          const s = (a.severity ?? "").toLowerCase();
+          if (s === "informational") {
+            return (
+              <span style={{ color: "var(--color-text-muted)", fontWeight: 500 }} title="Informational event (not an incident severity)">
+                Informational
+              </span>
+            );
+          }
           return (
             <span style={{ color: sevColor(s), fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
               <AppIcon name={sevIconName(s)} size="table" aria-hidden />
-              {s}
+              {a.severity ?? ""}
             </span>
           );
         },
@@ -117,6 +127,8 @@ export function UnifiedAlertsModal() {
         id: "device_id",
         header: "Device",
         cell: (a) => {
+          const name = a.platform_device_name?.trim();
+          if (name) return name;
           const id = a.device_id;
           return id ? `${id.slice(0, 8)}…` : "—";
         },
@@ -352,28 +364,50 @@ export function UnifiedAlertsModal() {
             {row && (
               <>
                 <dl style={dl}>
-                  <dt>Severity</dt>
-                  <dd>{row.severity}</dd>
+                  <dt>{row.severity?.toLowerCase() === "informational" ? "Event type" : "Severity"}</dt>
+                  <dd>
+                    {row.severity?.toLowerCase() === "informational" ? (
+                      <span style={{ color: "var(--color-text-muted)" }}>Informational (not an incident level)</span>
+                    ) : (
+                      row.severity
+                    )}
+                  </dd>
                   <dt>Category</dt>
                   <dd>{row.category}</dd>
                   <dt>Site</dt>
-                  <dd title={platformSiteIdForTitle(row)}>
+                  <dd title={row.severity?.toLowerCase() === "informational" ? undefined : platformSiteIdForTitle(row)}>
                     {row.platform_site_id || row.site_id ? (
                       <>
                         <strong>{platformSiteLabel(row)}</strong>
-                        <small style={{ display: "block", color: "var(--color-text-muted)", fontFamily: "monospace" }}>
-                          {row.platform_site_id ?? row.site_id}
-                        </small>
+                        {row.severity?.toLowerCase() === "informational" ? null : (
+                          <small style={{ display: "block", color: "var(--color-text-muted)", fontFamily: "monospace" }}>
+                            {row.platform_site_id ?? row.site_id}
+                          </small>
+                        )}
                       </>
                     ) : (
                       "—"
                     )}
                   </dd>
+                  {row.device_id && row.platform_device_name?.trim() ? (
+                    <>
+                      <dt>Device</dt>
+                      <dd>{row.platform_device_name.trim()}</dd>
+                    </>
+                  ) : null}
                   <dt>Message</dt>
                   <dd style={{ whiteSpace: "pre-wrap" }}>{row.message || "—"}</dd>
                   <dt>Source</dt>
                   <dd>
-                    {row.source_component ?? "—"} / {row.source_object_type ?? "—"} / {row.source_object_id ?? "—"}
+                    {row.severity?.toLowerCase() === "informational" ? (
+                      <>
+                        {row.source_component ?? "—"} / {row.source_object_type ?? "—"}
+                      </>
+                    ) : (
+                      <>
+                        {row.source_component ?? "—"} / {row.source_object_type ?? "—"} / {row.source_object_id ?? "—"}
+                      </>
+                    )}
                   </dd>
                   <dt>Trace</dt>
                   <dd>{row.trace_id ?? "—"}</dd>
@@ -419,12 +453,13 @@ export function UnifiedAlertsModal() {
                 </select>
               </label>
               <label style={lbl}>
-                Severity
+                Level
                 <select value={severity} onChange={(e) => setSeverity(e.target.value)} style={inp}>
                   <option value="">All</option>
                   <option value="critical">critical</option>
                   <option value="warning">warning</option>
                   <option value="info">info</option>
+                  <option value="informational">informational</option>
                 </select>
               </label>
               <label style={lbl}>

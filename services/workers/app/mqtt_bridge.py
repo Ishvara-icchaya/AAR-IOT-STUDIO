@@ -177,7 +177,9 @@ def _on_message(_client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> N
                     )
                 else:
                     log.error(
-                        "mqtt_bridge ingest failed topic=%s broker=%s %s (see ingest_archive logs above)",
+                        "mqtt_bridge ingest failed topic=%s broker=%s %s — search logs for "
+                        "ingest_trace (same timestamp) or SQL table ingest_quarantine; "
+                        "phase=persist lines include raw_id for MinIO/DB/Kafka follow-up",
                         topic,
                         broker_tag,
                         log_id,
@@ -199,8 +201,7 @@ def _on_message(_client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> N
         else:
             log.error(
                 "mqtt_bridge ingest failed topic=%s broker=%s (unbound): payload device could not be resolved "
-                "to a registered device — see ingest_archive errors above, or add a MQTT device endpoint "
-                "for this broker/topic so the saved endpoint selects the device",
+                "— search logs for ingest_trace or ingest_quarantine; add MQTT device endpoint for this broker/topic",
                 topic,
                 broker_tag,
             )

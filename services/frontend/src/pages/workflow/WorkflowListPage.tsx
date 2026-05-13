@@ -9,8 +9,9 @@ import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsListPage } from "@/components/ops/OpsListPage";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
-import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
+import { OpsStatusPill, type OpsVariant } from "@/components/ops/OpsStatusPill";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
+import { useSitePermissionsOptional } from "@/contexts/SitePermissionsContext";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { PageStatus } from "@/components/PageStatus";
 import { apiFetch } from "@/api/client";
@@ -28,17 +29,19 @@ function formatDateTime(iso: string | null | undefined): string {
   return d.toLocaleString();
 }
 
-function workflowLifecycleTone(status: string): "online" | "degraded" | "offline" | "error" | "muted" {
+function workflowLifecycleTone(status: string): OpsVariant {
   const s = (status || "").toLowerCase();
-  if (s.includes("error") || s.includes("fail")) return "error";
-  if (s.includes("publish") || s.includes("live") || s.includes("active")) return "online";
+  if (s.includes("disabled") || s.includes("stopped")) return "disabled";
+  if (s.includes("error") || s.includes("fail")) return "offline";
+  if (s.includes("publish") || s.includes("live") || s.includes("active") || s.includes("validated")) return "online";
   if (s.includes("draft") || s.includes("idle")) return "muted";
-  return "degraded";
+  return "muted";
 }
 
 export function WorkflowListPage() {
   const navigate = useNavigate();
   const confirm = useConfirmAction();
+  const sitePerms = useSitePermissionsOptional();
   const { siteId: opsSiteId, refreshToken } = useOpsShell();
   const [sites, setSites] = useState<SiteOpt[]>([]);
 
@@ -208,7 +211,13 @@ export function WorkflowListPage() {
           title="Workflows"
           subtitle="View and manage automation workflows across your sites."
           actions={
-            <AarButton type="button" variant="primary" onClick={() => navigate("/workflow/create")}>
+            <AarButton
+              type="button"
+              variant="primary"
+              disabled={Boolean(sitePerms?.loading) || !sitePerms?.hasUnion("workflows.write")}
+              title={!sitePerms?.hasUnion("workflows.write") ? "Requires workflows.write" : undefined}
+              onClick={() => navigate("/workflow/create")}
+            >
               + Create workflow
             </AarButton>
           }
@@ -300,18 +309,19 @@ export function WorkflowListPage() {
         </OpsFilterPanel>
       }
       content={
-        <OpsDataTable>
+        <OpsDataTable id="workflow-list-table">
           {error ? <PageStatus variant="error">{error}</PageStatus> : null}
           {loading && items.length === 0 ? (
-            <p className="dm-empty">Loading…</p>
+            <p className="dm-data-table__empty">Loading…</p>
           ) : filtered.length === 0 ? (
-            <p className="dm-empty">
+            <p className="dm-data-table__empty">
               {loading && items.length > 0 ? "Updating list…" : "No workflows match the current filters."}
             </p>
           ) : (
             <div className="dm-device-table-shell" aria-busy={loading}>
               {loading && items.length > 0 ? <p className="dm-table-loading">Updating list…</p> : null}
-              <table className="dm-data-table">
+              <div className="dm-table-scroll">
+                <table className="dm-data-table">
                 <thead>
                   <tr>
                     <th className="dm-data-table__th" scope="col">
@@ -403,7 +413,8 @@ export function WorkflowListPage() {
                     );
                   })}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           )}
         </OpsDataTable>

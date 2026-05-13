@@ -3,6 +3,7 @@ export type PipelineStepId =
   | "drop"
   | "addAttributes"
   | "scalars"
+  | "decodeSeries"
   | "functionBased"
   | "gps"
   | "health"

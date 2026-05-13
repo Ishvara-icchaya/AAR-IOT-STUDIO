@@ -113,6 +113,20 @@
   max-height: min(94vh, 980px);
 }
 
+/* OTA campaign list (Manage Devices modal + /devices/ota) — compact width vs default xl */
+.app-modal__dialog.device-endpoint-config-modal.ota-campaigns-list-modal {
+  max-width: min(900px, 100%);
+}
+
+/* New OTA wizard — ~40% narrower than default xl (1680px → 1008px) */
+.ota-campaign-new-modal.app-modal__dialog--xl {
+  max-width: min(1008px, 100%);
+}
+
+.ota-campaign-new-modal .app-modal__body {
+  padding: 0.85rem 1rem 1.1rem;
+}
+
 /* Scrubber pipeline help — compact width */
 .scrubber-help-modal-dialog {
   max-width: min(760px, 100%);
@@ -296,4 +310,66 @@ button.scrubber-raw-sort-th:hover {
   gap: 0.5rem;
   justify-content: flex-end;
   margin-top: 0.25rem;
+}
+
+/* Site Access — compact modal shell */
+.app-modal__dialog--md.site-access-modal-dialog {
+  max-width: min(22rem, 94vw);
+}
+
+.admin-modal--form.site-access-modal-dialog .app-modal__body {
+  overflow: auto;
+}
+
+.site-access-modal-dialog .admin-modal-form {
+  max-width: none;
+}
+
+.admin-modal-form__field-title {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--color-text-muted, #9aa3b2);
+}
+
+.admin-modal-form__field-title--block {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+/* Site Access — role × intent reference (always visible above role select) */
+.site-access-role-descriptions {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  color: var(--color-text-muted, #9aa3b2);
+}
+
+.site-access-role-descriptions__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  color: var(--color-text, #f4f6f8);
+}
+
+.site-access-role-descriptions__table th,
+.site-access-role-descriptions__table td {
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+  padding: 0.3rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.site-access-role-descriptions__table th {
+  background: color-mix(in oklab, var(--color-bg-elevated, #141a22) 88%, transparent);
+  font-weight: 650;
+  color: var(--color-text-muted, #9aa3b2);
+}
+
+.site-access-role-descriptions__table td:first-child {
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.site-access-role-descriptions__table td:last-child {
+  word-break: break-word;
 }

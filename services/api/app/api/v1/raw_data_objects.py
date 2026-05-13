@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.device import Device
@@ -36,7 +36,7 @@ def list_raw_objects(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     if allowed is not None and len(allowed) == 0:
         return RawObjectListResponse(items=[], total=0)
 

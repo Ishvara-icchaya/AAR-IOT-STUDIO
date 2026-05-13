@@ -5,14 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.models.site import Site
 from app.models.user import User
+from app.services.permission_service import site_ids_with_permission
 
 
 def allowed_site_ids_for_user(db: Session, user: User) -> list[uuid.UUID] | None:
-    """Return None if user may access all sites in the customer; else explicit site id list."""
-    if user.is_superuser or user.role == "admin":
-        return None
-    ids = [link.site_id for link in user.site_links]
-    return ids
+    """Sites where the user may perform device read operations (devices.read). None = all tenant sites."""
+    return site_ids_with_permission(db, user, "devices.read")
 
 
 def ensure_site_in_tenant(db: Session, customer_id: uuid.UUID, site_id: uuid.UUID) -> Site | None:

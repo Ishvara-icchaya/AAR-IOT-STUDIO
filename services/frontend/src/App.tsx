@@ -7,10 +7,17 @@ import { PlatformShell } from "./layouts/PlatformShell";
 import { dbg } from "./lib/debug";
 import { AdminSitesPage } from "./pages/AdminSitesPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
+import { SiteAccessPage } from "./pages/SiteAccessPage";
+import { ControlPlaneAuditPage } from "./pages/ControlPlaneAuditPage";
 import { DeviceManagePage } from "./pages/DeviceManagePage";
 import { DeviceRawDataPage } from "./pages/DeviceRawDataPage";
+import { DeviceDetailsPage } from "./pages/DeviceDetailsPage";
+import { DeviceLineagePage } from "./pages/DeviceLineagePage";
 import { DeviceRegisterPage } from "./pages/DeviceRegisterPage";
 import { IngestDevicesPage } from "./pages/IngestDevicesPage";
+import { OtaCampaignDetailPage } from "./pages/OtaCampaignDetailPage";
+import { OtaCampaignNewPage } from "./pages/OtaCampaignNewPage";
+import { OtaCampaignsPage } from "./pages/OtaCampaignsPage";
 import { EndpointIdentityPage } from "./pages/EndpointIdentityPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ScrubberCreatePage } from "./pages/ScrubberCreatePage";
@@ -85,12 +92,19 @@ export default function App() {
             />
             <Route element={<PlatformShell />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/devices/ota/new" element={<OtaCampaignNewPage />} />
+              <Route path="/devices/ota/:campaignId" element={<OtaCampaignDetailPage />} />
+              <Route path="/devices/ota" element={<OtaCampaignsPage />} />
               <Route path="/devices/register" element={<DeviceRegisterPage />} />
+              <Route path="/devices/detail/:deviceId" element={<DeviceDetailsPage />} />
+              <Route path="/devices/lineage" element={<DeviceLineagePage />} />
               <Route path="/devices/manage" element={<DeviceManagePage />} />
               <Route path="/devices/raw" element={<DeviceRawDataPage />} />
               <Route path="/devices/ingest" element={<IngestDevicesPage />} />
               <Route path="/devices/ingest/:endpointId/identity" element={<EndpointIdentityPage />} />
               <Route path="/administration/monitoring" element={<MonitoringPage />} />
+              <Route path="/administration/site-access" element={<SiteAccessPage />} />
+              <Route path="/administration/audit" element={<ControlPlaneAuditPage />} />
               <Route element={<RequireAdmin />}>
                 <Route path="/administration/users" element={<AdminUsersPage />} />
                 <Route path="/administration/sites" element={<AdminSitesPage />} />

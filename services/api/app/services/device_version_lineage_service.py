@@ -88,6 +88,8 @@ def _create_device_version_snapshot(
     previous_device_version_id: uuid.UUID | None,
     version_source: str,
     created_by: uuid.UUID | None,
+    routing_lane: str = "shared",
+    compatibility: str | None = None,
 ) -> DeviceVersion:
     now = datetime.now(timezone.utc)
     row = DeviceVersion(
@@ -110,6 +112,8 @@ def _create_device_version_snapshot(
         created_by=created_by,
         activated_at=now,
         deprecated_at=None,
+        routing_lane=routing_lane,
+        compatibility=compatibility,
     )
     db.add(row)
     db.flush()
@@ -246,6 +250,51 @@ def record_version_lineage_transition(
         previous_label,
         new_label,
     )
+
+
+def append_lineage_event(
+    db: Session,
+    device: Device,
+    *,
+    version_label: str,
+    trigger_code: str,
+    event_type: str,
+    source_type: str,
+    status: str,
+    payload_json: dict[str, Any] | None,
+    created_by: uuid.UUID | None,
+    ota_campaign_id: uuid.UUID | None,
+    ota_external_ref: str | None,
+    target_device_version_id: uuid.UUID | None,
+    previous_device_version_id: uuid.UUID | None,
+    kpi_snapshot: dict[str, Any] | None = None,
+) -> None:
+    """Append a lineage row without superseding the prior head (e.g. OTA terminal status)."""
+    now = datetime.now(timezone.utc)
+    meta = _lineage_metadata_from_device(device)
+    db.add(
+        DeviceVersionLineage(
+            id=uuid.uuid4(),
+            device_id=device.id,
+            version_label=version_label,
+            recorded_at=now,
+            trigger_code=trigger_code,
+            superseded_by_label=None,
+            ota_external_ref=(ota_external_ref.strip()[:255] if ota_external_ref and ota_external_ref.strip() else None),
+            kpi_snapshot=kpi_snapshot,
+            metadata_=meta,
+            event_type=event_type,
+            source_type=source_type,
+            source_id=None,
+            status=status,
+            previous_device_version_id=previous_device_version_id,
+            target_device_version_id=target_device_version_id,
+            ota_campaign_id=ota_campaign_id,
+            payload_json=payload_json,
+            created_by=created_by,
+        )
+    )
+    db.flush()
 
 
 def record_explicit_version_change(

@@ -9,7 +9,8 @@ from typing import Any
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
-from app.access_control import ensure_site_in_tenant, allowed_site_ids_for_user, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.core.config import settings
 from app.core.redis_sync import get_redis
 from app.models.data_object import DataObject
@@ -50,7 +51,7 @@ class PublishedServiceForbidden(Exception):
 def _access_service(db: Session, user: User, svc: PublishedService | None) -> PublishedService:
     if not svc or svc.customer_id != user.customer_id:
         raise PublishedServiceNotFound()
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     if not user_may_access_site(user, svc.site_id, allowed):
         raise PublishedServiceForbidden()
     return svc
@@ -71,7 +72,7 @@ def list_services(
     publish_protocol: str | None = None,
     search: str | None = None,
 ) -> PublishedServiceListResponse:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     stmt = select(PublishedService).where(PublishedService.customer_id == user.customer_id)
     if allowed is not None and len(allowed) == 0:
         return PublishedServiceListResponse(items=[])
@@ -108,7 +109,7 @@ def get_service(db: Session, user: User, service_id: uuid.UUID) -> PublishedServ
 
 
 def create_service(db: Session, user: User, body: PublishedServiceCreate) -> PublishedService:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise ValueError("site not found")
@@ -149,7 +150,7 @@ def update_service(
         site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
         if not site:
             raise ValueError("site not found")
-        allowed = allowed_site_ids_for_user(db, user)
+        allowed = site_ids_with_permission(db, user, "devices.read")
         if not user_may_access_site(user, body.site_id, allowed):
             raise PublishedServiceForbidden()
         row.site_id = body.site_id
@@ -238,7 +239,7 @@ def list_delivery_logs(
 def list_data_object_sources(
     db: Session, user: User, site_id: uuid.UUID
 ) -> PublishedServiceSourcesDataObjectsResponse:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise ValueError("site not found")
@@ -273,7 +274,7 @@ def list_data_object_sources(
 def list_result_object_sources(
     db: Session, user: User, site_id: uuid.UUID
 ) -> PublishedServiceSourcesResultObjectsResponse:
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise ValueError("site not found")

@@ -41,6 +41,7 @@ class LatestDeviceState(Base):
     kpi_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     health_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     location_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    system_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     scrubbed_event_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scrubbed_events.id", ondelete="SET NULL"), nullable=True
     )

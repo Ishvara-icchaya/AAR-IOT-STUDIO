@@ -1,13 +1,37 @@
 import { Settings } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { ADMIN_NAV_ITEMS, isAdminSectionActive } from "./navigation";
+import { useAuth } from "@/auth/AuthContext";
+import { useSitePermissionsOptional } from "@/contexts/SitePermissionsContext";
+import { ADMIN_NAV_ITEMS, isAdminSectionActive, userIsAdmin } from "./navigation";
 
 export function AdminDropdown({ iconOnly }: { iconOnly?: boolean }) {
+  const { me } = useAuth();
+  const sitePerms = useSitePermissionsOptional();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const adminActive = isAdminSectionActive(pathname);
+  const tenantAdmin = userIsAdmin(me?.role, me?.is_superuser);
+  const navItems = useMemo(() => {
+    const canSiteAccess =
+      tenantAdmin ||
+      Boolean(
+        sitePerms &&
+          !sitePerms.loading &&
+          (sitePerms.hasUnion("users.read") ||
+            sitePerms.hasUnion("users.invite") ||
+            sitePerms.hasUnion("users.assign_roles")),
+      );
+    const canAudit =
+      tenantAdmin ||
+      Boolean(sitePerms && !sitePerms.loading && sitePerms.hasUnion("audit.read"));
+    return ADMIN_NAV_ITEMS.filter((it) => {
+      if (it.to === "/administration/site-access") return canSiteAccess;
+      if (it.to === "/administration/audit") return canAudit;
+      return tenantAdmin;
+    });
+  }, [tenantAdmin, sitePerms]);
 
   useEffect(() => {
     if (!open) return;
@@ -46,7 +70,7 @@ export function AdminDropdown({ iconOnly }: { iconOnly?: boolean }) {
       </button>
       {open ? (
         <div className="shell-dropdown__panel shell-dropdown__panel--toolbar" role="menu">
-          {ADMIN_NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               role="menuitem"

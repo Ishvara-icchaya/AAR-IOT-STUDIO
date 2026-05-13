@@ -10,7 +10,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, user_may_access_site
+from app.access_control import user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.core.dashboard_status import DASHBOARD_FROZEN
 from app.models.dashboard import Dashboard
 from app.models.dashboard_user_preference import DashboardUserPreference
@@ -44,7 +45,7 @@ def _primary_dashboard_errors(db: Session, user: User, d: Dashboard) -> list[str
     layout = dict(d.layout or {})
     if _widget_count(layout) < 1:
         errs.append("primary_no_widgets")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     if d.site_id and not user_may_access_site(user, d.site_id, allowed):
         errs.append("primary_site_forbidden")
     errs.extend(validate_layout_for_save(layout=layout, site_id=d.site_id, require_widgets=False))
@@ -93,7 +94,7 @@ def _primary_dashboard_errors(db: Session, user: User, d: Dashboard) -> list[str
 
 def pick_default_site_id(db: Session, user: User) -> uuid.UUID | None:
     """First accessible site for the tenant (for map + site aggregates)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     stmt = select(Site.id).where(Site.customer_id == user.customer_id).order_by(Site.name.asc())
     if allowed is not None:
         if len(allowed) == 0:
@@ -131,7 +132,7 @@ def resolve_dashboard_live_bundle(
             "site_id": str(d.site_id) if d.site_id else None,
             "layout": dict(d.layout or {}),
         }
-        allowed = allowed_site_ids_for_user(db, user)
+        allowed = site_ids_with_permission(db, user, "dashboards.read")
         bundle = build_live_payload(
             db,
             customer_id=user.customer_id,
@@ -142,7 +143,7 @@ def resolve_dashboard_live_bundle(
         )
         return bundle, d.id, False, None
 
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     since: datetime | None = None
     if scope_hours is not None and scope_hours > 0:
         since = datetime.now(timezone.utc) - timedelta(hours=int(scope_hours))
@@ -210,7 +211,7 @@ def build_dashboard_live_response(
     if is_default:
         from app.services.dashboard_ops_command_center import build_ops_command_center
 
-        allowed = allowed_site_ids_for_user(db, user)
+        allowed = site_ids_with_permission(db, user, "dashboards.read")
         command_center = build_ops_command_center(
             db,
             customer_id=user.customer_id,

@@ -64,6 +64,11 @@ export type Scrubber2Model = {
     altitudePath?: string;
     headingPath?: string;
   };
+  /**
+   * Explicit `decode_series` steps (mirrors `scrubberStudio.draft.decodeSeriesSteps`).
+   * Field Semantics “Type” is discovery-only; decoding happens only via these steps.
+   */
+  decodeSeriesSteps: Record<string, unknown>[];
 };
 
 /** Persisted alongside `scrubberStudio` for round-trip UI state. */
@@ -97,5 +102,6 @@ export function defaultScrubber2Model(): Scrubber2Model {
     },
     kpi: { metrics: [] },
     location: {},
+    decodeSeriesSteps: [],
   };
 }

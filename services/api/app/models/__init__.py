@@ -1,6 +1,8 @@
 from app.models.ai_query import AiQuery, AiSavedQuery
 from app.models.llm_config import LlmConfig
 from app.models.alert import Alert
+from app.models.candidate_lane import CandidateLatestDeviceState, CandidateScrubbedEvent, CandidateWorkflowResult
+from app.models.control_plane_audit import ControlPlaneAuditEvent
 from app.models.customer import Customer
 from app.models.data_object import DataObject
 from app.models.data_object_detail import DataObjectDetail
@@ -11,6 +13,7 @@ from app.models.device_version import DeviceVersion
 from app.models.device_version_lineage import DeviceVersionLineage
 from app.models.device_import_audit import DeviceImportAudit
 from app.models.health_threshold_reference import HealthThresholdReference
+from app.models.firmware_artifact import FirmwareArtifact
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
@@ -18,12 +21,14 @@ from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
 from app.models.device_object import DeviceObject
 from app.models.monitoring_config import MonitoringConfig
+from app.models.ota_campaign import OtaCampaign, OtaCampaignTarget, OtaEvent
 from app.models.platform_port import PlatformPort, PlatformPortSettings
 from app.models.rbac import Permission, Role, RolePermission, SiteUserRole, TenantUserRole
 from app.models.published_service import PublishedService
 from app.models.published_service_delivery_log import PublishedServiceDeliveryLog
 from app.models.raw_data_object import RawDataObject
 from app.models.result_object_definition import ResultObjectDefinition
+from app.models.simulation_job import SimulationJob
 from app.models.site import Site
 from app.models.static_ingestion import StaticIngestion
 from app.models.user import User
@@ -42,6 +47,10 @@ __all__ = [
     "AiSavedQuery",
     "LlmConfig",
     "Alert",
+    "CandidateLatestDeviceState",
+    "CandidateScrubbedEvent",
+    "CandidateWorkflowResult",
+    "ControlPlaneAuditEvent",
     "Customer",
     "DataObject",
     "DataObjectDetail",
@@ -52,6 +61,7 @@ __all__ = [
     "DeviceVersionLineage",
     "DeviceImportAudit",
     "HealthThresholdReference",
+    "FirmwareArtifact",
     "DeviceEndpoint",
     "Endpoint",
     "LatestDeviceState",
@@ -59,6 +69,9 @@ __all__ = [
     "ScrubbedEvent",
     "DeviceObject",
     "MonitoringConfig",
+    "OtaCampaign",
+    "OtaCampaignTarget",
+    "OtaEvent",
     "PlatformPort",
     "PlatformPortSettings",
     "Permission",
@@ -70,6 +83,7 @@ __all__ = [
     "ResultObjectDefinition",
     "Site",
     "SiteUserRole",
+    "SimulationJob",
     "TenantUserRole",
     "StaticIngestion",
     "User",

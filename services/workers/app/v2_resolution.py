@@ -11,6 +11,7 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import Json
 
+from app.candidate_lane import fetch_blocking_device_version_id, upsert_candidate_latest_device_state
 from app.db_url import db_url
 from app.kafka_publish import publish_json
 from app.primary_device_key import build_device_label, compute_primary_key_hash, extract_primary_key_json
@@ -251,56 +252,77 @@ def try_write_v2_from_scrubber(
             se = cur.fetchone()
             scrubbed_event_id_s = str(se[0]) if se else None
 
-            cur.execute(
-                """
-                INSERT INTO latest_device_state (
-                  id, customer_id, site_id, endpoint_id, resolved_device_id, object_name,
-                  last_event_ts, last_ingested_at, lifecycle_status, health_status,
-                  identity_json, display_json, kpi_json, health_json, location_json,
-                  scrubbed_event_id, updated_at
-                ) VALUES (
-                  %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s,
-                  %s, %s, %s, %s,
-                  %s, %s, %s, %s, %s,
-                  %s::uuid, %s
+            block_dv = fetch_blocking_device_version_id(cur, str(resolved_device_id))
+            latest_device_state_id: str | None = None
+            if block_dv:
+                upsert_candidate_latest_device_state(
+                    cur,
+                    resolved_device_id=str(resolved_device_id),
+                    device_version_id=block_dv,
+                    customer_id=str(customer_id),
+                    site_id=str(site_id),
+                    identity_json=identity_json,
+                    display_json=display_json,
+                    kpi_json=kpi_json,
+                    health_json=health_json,
+                    location_json=location_json,
+                    scrubbed_event_id=scrubbed_event_id_s,
+                    updated_at=now,
                 )
-                ON CONFLICT ON CONSTRAINT uq_latest_device_state_row
-                DO UPDATE SET
-                  last_event_ts = EXCLUDED.last_event_ts,
-                  last_ingested_at = EXCLUDED.last_ingested_at,
-                  lifecycle_status = EXCLUDED.lifecycle_status,
-                  health_status = EXCLUDED.health_status,
-                  identity_json = EXCLUDED.identity_json,
-                  display_json = EXCLUDED.display_json,
-                  kpi_json = EXCLUDED.kpi_json,
-                  health_json = EXCLUDED.health_json,
-                  location_json = EXCLUDED.location_json,
-                  scrubbed_event_id = EXCLUDED.scrubbed_event_id,
-                  updated_at = EXCLUDED.updated_at
-                RETURNING id::text
-                """,
-                (
-                    str(uuid.uuid4()),
-                    customer_id,
-                    site_id,
-                    endpoint_id,
-                    resolved_device_id,
-                    object_name,
-                    event_ts,
-                    now,
-                    "active",
-                    result.health_status,
-                    Json(identity_json),
-                    Json(display_json),
-                    Json(kpi_json),
-                    Json(health_json),
-                    Json(location_json) if location_json else None,
-                    scrubbed_event_id_s,
-                    now,
-                ),
-            )
-            lds_row = cur.fetchone()
-            latest_device_state_id = str(lds_row[0]) if lds_row else None
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO latest_device_state (
+                      id, customer_id, site_id, endpoint_id, resolved_device_id, object_name,
+                      last_event_ts, last_ingested_at, lifecycle_status, health_status,
+                      identity_json, display_json, kpi_json, health_json, location_json,
+                      system_json,
+                      scrubbed_event_id, updated_at
+                    ) VALUES (
+                      %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s::uuid, %s,
+                      %s, %s, %s, %s,
+                      %s, %s, %s, %s, %s,
+                      %s,
+                      %s::uuid, %s
+                    )
+                    ON CONFLICT ON CONSTRAINT uq_latest_device_state_row
+                    DO UPDATE SET
+                      last_event_ts = EXCLUDED.last_event_ts,
+                      last_ingested_at = EXCLUDED.last_ingested_at,
+                      lifecycle_status = EXCLUDED.lifecycle_status,
+                      health_status = EXCLUDED.health_status,
+                      identity_json = EXCLUDED.identity_json,
+                      display_json = EXCLUDED.display_json,
+                      kpi_json = EXCLUDED.kpi_json,
+                      health_json = EXCLUDED.health_json,
+                      location_json = EXCLUDED.location_json,
+                      scrubbed_event_id = EXCLUDED.scrubbed_event_id,
+                      updated_at = EXCLUDED.updated_at
+                    RETURNING id::text
+                    """,
+                    (
+                        str(uuid.uuid4()),
+                        customer_id,
+                        site_id,
+                        endpoint_id,
+                        resolved_device_id,
+                        object_name,
+                        event_ts,
+                        now,
+                        "active",
+                        result.health_status,
+                        Json(identity_json),
+                        Json(display_json),
+                        Json(kpi_json),
+                        Json(health_json),
+                        Json(location_json) if location_json else None,
+                        Json({}),
+                        scrubbed_event_id_s,
+                        now,
+                    ),
+                )
+                lds_row = cur.fetchone()
+                latest_device_state_id = str(lds_row[0]) if lds_row else None
         conn.commit()
         if scrubbed_event_id_s and latest_device_state_id:
             topic = os.environ.get("KAFKA_LATEST_DEVICE_STATE_TOPIC", "latest_device_state.updated")

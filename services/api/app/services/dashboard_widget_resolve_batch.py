@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user
+from app.services.permission_service import site_ids_with_permission
 from app.core.dashboard_widget_types import (
     INVALID_WIDGET_REFERENCE,
     OPS_ALERT_TRENDS,
@@ -182,7 +182,7 @@ def resolve_dashboard_widgets_batch(
         dict(body.dashboard_layout_draft) if body.dashboard_layout_draft is not None else dict(d.layout or {})
     )
 
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     resolved_since: datetime | None = None
     if body.scope_hours is not None and body.scope_hours > 0:
         resolved_since = datetime.now(timezone.utc) - timedelta(hours=int(body.scope_hours))

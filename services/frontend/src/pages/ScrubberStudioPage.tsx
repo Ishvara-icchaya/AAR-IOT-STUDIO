@@ -6,6 +6,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "@/api/client";
 import { PageStatus } from "@/components/PageStatus";
 import { ScrubberPipelineHelpModal } from "@/components/scrubber/ScrubberPipelineHelpModal";
+import { DecodeSeriesStepEditor, serializeDecodeSeriesStepsForDraft } from "@/components/scrubber/DecodeSeriesStepEditor";
 import { HealthStepEditor } from "@/components/scrubber/HealthStepEditor";
 import { KpiStepEditor } from "@/components/scrubber/KpiStepEditor";
 import { AppCard, AppGrid } from "@/components/app";
@@ -71,6 +72,11 @@ const STEPS: { id: PipelineStepId; label: string; hint: string }[] = [
   { id: "drop", label: "Drop", hint: "Remove dotted paths from the working object (tabular or freeform)." },
   { id: "addAttributes", label: "Add attributes", hint: "Merge literals or copy scalar branches from the payload." },
   { id: "scalars", label: "Derived Fields", hint: "Deterministic scalar top-level fields (path or literal only)." },
+  {
+    id: "decodeSeries",
+    label: "Decode series",
+    hint: "Decode packed telemetry into samples, meta, and aggregations at target_path (after derived fields, before Python).",
+  },
   { id: "functionBased", label: "Function Based", hint: "Optional Python transform(payload) that returns extra scalar fields." },
   { id: "gps", label: "Location / GPS mapping", hint: "Map payload fields into normalized gps.* coordinates with validation." },
   { id: "health", label: "Health mapping", hint: "Configure health on the scrubbed output." },
@@ -314,6 +320,8 @@ function formToActiveDraft(form: StudioDraftForm): Record<string, unknown> {
     metrics: metricsObj,
   };
 
+  const decodeSeriesSteps = serializeDecodeSeriesStepsForDraft(form.decodeSeriesSteps);
+
   const out: Record<string, unknown> = {
     parseAs: form.parseAs,
     objectName: form.objectName.trim() || "Data object",
@@ -321,6 +329,7 @@ function formToActiveDraft(form: StudioDraftForm): Record<string, unknown> {
     flatten: { enabled: form.flattenEnabled, delimiter: form.flattenDelimiter || "_" },
     addAttributes: { literals: attrLiterals, fromPayload: attrFp },
     scalarFields: scalars,
+    ...(decodeSeriesSteps ? { decodeSeriesSteps } : {}),
     functionBased: {
       enabled: form.functionBasedEnabled,
       code: form.functionBasedCode,
@@ -349,9 +358,6 @@ function formToActiveDraft(form: StudioDraftForm): Record<string, unknown> {
     kpi,
   };
   if (form.selectPath.trim()) out.selectPath = form.selectPath.trim();
-  if (Array.isArray(form.decodeSeriesSteps) && form.decodeSeriesSteps.length > 0) {
-    out.decodeSeriesSteps = form.decodeSeriesSteps.map((s) => ({ ...s }));
-  }
   return out;
 }
 
@@ -2235,6 +2241,11 @@ function renderStepEditor(
       </>
     );
   }
+  if (step === "decodeSeries") {
+    return (
+      <DecodeSeriesStepEditor form={form} setForm={setForm} datalistId={PATH_HINTS_DATALIST_ID} />
+    );
+  }
   if (step === "health") {
     return (
       <HealthStepEditor
@@ -2533,15 +2544,17 @@ const miniHead: CSSProperties = { fontSize: "0.78rem", fontWeight: 600, marginTo
 
 const tblMini: CSSProperties = { borderCollapse: "collapse", fontSize: "0.76rem" };
 const thMini: CSSProperties = {
-  textAlign: "left",
+  textAlign: "center",
   padding: "0.3rem 0.35rem",
   borderBottom: "1px solid var(--color-border)",
   position: "sticky",
   top: 0,
   background: "var(--color-bg)",
+  verticalAlign: "middle",
 };
 const tdMini: CSSProperties = {
   padding: "0.3rem 0.35rem",
   borderBottom: "1px solid var(--color-border)",
-  verticalAlign: "top",
+  verticalAlign: "middle",
+  textAlign: "center",
 };

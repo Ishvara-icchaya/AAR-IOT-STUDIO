@@ -143,18 +143,21 @@ export function MonitoringPage() {
         <MonitoringTabs active={tab} onChange={setTab} />
 
         <div className="monitoring-page__tab-scroll">
-          {tab === "overview" &&
-            (showOverviewLoading ? (
-              <OpsDataTable>
-                <div className="dm-device-table-shell">
-                  <MonitoringLoadingBlock label="Loading overview…" />
+          {tab === "overview" && (
+            <div className="monitoring-page__overview-border">
+              {showOverviewLoading ? (
+                <OpsDataTable>
+                  <div className="dm-device-table-shell">
+                    <MonitoringLoadingBlock label="Loading overview…" />
+                  </div>
+                </OpsDataTable>
+              ) : overview ? (
+                <div className="monitoring-tab-panel">
+                  <MonitoringOverviewV2 summary={overview.summary} lastFetchedAt={overviewFetchedAt} />
                 </div>
-              </OpsDataTable>
-            ) : overview ? (
-              <div className="monitoring-tab-panel">
-                <MonitoringOverviewV2 summary={overview.summary} lastFetchedAt={overviewFetchedAt} />
-              </div>
-            ) : null)}
+              ) : null}
+            </div>
+          )}
 
           {tab === "services" && (
             <OpsDataTable>

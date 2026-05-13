@@ -117,6 +117,20 @@ Bridge payloads must resolve to registered devices (**UUID** or **name** + optio
 
 ---
 
+## Debugging failed ingest
+
+When `mqtt_bridge ingest failed` appears, **always** search the same time window for **`ingest_trace`** in `worker-mqtt-bridge` logs (`docker compose logs worker-mqtt-bridge | grep ingest_trace`). Phases:
+
+| `phase=` | Meaning |
+|----------|---------|
+| `quarantine` | Binding / policy rejection; row in **`ingest_quarantine`** (`reason_code`, `attempted_binding_json`). |
+| `binding` | e.g. `device_inactive` (no quarantine row). |
+| `persist` | MinIO, `raw_data_objects` insert, or Kafka after archive (`raw_id` in log for DB/MinIO lookup). |
+
+Upstream payloads should include **`run_id`** or **`trace_id`** (string) so logs correlate with device/simulator traces.
+
+---
+
 ## Related code
 
 - Ingest bridge: `services/workers/app/mqtt_bridge.py`, `services/workers/app/mqtt_bridge_subscriptions.py`

@@ -1,4 +1,4 @@
-ALLOWED = ("info", "warning", "critical")
+ALLOWED = ("info", "warning", "critical", "informational")
 
 
 def normalize_severity(raw: str | None) -> str:

@@ -18,6 +18,7 @@ from app.metadata_db import fetch_site_mapping_studio, insert_data_object
 from app.minio_worker import read_object_slice
 from app.pipeline import emit
 from app.scrubber_engine import ScrubberRunResult, run_scrubber
+from app.endpoint_version_identity import process_raw_version_identity
 from app.v2_resolution import try_write_v2_from_scrubber
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
 
@@ -103,6 +104,19 @@ def _process_envelope(env: dict) -> None:
             to_read = min(size_bytes, cap)
             try:
                 raw_bytes = read_object_slice(bucket=_bucket(), key=str(storage_key), offset=0, length=to_read)
+                try:
+                    process_raw_version_identity(
+                        raw_bytes=raw_bytes,
+                        content_type=content_type,
+                        endpoint_id=endpoint_id.strip(),
+                        device_id=device_id,
+                        customer_id=customer_id,
+                        site_id=site_id,
+                        raw_object_id=raw_object_id,
+                        trace_id=trace_s,
+                    )
+                except Exception:
+                    log.debug("endpoint_version_identity (passthrough) failed", exc_info=True)
                 payload_obj = json.loads(raw_bytes.decode("utf-8"))
                 if not isinstance(payload_obj, dict):
                     payload_obj = {"_raw_text": raw_bytes.decode("utf-8", errors="replace")}
@@ -240,6 +254,22 @@ def _process_envelope(env: dict) -> None:
         except Exception:
             log.debug("scrubber alert emit failed", exc_info=True)
         return
+
+    ep_raw = env.get("endpoint_id")
+    ep_s = ep_raw.strip() if isinstance(ep_raw, str) and ep_raw.strip() else None
+    try:
+        process_raw_version_identity(
+            raw_bytes=raw_bytes,
+            content_type=content_type,
+            endpoint_id=ep_s,
+            device_id=device_id,
+            customer_id=customer_id,
+            site_id=site_id,
+            raw_object_id=raw_object_id,
+            trace_id=trace_s,
+        )
+    except Exception:
+        log.debug("endpoint_version_identity stage failed", exc_info=True)
 
     try:
         result = run_scrubber(

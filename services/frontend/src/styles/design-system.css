@@ -444,18 +444,19 @@
 }
 
 .app-kv-table th {
-  text-align: left;
+  text-align: center;
   font-weight: 600;
   color: var(--color-text-muted);
-  padding: 0.35rem 0.5rem 0.35rem 0;
-  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+  vertical-align: middle;
   width: 42%;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
 }
 
 .app-kv-table td {
-  padding: 0.35rem 0;
-  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+  vertical-align: middle;
+  text-align: center;
   color: var(--color-text);
   background: var(--color-bg);
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
@@ -491,7 +492,7 @@
   z-index: 2;
   height: 2.25rem;
   padding: 0 0.65rem;
-  text-align: left;
+  text-align: center;
   vertical-align: middle;
   font-size: 0.7rem;
   font-weight: 600;
@@ -503,6 +504,7 @@
 .app-shadcn-table__cell {
   padding: 0.45rem 0.65rem;
   vertical-align: middle;
+  text-align: center;
   font-size: 0.75rem;
   color: var(--color-text);
   background: var(--color-bg);
@@ -525,7 +527,7 @@
 }
 
 .app-data-table th {
-  text-align: left;
+  text-align: center;
   padding: 0.5rem;
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text-muted);
@@ -537,7 +539,8 @@
 .app-data-table td {
   padding: 0.5rem;
   border-bottom: 1px solid color-mix(in oklab, var(--color-border) 65%, transparent);
-  vertical-align: top;
+  vertical-align: middle;
+  text-align: center;
   background: var(--color-bg);
 }
 
@@ -678,4 +681,36 @@
 .device-endpoint-drawer-toolbar.app-toolbar {
   margin-bottom: 0.35rem;
   padding-bottom: 0.5rem;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Form lists: center controls under captions (checkbox/radio rows unchanged) */
+/* -------------------------------------------------------------------------- */
+
+label:has(select),
+label:has(textarea),
+label:has(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])) {
+  justify-items: start;
+  text-align: left;
+}
+
+/* Closed native selects / multiline fields — match app surface (open dropdown may still follow OS theme). */
+select,
+textarea {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius, 6px);
+  font-family: inherit;
+}
+
+select:disabled,
+textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+select option {
+  background-color: var(--color-surface);
+  color: var(--color-text);
 }

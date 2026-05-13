@@ -169,6 +169,10 @@ export function buildStudioDraftFromV2(
   if (model.fieldSemantics.length) {
     out.fieldSemantics = model.fieldSemantics;
   }
+  const dss = model.decodeSeriesSteps?.filter((s) => s && typeof s === "object" && !Array.isArray(s)) ?? [];
+  if (dss.length) {
+    out.decodeSeriesSteps = dss;
+  }
   if (ctx.selectPath?.trim()) out.selectPath = ctx.selectPath.trim();
   return out;
 }

@@ -13,18 +13,73 @@ function isObjectRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function inferType(v: unknown): string {
-  if (v === null || v === undefined) return "null";
-  if (Array.isArray(v)) return "array";
-  if (typeof v === "number") return Number.isInteger(v) ? "integer" : "number";
-  if (typeof v === "boolean") return "boolean";
-  if (typeof v === "string") {
-    const t = v.trim();
+/** If the dotted path suggests an encoded / tabular string field (leaf-aware). */
+function encodedTypeFromPath(fieldPath: string): string | null {
+  const p = fieldPath.trim().toLowerCase();
+  if (!p) return null;
+  const leaf = p.includes(".") ? p.slice(p.lastIndexOf(".") + 1) : p;
+  const hay = `${p} ${leaf}`;
+  if (/\bbase64\b|_base64|base64_|(^|[^a-z])b64([^a-z]|$)|_b64\b/.test(hay)) return "base64";
+  if (/\bcsv\b|_csv|csv_|csvmetrics|metrics_csv|_csv_/.test(hay)) return "csv";
+  if (/_hex_|_hex$|^_hex|hexdigest|hex_bin|_as_hex|hex_encoded/.test(hay)) return "hex";
+  return null;
+}
+
+function looksLikeHexBytes(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 16 || t.length % 2 === 1) return false;
+  if (!/^[0-9a-fA-F]+$/.test(t)) return false;
+  // Common digest / token lengths; avoids classifying short decimal-ish tokens as hex.
+  if (t.length >= 32) return true;
+  return t.length >= 16 && t.length <= 64;
+}
+
+function looksLikeBase64Payload(s: string): boolean {
+  const t = s.replace(/\s+/g, "");
+  if (t.length < 12) return false;
+  if (/^[A-Za-z0-9+/]+=*$/.test(t)) {
+    const pad = (t.match(/=/g) || []).length;
+    if (pad > 2) return false;
+    return t.length % 4 === 0 || pad > 0;
+  }
+  if (/^[A-Za-z0-9_-]{16,}$/.test(t)) {
+    let norm = t.replace(/-/g, "+").replace(/_/g, "/");
+    while (norm.length % 4 !== 0) norm += "=";
+    return /^[A-Za-z0-9+/]+=*$/.test(norm);
+  }
+  return false;
+}
+
+function looksLikeCsvOrKeyValueRow(s: string): boolean {
+  const t = s.trim();
+  if (!t.includes(",") || !t.includes("=")) return false;
+  const parts = t.split(",").map((x) => x.trim()).filter(Boolean);
+  if (parts.length < 2) return false;
+  return parts.every((seg) => /^[^=\s]+=/.test(seg));
+}
+
+/**
+ * Infer a display / semantics type for scrubber pickers (Semantics, KPI, etc.).
+ * Strings that are clearly hex, base64, or CSV / key=value rows are not labeled plain `string`.
+ */
+export function inferFieldType(value: unknown, fieldPath = ""): string {
+  const fromPath = encodedTypeFromPath(fieldPath);
+
+  if (value === null || value === undefined) return "null";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "string") {
+    const t = value.trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(t)) return "timestamp";
+    if (fromPath) return fromPath;
+    if (looksLikeHexBytes(t)) return "hex";
+    if (looksLikeBase64Payload(t)) return "base64";
+    if (looksLikeCsvOrKeyValueRow(t)) return "csv";
     return "string";
   }
-  if (typeof v === "object") return "object";
-  return typeof v;
+  if (typeof value === "object") return "object";
+  return typeof value;
 }
 
 function sampleString(v: unknown, max = 120): string {
@@ -61,7 +116,7 @@ export function buildFieldMetaList(root: Record<string, unknown>): Scrubber2Fiel
     const v = getByPath(root, path);
     return {
       path,
-      type: inferType(v),
+      type: inferFieldType(v, path),
       sample: sampleString(v),
       source: "payload",
     };

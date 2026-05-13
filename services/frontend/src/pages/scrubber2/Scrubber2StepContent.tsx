@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { Scrubber2FieldMeta } from "@/lib/scrubber2Fields";
-import { getByPath } from "@/lib/scrubber2Fields";
+import {
+  buildFieldMetaList,
+  getByPath,
+  scrubberPreviewPayloadForFieldPickers,
+} from "@/lib/scrubber2Fields";
+import type { DecodeSeriesSuggestion } from "@/lib/scrubber2DecodeSeriesFromField";
+import { suggestDecodeSeriesForField } from "@/lib/scrubber2DecodeSeriesFromField";
 import { Scrubber2FieldPicker } from "./Scrubber2FieldPicker";
+import { DecodeSeriesConfigModal } from "@/pages/scrubber2/DecodeSeriesConfigModal";
 import { SCRUBBER2_SEMANTIC_ROLES, type Scrubber2Model } from "@/types/scrubber2Model";
 import { apiFetch } from "@/api/client";
 import { buildScrubberStudioMappingForPreview } from "@/lib/scrubber2ToStudioDraft";
@@ -30,6 +37,69 @@ function flattenOneLevel(input: Record<string, unknown>, delimiter: string): Rec
   return out;
 }
 
+/** Human-readable default label from a dotted path (e.g. `gps.hdop` → `Hdop`). */
+function defaultAttributeLabelFromPath(path: string): string {
+  const t = path.trim();
+  if (!t) return "";
+  const leaf = t.includes(".") ? t.slice(t.lastIndexOf(".") + 1) : t;
+  const spaced = leaf.replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+  if (!spaced) return t;
+  if (spaced.length === 1) return spaced.toUpperCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** Same path list as Semantics pickers after Validate — always derived from preview JSON, not early pipeline. */
+function semanticsFieldsFromPreviewPayload(pathSamplePreview: Record<string, unknown> | null): Scrubber2FieldMeta[] {
+  if (!pathSamplePreview) return [];
+  return buildFieldMetaList(scrubberPreviewPayloadForFieldPickers(pathSamplePreview));
+}
+
+/** Field list for Default Attributes: preview-derived paths first, then API pickers, then early pipeline. */
+function resolveSemanticsDefaultSourceFields(
+  pathSamplePreview: Record<string, unknown> | null,
+  fieldsFromPreview: Scrubber2FieldMeta[] | null,
+  fieldsEarlyPipeline: Scrubber2FieldMeta[],
+): Scrubber2FieldMeta[] {
+  const fromPayload = semanticsFieldsFromPreviewPayload(pathSamplePreview);
+  if (fromPayload.length > 0) return fromPayload;
+  if (fieldsFromPreview && fieldsFromPreview.length > 0) return fieldsFromPreview;
+  return fieldsEarlyPipeline;
+}
+
+/** Merge/replace `fieldSemantics` from a resolved field-meta list (explicit handler for the Default Attributes control). */
+function applyDefaultFieldSemanticsFromSource(
+  setModel: (fn: (m: Scrubber2Model) => Scrubber2Model) => void,
+  sourceFields: Scrubber2FieldMeta[],
+): void {
+  if (sourceFields.length === 0) return;
+  setModel((m) => {
+    const byPath = new Map(m.fieldSemantics.map((s) => [s.path, s]));
+    const next = sourceFields.map((f) => {
+      const prev = byPath.get(f.path);
+      const inferredLabel = (f.label && f.label.trim()) || defaultAttributeLabelFromPath(f.path);
+      if (prev) {
+        const keepLabel = (prev.label ?? "").trim();
+        return {
+          path: f.path,
+          type: f.type,
+          roles: Array.isArray(prev.roles) ? [...prev.roles] : [],
+          label: keepLabel || inferredLabel,
+          ...(prev.aiExposed !== undefined ? { aiExposed: prev.aiExposed } : {}),
+        };
+      }
+      return {
+        path: f.path,
+        type: f.type,
+        roles: [],
+        label: inferredLabel,
+      };
+    });
+    const sourcePaths = new Set(sourceFields.map((x) => x.path));
+    const extras = m.fieldSemantics.filter((s) => s.path.trim() && !sourcePaths.has(s.path));
+    return { ...m, fieldSemantics: [...next, ...extras] };
+  });
+}
+
 type Props = {
   stepIndex: number;
   model: Scrubber2Model;
@@ -56,6 +126,10 @@ export function Scrubber2StepContent({
   onRequestPreview,
 }: Props) {
   const [derivedHelpTab, setDerivedHelpTab] = useState<DerivedHelpTabId>("math");
+  const [decodeSeriesModal, setDecodeSeriesModal] = useState<{
+    sourcePath: string;
+    suggestion: DecodeSeriesSuggestion;
+  } | null>(null);
 
   const pickerFields =
     stepIndex >= 4 ? (fieldsFromPreview ?? fieldsEarlyPipeline) : fieldsEarlyPipeline;
@@ -506,17 +580,11 @@ export function Scrubber2StepContent({
   }
 
   if (stepIndex === 4) {
-    const syncFromFields = () => {
-      setModel((m) => {
-        const existing = new Map(m.fieldSemantics.map((s) => [s.path, s]));
-        for (const f of pickerFields) {
-          if (!existing.has(f.path)) {
-            existing.set(f.path, { path: f.path, type: f.type, roles: [], label: "" });
-          }
-        }
-        return { ...m, fieldSemantics: [...existing.values()] };
-      });
-    };
+    const sourceFields = resolveSemanticsDefaultSourceFields(
+      pathSamplePreview,
+      fieldsFromPreview,
+      fieldsEarlyPipeline,
+    );
     return (
       <>
         {!pathSamplePreview ? (
@@ -524,15 +592,32 @@ export function Scrubber2StepContent({
             Run <strong>Validate</strong> (server preview) to load field paths from the transformed payload — including
             derived fields and excluding dropped paths.
           </p>
-        ) : null}
-        <div className="scrubber2-toolbar">
+        ) : (
+          <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
+            Use <strong>Default Attributes</strong> to insert <strong>one row per field</strong> from the validated
+            preview (preview order), with type and default labels. Existing labels, roles, and AI flags for matching
+            paths are kept; extra rows you added manually remain below. The <strong>Type</strong> column is discovery /
+            display only — binary, CSV, hex, and array shapes are <strong>not</strong> decoded unless you add an
+            explicit <code style={{ fontSize: "0.75em" }}>decode_series</code> step (Configure decode series).
+          </p>
+        )}
+        <div className="scrubber2-toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
           <button
             type="button"
             className="scrubber2-btn scrubber2-btn--ghost"
-            disabled={!pathSamplePreview || pickerFields.length === 0}
-            onClick={syncFromFields}
+            disabled={sourceFields.length === 0}
+            title={
+              sourceFields.length === 0
+                ? "No field list yet — run Validate (header) after choosing a raw sample, or wait for the explorer to load."
+                : "Fill Semantics: one row per field from the preview (or pipeline pickers if preview paths are empty)."
+            }
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              applyDefaultFieldSemanticsFromSource(setModel, sourceFields);
+            }}
           >
-            Sync rows from preview field list
+            Default Attributes
           </button>
           <button
             type="button"
@@ -546,6 +631,9 @@ export function Scrubber2StepContent({
           >
             Add row
           </button>
+          <span className="scrubber2-muted" style={{ fontSize: "0.72rem", alignSelf: "center", marginLeft: "auto" }}>
+            decode_series steps: <strong>{model.decodeSeriesSteps?.length ?? 0}</strong>
+          </span>
         </div>
         <div className="scrubber2-table-scroll">
           <table className="scrubber2-table">
@@ -553,6 +641,7 @@ export function Scrubber2StepContent({
               <tr>
                 <th>Path</th>
                 <th>Type</th>
+                <th>Decode series</th>
                 <th>Label</th>
                 <th className="scrubber2-col-roles">Roles</th>
                 <th>AI</th>
@@ -561,7 +650,7 @@ export function Scrubber2StepContent({
             </thead>
             <tbody>
               {model.fieldSemantics.map((row, i) => (
-                <tr key={i}>
+                <tr key={row.path ? `sem-${row.path}` : `sem-empty-${i}`}>
                   <td>
                     <Scrubber2FieldPicker
                       fields={pickerFields}
@@ -588,6 +677,29 @@ export function Scrubber2StepContent({
                         })
                       }
                     />
+                  </td>
+                  <td>
+                    {(() => {
+                      const decodeHint =
+                        row.path.trim().length > 0
+                          ? suggestDecodeSeriesForField(row.path, row.type, pathSampleRoot)
+                          : null;
+                      return decodeHint ? (
+                        <button
+                          type="button"
+                          className="scrubber2-btn scrubber2-btn--ghost"
+                          style={{ fontSize: "0.72rem", padding: "0.2rem 0.4rem", whiteSpace: "nowrap" }}
+                          title={`Detected: ${decodeHint.detected}. Opens config — nothing is decoded until you confirm.`}
+                          onClick={() => setDecodeSeriesModal({ sourcePath: row.path.trim(), suggestion: decodeHint })}
+                        >
+                          Configure…
+                        </button>
+                      ) : (
+                        <span className="scrubber2-muted" style={{ fontSize: "0.72rem" }}>
+                          —
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td>
                     <input
@@ -662,6 +774,20 @@ export function Scrubber2StepContent({
             </tbody>
           </table>
         </div>
+        {decodeSeriesModal ? (
+          <DecodeSeriesConfigModal
+            open
+            sourcePath={decodeSeriesModal.sourcePath}
+            suggestion={decodeSeriesModal.suggestion}
+            onClose={() => setDecodeSeriesModal(null)}
+            onConfirm={(step) =>
+              setModel((m) => ({
+                ...m,
+                decodeSeriesSteps: [...(m.decodeSeriesSteps ?? []), step],
+              }))
+            }
+          />
+        ) : null}
       </>
     );
   }

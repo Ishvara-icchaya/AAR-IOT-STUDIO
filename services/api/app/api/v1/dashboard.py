@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
 from app.api.deps import get_current_user
 from app.core.dashboard_status import DASHBOARD_DRAFT, DASHBOARD_FROZEN
 from app.core.pipeline_log import emit as pipeline_emit
@@ -21,6 +21,7 @@ from app.models.latest_device_state import LatestDeviceState
 from app.models.endpoint import Endpoint
 from app.models.resolved_device import ResolvedDevice
 from app.services.data_object_query import order_by_metadata_recency
+from app.services.functional_audit_alert import emit_functional_audit_alert
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
 from app.models.device import Device
 from app.models.device_endpoint import DeviceEndpoint
@@ -72,6 +73,7 @@ from app.services.lifecycle_actions import (
     deactivate_dashboard,
     reactivate_dashboard,
 )
+from app.services.permission_service import ensure_site_permission, site_ids_with_permission
 from app.services.dashboard_validation import (
     validate_layout_for_save,
     validate_site_coherence,
@@ -119,12 +121,16 @@ def post_dashboard_widgets_resolve_batch(
     return resolve_dashboard_widgets_batch(db, user, body)
 
 
-def _access_dashboard(db: Session, user: User, d: Dashboard | None) -> Dashboard:
+def _access_dashboard(
+    db: Session, user: User, d: Dashboard | None, *, require_write: bool = False
+) -> Dashboard:
     if not d or d.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Dashboard not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     if d.site_id and not user_may_access_site(user, d.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    if require_write and d.site_id:
+        ensure_site_permission(db, user, d.site_id, "dashboards.write")
     return d
 
 
@@ -156,7 +162,7 @@ def list_data_object_sources(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -192,7 +198,7 @@ def list_result_object_sources(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -229,7 +235,7 @@ def list_latest_device_state_sources(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -282,7 +288,7 @@ def list_resolved_device_collection_sources(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -318,7 +324,7 @@ def get_runtime_resolved_device_collection(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -404,7 +410,7 @@ def list_dashboards(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     if allowed is not None and len(allowed) == 0:
         return DashboardListResponse(items=[])
     stmt = select(Dashboard).where(Dashboard.customer_id == user.customer_id)
@@ -460,12 +466,13 @@ def create_dashboard(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    ensure_site_permission(db, user, body.site_id, "dashboards.write")
     layout_in = dict(body.layout or {})
     if len(iter_widgets(layout_in)) == 0:
         layout_in = default_ops_template_layout(site_id=body.site_id)
@@ -492,6 +499,20 @@ def create_dashboard(
         dashboard_id=str(d.id),
         user_id=str(user.id),
     )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Dashboard",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return _dashboard_read(db, user, d)
 
 
@@ -514,19 +535,20 @@ def update_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     if d.status == DASHBOARD_FROZEN:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             detail="Unfreeze dashboard before editing",
         )
     if body.site_id is not None:
-        allowed = allowed_site_ids_for_user(db, user)
+        allowed = site_ids_with_permission(db, user, "dashboards.read")
         site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
         if not site:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
         if not user_may_access_site(user, body.site_id, allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+        ensure_site_permission(db, user, body.site_id, "dashboards.write")
         d.site_id = body.site_id
     if body.name is not None:
         d.name = body.name
@@ -548,6 +570,20 @@ def update_dashboard(
         dashboard_id=str(d.id),
         user_id=str(user.id),
     )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Dashboard",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return _dashboard_read(db, user, d)
 
 
@@ -559,7 +595,7 @@ def reset_dashboard_default_layout(
 ):
     """Replace draft layout with the default Operations Overview template (id/name unchanged)."""
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     if d.status == DASHBOARD_FROZEN:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -583,6 +619,20 @@ def reset_dashboard_default_layout(
         dashboard_id=str(d.id),
         user_id=str(user.id),
     )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Dashboard",
+        resource_label=f"{d.name} (default layout reset)",
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return _dashboard_read(db, user, d)
 
 
@@ -605,10 +655,24 @@ def post_deactivate_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     deactivate_dashboard(db, d)
     db.commit()
     db.refresh(d)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="deactivated",
+        resource_type="Dashboard",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return {"id": str(d.id), "status": d.status}
 
 
@@ -619,10 +683,24 @@ def post_reactivate_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     reactivate_dashboard(db, d)
     db.commit()
     db.refresh(d)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="reactivated",
+        resource_type="Dashboard",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return {"id": str(d.id), "status": d.status}
 
 
@@ -633,10 +711,24 @@ def post_archive_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     archive_dashboard(db, d)
     db.commit()
     db.refresh(d)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="archived",
+        resource_type="Dashboard",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return {"id": str(d.id), "status": d.status}
 
 
@@ -647,7 +739,7 @@ def delete_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     clear_primary_dashboard_for_all_users(db, dashboard_id=dashboard_id)
     db.flush()
     deps = dashboard_delete_dependencies(db, customer_id=user.customer_id, dashboard_id=dashboard_id)
@@ -655,6 +747,20 @@ def delete_dashboard(
         deps,
         message="Dashboard cannot be deleted while it is still referenced",
         deactivate_url=f"/dashboards/{dashboard_id}/deactivate",
+    )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="deleted",
+        resource_type="Dashboard",
+        resource_label=d.name,
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
     )
     db.delete(d)
     db.commit()
@@ -676,7 +782,7 @@ def duplicate_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     copy = Dashboard(
         customer_id=d.customer_id,
         site_id=d.site_id,
@@ -689,6 +795,20 @@ def duplicate_dashboard(
     db.add(copy)
     db.commit()
     db.refresh(copy)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Dashboard",
+        resource_label=copy.name,
+        site_id=copy.site_id,
+        device_id=None,
+        resource_created_at=copy.created_at,
+        resource_updated_at=copy.updated_at,
+        source_object_type="dashboard",
+        source_object_id=copy.id,
+    )
     return _dashboard_read(db, user, copy)
 
 
@@ -699,7 +819,7 @@ def freeze_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     layout = dict(d.layout or {})
     errs = validate_layout_for_save(layout=layout, site_id=d.site_id, require_widgets=True)
     errs += validate_sources_exist(db, customer_id=user.customer_id, layout=layout)
@@ -713,6 +833,7 @@ def freeze_dashboard(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail={"errors": errs})
     d.status = DASHBOARD_FROZEN
     db.commit()
+    db.refresh(d)
     pipeline_emit(
         log,
         component="api.dashboard",
@@ -720,6 +841,20 @@ def freeze_dashboard(
         status="ok",
         dashboard_id=str(d.id),
         user_id=str(user.id),
+    )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Dashboard",
+        resource_label=f"{d.name} (frozen)",
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
     )
     return DashboardFreezeResponse(id=d.id, status=d.status)
 
@@ -731,7 +866,7 @@ def unfreeze_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     d.status = DASHBOARD_DRAFT
     db.commit()
     db.refresh(d)
@@ -742,6 +877,20 @@ def unfreeze_dashboard(
         status="ok",
         dashboard_id=str(d.id),
         user_id=str(user.id),
+    )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Dashboard",
+        resource_label=f"{d.name} (unfrozen)",
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
     )
     return _dashboard_read(db, user, d)
 
@@ -775,6 +924,20 @@ def set_primary_dashboard(
         dashboard_id=str(d.id),
         user_id=str(user.id),
     )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Dashboard",
+        resource_label=f"{d.name} (primary for user)",
+        site_id=d.site_id,
+        device_id=None,
+        resource_created_at=d.created_at,
+        resource_updated_at=d.updated_at,
+        source_object_type="dashboard",
+        source_object_id=d.id,
+    )
     return _dashboard_read(db, user, d)
 
 
@@ -787,7 +950,7 @@ def _live_bundle(db: Session, user: User, d: Dashboard) -> dict:
         "site_id": str(d.site_id) if d.site_id else None,
         "layout": dict(d.layout or {}),
     }
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     return build_live_payload(
         db,
         customer_id=user.customer_id,
@@ -842,7 +1005,7 @@ def preview_dashboard(
         "site_id": str(d.site_id) if d.site_id else None,
         "layout": layout_use,
     }
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     bundle = build_live_payload(
         db,
         customer_id=user.customer_id,
@@ -869,7 +1032,7 @@ def share_dashboard(
     db: Session = Depends(get_db),
 ):
     d = db.get(Dashboard, dashboard_id)
-    d = _access_dashboard(db, user, d)
+    d = _access_dashboard(db, user, d, require_write=True)
     for uid in body.user_ids:
         target = db.get(User, uid)
         if not target:

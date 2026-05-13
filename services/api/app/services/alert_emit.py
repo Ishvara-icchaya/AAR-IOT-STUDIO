@@ -32,6 +32,7 @@ def emit_alert(
     source_object_id: uuid.UUID | None = None,
     trace_id: str | None = None,
 ) -> Alert:
+    """Persist an alert. For DML / audit events use ``severity="informational"`` (no incident level)."""
     sev = normalize_severity(severity)
     cat = normalize_alert_category(category)
     row = Alert(
@@ -97,12 +98,20 @@ def reconcile_unacked_redis(db: Session, *, customer_id: uuid.UUID) -> None:
         total = db.scalar(
             select(func.count())
             .select_from(Alert)
-            .where(Alert.customer_id == customer_id, Alert.acknowledged.is_(False))
+            .where(
+                Alert.customer_id == customer_id,
+                Alert.acknowledged.is_(False),
+                Alert.severity.in_(("critical", "warning", "info")),
+            )
         )
         r.set(f"alerts:unacked:count:{customer_id}", int(total or 0))
         rows = db.execute(
             select(Alert.site_id, func.count())
-            .where(Alert.customer_id == customer_id, Alert.acknowledged.is_(False))
+            .where(
+                Alert.customer_id == customer_id,
+                Alert.acknowledged.is_(False),
+                Alert.severity.in_(("critical", "warning", "info")),
+            )
             .group_by(Alert.site_id)
         ).all()
         for sid, cnt in rows:

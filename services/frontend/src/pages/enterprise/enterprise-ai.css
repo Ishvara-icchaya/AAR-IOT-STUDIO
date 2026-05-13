@@ -351,9 +351,10 @@
 .ea-suggest-item {
   display: flex;
   gap: 0.5rem;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  text-align: left;
+  text-align: center;
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--color-border);
@@ -372,7 +373,6 @@
 
 .ea-suggest-icon {
   flex-shrink: 0;
-  margin-top: 0.1rem;
   color: var(--color-text-muted);
   opacity: 0.95;
 }

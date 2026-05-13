@@ -32,7 +32,7 @@ def ensure_bootstrap_admin(db: Session) -> None:
         hashed_password=hash_password(settings.bootstrap_admin_password),
         is_active=True,
         is_superuser=True,
-        role="admin",
+        role="platform_admin",
         must_change_password=True,
     )
     db.add(admin)

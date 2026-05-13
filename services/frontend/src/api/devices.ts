@@ -259,3 +259,149 @@ export async function commitDeviceImportRows(rows: DeviceImportCommitRow[], sour
     json: { rows, source_label: sourceLabel ?? null },
   });
 }
+
+/** Phase 8–9: immutable version snapshots for a device. */
+export type DeviceVersionSnapshot = {
+  id: string;
+  device_id: string;
+  version_label: string;
+  status: string;
+  routing_lane: string;
+  compatibility?: string | null;
+  firmware_version?: string | null;
+  hardware_version?: string | null;
+  config_version?: string | null;
+  endpoint_version?: string | null;
+  scrubber_version?: string | null;
+  schema_version?: string | null;
+  manifest_hash?: string | null;
+  firmware_channel: string;
+  version_source: string;
+  created_at: string;
+  activated_at?: string | null;
+  previous_device_version_id?: string | null;
+};
+
+export async function listDeviceVersionSnapshots(deviceId: string) {
+  return apiFetch<{ items: DeviceVersionSnapshot[] }>(
+    `/devices/${encodeURIComponent(deviceId)}/device-versions`,
+  );
+}
+
+/** Phase 9 static impact (baseline = prior active row). */
+export type VersionFieldDiffEntry = {
+  field: string;
+  baseline?: string | null;
+  candidate?: string | null;
+  changed: boolean;
+};
+
+export type DeviceVersionImpactWorkflow = {
+  id: string;
+  name: string;
+  lifecycle_status: string;
+  is_published: boolean;
+  site_id?: string | null;
+  definition_version?: number | null;
+};
+
+export type DeviceVersionImpactDashboard = {
+  id: string;
+  name: string;
+  status: string;
+  site_id?: string | null;
+};
+
+export type DeviceVersionImpactNote = {
+  code: string;
+  message: string;
+  dashboard_count?: number | null;
+};
+
+export type ImpactWidgetAttributeRow = {
+  dashboard_id: string;
+  dashboard_name: string;
+  widget_id: string | null;
+  widget_type: string | null;
+  widget_title: string;
+  attribute_ids: string[];
+  missing_from_catalog: string[];
+  review_recommended: boolean;
+};
+
+export type DeviceVersionImpactRead = {
+  device_id: string;
+  candidate_id: string;
+  baseline_id: string | null;
+  field_diff: VersionFieldDiffEntry[];
+  workflows: DeviceVersionImpactWorkflow[];
+  dashboards: DeviceVersionImpactDashboard[];
+  catalog_attribute_ids: string[];
+  widget_attribute_impact: ImpactWidgetAttributeRow[];
+  notes: DeviceVersionImpactNote[];
+};
+
+export async function getDeviceVersionImpact(deviceId: string, versionId: string) {
+  return apiFetch<DeviceVersionImpactRead>(
+    `/devices/${encodeURIComponent(deviceId)}/device-versions/${encodeURIComponent(versionId)}/impact`,
+  );
+}
+
+export type OtaTargetHistoryItem = {
+  target_id: string;
+  campaign_id: string;
+  campaign_name: string;
+  campaign_status: string;
+  target_status: string;
+  target_firmware_version?: string | null;
+  completed_at?: string | null;
+};
+
+export async function getDeviceOtaTargetHistory(deviceId: string) {
+  return apiFetch<{ items: OtaTargetHistoryItem[] }>(
+    `/devices/${encodeURIComponent(deviceId)}/ota-target-history`,
+  );
+}
+
+export type DeviceVersionLifecycleRow = {
+  id: string;
+  device_id: string;
+  version_label: string;
+  status: string;
+  routing_lane: string;
+  firmware_version?: string | null;
+  previous_device_version_id?: string | null;
+};
+
+export async function promoteDeviceVersion(versionId: string) {
+  return apiFetch<DeviceVersionLifecycleRow>(`/device-versions/${encodeURIComponent(versionId)}/promote`, {
+    method: "POST",
+  });
+}
+
+export async function isolateDeviceVersion(versionId: string) {
+  return apiFetch<DeviceVersionLifecycleRow>(`/device-versions/${encodeURIComponent(versionId)}/isolate`, {
+    method: "POST",
+  });
+}
+
+export async function rollbackDeviceVersion(versionId: string) {
+  return apiFetch<DeviceVersionLifecycleRow>(`/device-versions/${encodeURIComponent(versionId)}/rollback`, {
+    method: "POST",
+  });
+}
+
+export async function deprecateDeviceVersion(versionId: string) {
+  return apiFetch<DeviceVersionLifecycleRow>(`/device-versions/${encodeURIComponent(versionId)}/deprecate`, {
+    method: "POST",
+  });
+}
+
+export type DeviceDetailsTab = "overview" | "versions" | "lineage" | "ota" | "simulation";
+
+/** Hub route for Phase 8 Device Details (optional tab query). */
+export function deviceDetailsUrl(deviceId: string, tab?: DeviceDetailsTab) {
+  const base = `/devices/detail/${encodeURIComponent(deviceId)}`;
+  if (!tab || tab === "overview") return base;
+  return `${base}?tab=${encodeURIComponent(tab)}`;
+}

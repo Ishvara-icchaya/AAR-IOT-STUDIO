@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import ensure_site_permission, site_ids_with_permission
 from app.api.deps import get_current_user
 from app.core.data_object_lifecycle import DATA_PUBLISHED
 from app.core.pipeline_log import emit as pipeline_emit
@@ -44,6 +45,7 @@ from app.schemas.workflow_graph import (
 from app.schemas.integrity import DependenciesListResponse, raise_conflict_if_in_use
 from app.services.dependency_service import workflow_delete_dependencies
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
+from app.services.functional_audit_alert import emit_functional_audit_alert
 from app.services.lifecycle_actions import archive_workflow, deactivate_workflow, reactivate_workflow
 from app.services.workflow_graph_run import WorkflowGraphError, execute_graph
 from app.services.workflow_ops import duplicate_workflow, load_workflow_eager, replace_workflow_graph
@@ -60,7 +62,7 @@ def _ensure_workflow_access(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Workflow not found")
     if wf.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Workflow not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if wf.site_id and not user_may_access_site(user, wf.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     return wf
@@ -73,7 +75,7 @@ def list_published_data_object_sources(
     db: Session = Depends(get_db),
 ):
     """Published data_objects for workflow input binding (per site)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -115,7 +117,7 @@ def list_workflows(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     if allowed is not None and len(allowed) == 0:
         return WorkflowListResponse(items=[])
     stmt = (
@@ -161,12 +163,13 @@ def create_workflow(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "workflows.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
     if not user_may_access_site(user, body.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+    ensure_site_permission(db, user, body.site_id, "workflows.write")
 
     wf = Workflow(
         customer_id=user.customer_id,
@@ -199,6 +202,20 @@ def create_workflow(
     assert wf is not None
     out = WorkflowRead.model_validate(wf)
     pipeline_emit(log, component="api.workflow", action="create", status="ok", workflow_id=str(wf.id))
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Workflow",
+        resource_label=wf.name,
+        site_id=wf.site_id,
+        device_id=None,
+        resource_created_at=wf.created_at,
+        resource_updated_at=wf.updated_at,
+        source_object_type="workflow",
+        source_object_id=wf.id,
+    )
     return out
 
 
@@ -222,6 +239,8 @@ def update_workflow(
 ):
     wf = load_workflow_eager(db, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     if wf.is_published:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -229,12 +248,13 @@ def update_workflow(
         )
 
     if body.site_id is not None:
-        allowed = allowed_site_ids_for_user(db, user)
+        allowed = site_ids_with_permission(db, user, "workflows.read")
         site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
         if not site:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
         if not user_may_access_site(user, body.site_id, allowed):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
+        ensure_site_permission(db, user, body.site_id, "workflows.write")
         wf.site_id = body.site_id
     if body.name is not None:
         wf.name = body.name
@@ -260,6 +280,20 @@ def update_workflow(
     db.commit()
     wf = load_workflow_eager(db, workflow_id)
     assert wf is not None
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Workflow",
+        resource_label=wf.name,
+        site_id=wf.site_id,
+        device_id=None,
+        resource_created_at=wf.created_at,
+        resource_updated_at=wf.updated_at,
+        source_object_type="workflow",
+        source_object_id=wf.id,
+    )
     return WorkflowRead.model_validate(wf)
 
 
@@ -283,9 +317,25 @@ def post_deactivate_workflow(
 ):
     wf = db.get(Workflow, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     deactivate_workflow(db, wf)
     db.commit()
     db.refresh(wf)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="deactivated",
+        resource_type="Workflow",
+        resource_label=wf.name,
+        site_id=wf.site_id,
+        device_id=None,
+        resource_created_at=wf.created_at,
+        resource_updated_at=wf.updated_at,
+        source_object_type="workflow",
+        source_object_id=wf.id,
+    )
     return {"id": str(wf.id), "lifecycle_status": wf.lifecycle_status, "is_published": wf.is_published}
 
 
@@ -297,9 +347,25 @@ def post_reactivate_workflow(
 ):
     wf = db.get(Workflow, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     reactivate_workflow(db, wf)
     db.commit()
     db.refresh(wf)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="reactivated",
+        resource_type="Workflow",
+        resource_label=wf.name,
+        site_id=wf.site_id,
+        device_id=None,
+        resource_created_at=wf.created_at,
+        resource_updated_at=wf.updated_at,
+        source_object_type="workflow",
+        source_object_id=wf.id,
+    )
     return {"id": str(wf.id), "lifecycle_status": wf.lifecycle_status, "is_published": wf.is_published}
 
 
@@ -311,9 +377,25 @@ def post_archive_workflow(
 ):
     wf = db.get(Workflow, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     archive_workflow(db, wf)
     db.commit()
     db.refresh(wf)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="archived",
+        resource_type="Workflow",
+        resource_label=wf.name,
+        site_id=wf.site_id,
+        device_id=None,
+        resource_created_at=wf.created_at,
+        resource_updated_at=wf.updated_at,
+        source_object_type="workflow",
+        source_object_id=wf.id,
+    )
     return {"id": str(wf.id), "lifecycle_status": wf.lifecycle_status, "is_published": wf.is_published}
 
 
@@ -325,6 +407,8 @@ def delete_workflow(
 ):
     wf = db.get(Workflow, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     if wf.is_published or wf.lifecycle_status == WF_PUBLISHED:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -335,6 +419,20 @@ def delete_workflow(
         deps,
         message="Workflow cannot be deleted while dependencies exist",
         deactivate_url=f"/workflows/{workflow_id}/deactivate",
+    )
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="deleted",
+        resource_type="Workflow",
+        resource_label=wf.name,
+        site_id=wf.site_id,
+        device_id=None,
+        resource_created_at=wf.created_at,
+        resource_updated_at=wf.updated_at,
+        source_object_type="workflow",
+        source_object_id=wf.id,
     )
     db.delete(wf)
     db.commit()
@@ -349,10 +447,28 @@ def duplicate_workflow_route(
 ):
     wf = load_workflow_eager(db, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     new_name = f"Copy of {wf.name}"[:255]
     nw = duplicate_workflow(db, wf, new_name=new_name, user_id=user.id)
     db.commit()
-    return WorkflowRead.model_validate(nw)
+    nw2 = load_workflow_eager(db, nw.id)
+    assert nw2 is not None
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Workflow",
+        resource_label=nw2.name,
+        site_id=nw2.site_id,
+        device_id=None,
+        resource_created_at=nw2.created_at,
+        resource_updated_at=nw2.updated_at,
+        source_object_type="workflow",
+        source_object_id=nw2.id,
+    )
+    return WorkflowRead.model_validate(nw2)
 
 
 @router.post("/{workflow_id}/validate", response_model=WorkflowValidateResponse)
@@ -363,6 +479,8 @@ def validate_workflow(
 ):
     wf = load_workflow_eager(db, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     errs = full_validation_errors(db, user.customer_id, wf)
     if not errs:
         wf.lifecycle_status = WF_VALIDATED
@@ -462,6 +580,8 @@ def publish_workflow(
 ):
     wf = load_workflow_eager(db, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     errs = full_validation_errors(db, user.customer_id, wf)
     if errs:
         raise HTTPException(
@@ -484,6 +604,8 @@ def stop_publish_workflow(
 ):
     wf = load_workflow_eager(db, workflow_id)
     wf = _ensure_workflow_access(db, user, wf)
+    if wf.site_id:
+        ensure_site_permission(db, user, wf.site_id, "workflows.write")
     wf.lifecycle_status = WF_STOPPED
     wf.is_published = False
     db.commit()

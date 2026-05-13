@@ -1,7 +1,7 @@
 """device_versions table + generalized lineage columns (Phases 2–3).
 
 Revision ID: 0041_device_versions_and_lineage_events
-Revises: 0040_device_version_lineage
+Revises: 0040b_expand_alembic_ver
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0041_device_versions_and_lineage_events"
-down_revision: Union[str, None] = "0040_device_version_lineage"
+down_revision: Union[str, None] = "0040b_expand_alembic_ver"
 branch_labels = None
 depends_on = None
 

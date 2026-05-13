@@ -1,9 +1,11 @@
-import { CircleUser } from "lucide-react";
+import { CircleUser, Inbox } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/auth/AuthContext";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 export function UserMenu({ iconOnly }: { iconOnly?: boolean }) {
   const { me } = useAuth();
+  const { openWorkspace } = useWorkspace();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +55,18 @@ export function UserMenu({ iconOnly }: { iconOnly?: boolean }) {
       </button>
       {open ? (
         <div className="shell-dropdown__panel shell-dropdown__panel--toolbar shell-user-menu__panel" role="menu">
+          <button
+            type="button"
+            className="shell-dropdown__row shell-dropdown__row--button shell-dropdown__row--action"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              openWorkspace();
+            }}
+          >
+            <Inbox size={16} strokeWidth={2} aria-hidden className="shell-user-menu__row-icon" />
+            Workspace
+          </button>
           <div className="shell-dropdown__row shell-dropdown__row--muted" role="menuitem">
             Profile <span className="shell-tag-soon">soon</span>
           </div>

@@ -17,6 +17,7 @@ import { apiFetch } from "@/api/client";
 import * as dashApi from "@/api/dashboard";
 import type { DashboardListItemDTO } from "@/types/dashboard";
 import { useResourceInUse } from "@/contexts/ResourceInUseContext";
+import { useSitePermissionsOptional } from "@/contexts/SitePermissionsContext";
 import { useConfirmAction } from "@/contexts/ConfirmActionContext";
 import { AarButton } from "@/components/system/AarButton";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
@@ -26,7 +27,7 @@ import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { OpsListPage } from "@/components/ops/OpsListPage";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
-import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
+import { OpsStatusPill, type OpsVariant } from "@/components/ops/OpsStatusPill";
 import { PageStatus } from "@/components/PageStatus";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellMessage } from "@/layouts/shell/ShellMessageContext";
@@ -56,15 +57,17 @@ function formatRelativeShort(iso: string | null | undefined): string {
   }
 }
 
-function dashboardStatusTone(status: string): "online" | "degraded" | "offline" | "error" | "muted" {
+function dashboardStatusTone(status: string): OpsVariant {
   const s = status.toLowerCase();
   if (s === "frozen") return "online";
-  if (s === "draft") return "degraded";
+  if (s === "draft") return "muted";
+  if (s === "disabled") return "disabled";
   return "muted";
 }
 
 export function DashboardListPage() {
   const { siteId: opsSiteId, setSiteId: setOpsSiteId, refreshToken } = useOpsShell();
+  const sitePerms = useSitePermissionsOptional();
   const { tryHandleResourceInUseError } = useResourceInUse();
   const confirm = useConfirmAction();
   const { pushMessage } = useShellMessage();
@@ -275,10 +278,17 @@ export function DashboardListPage() {
           title="Dashboard"
           subtitle="Create dashboard — build or edit Dashboard; return to the list anytime."
           actions={
-            <Link to="/dashboard/create" className="aar-btn aar-btn--primary dm-btn dm-btn--primary">
-              <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-              Create dashboard
-            </Link>
+            sitePerms?.hasUnion("dashboards.write") ? (
+              <Link to="/dashboard/create" className="aar-btn aar-btn--primary dm-btn dm-btn--primary">
+                <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                Create dashboard
+              </Link>
+            ) : (
+              <button type="button" className="aar-btn aar-btn--outline dm-btn dm-btn--outline" disabled title="Requires dashboards.write">
+                <Plus size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                Create dashboard
+              </button>
+            )
           }
         />
       }
@@ -416,7 +426,7 @@ export function DashboardListPage() {
         </OpsFilterPanel>
       }
       content={
-        <OpsDataTable className="dashboard-list-table-wrap" id="dashboard-list-table">
+        <OpsDataTable id="dashboard-list-table">
           {err ? <PageStatus variant="error">{err}</PageStatus> : null}
 
         {(kpiStats.inactive > 0 || kpiStats.archived > 0) && (
@@ -435,18 +445,16 @@ export function DashboardListPage() {
           {loading && items.length === 0 ? (
             <p className="dm-empty">Loading…</p>
           ) : items.length === 0 ? (
-            <p className="dm-empty">
-              No dashboards match{appliedQ ? ` “${appliedQ}”` : ""}.{" "}
-              <Link className="dm-name-link" to="/dashboard/create">
-                Create one
-              </Link>
-            </p>
+            <p className="dm-data-table__empty">No dashboards match the current filters.</p>
           ) : filtered.length === 0 ? (
-            <p className="dm-empty">No dashboards match the status filters. Adjust the text fields or clear filters.</p>
+            <p className="dm-data-table__empty">
+              No dashboards match the status filters. Adjust the text fields or clear filters.
+            </p>
           ) : (
             <div className="dm-device-table-shell" aria-busy={tableLoading}>
               {tableLoading ? <p className="dm-table-loading">Updating list…</p> : null}
-              <table className="dm-data-table">
+              <div className="dm-table-scroll">
+                <table className="dm-data-table">
                 <thead>
                   <tr>
                     <th className="dm-data-table__th" scope="col">
@@ -527,7 +535,8 @@ export function DashboardListPage() {
                     );
                   })}
                 </tbody>
-              </table>
+                </table>
+              </div>
               {totalPages > 1 ? (
                 <div className="dm-table-pager" role="navigation" aria-label="Dashboard table pages">
                   <span className="dm-table-pager__meta">

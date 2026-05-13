@@ -1,15 +1,27 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { useOpsShell } from "@/contexts/OpsShellContext";
+import { useSitePermissionsOptional } from "@/contexts/SitePermissionsContext";
 import { getAlertsSummary } from "@/api/alerts";
 import { AarTopNav } from "./AarTopNav";
 
 type SiteRow = { id: string; name: string };
 
+const NAV_PERM: Record<string, string> = {
+  devices: "devices.read",
+  pipelines: "scrubbers.read",
+  registerEndpoint: "endpoints.read",
+  workflows: "workflows.read",
+  dashboards: "dashboards.read",
+  monitoring: "devices.read",
+  ai: "devices.read",
+};
+
 export function HeaderBar() {
   const { me } = useAuth();
   const { siteId, setSiteId, triggerRefresh } = useOpsShell();
+  const sitePerms = useSitePermissionsOptional();
   const [sites, setSites] = useState<SiteRow[]>([]);
   const [unacked, setUnacked] = useState(0);
   const [alertTone, setAlertTone] = useState<"none" | "critical" | "warning" | "info">("none");
@@ -59,6 +71,17 @@ export function HeaderBar() {
     };
   }, []);
 
+  const navItemVisible = useCallback(
+    (key: string) => {
+      if (!sitePerms || sitePerms.loading) return true;
+      if (me?.is_superuser) return true;
+      const need = NAV_PERM[key];
+      if (!need) return true;
+      return sitePerms.hasUnion(need);
+    },
+    [sitePerms, me?.is_superuser],
+  );
+
   const customerLabel = (me?.customer_name || "").trim() || "—";
   let siteSummary = "—";
   if (sites.length === 1) siteSummary = sites[0].name;
@@ -75,6 +98,7 @@ export function HeaderBar() {
         alertCount={unacked}
         alertTone={alertTone}
         onRefresh={triggerRefresh}
+        navItemVisible={navItemVisible}
       />
     </header>
   );

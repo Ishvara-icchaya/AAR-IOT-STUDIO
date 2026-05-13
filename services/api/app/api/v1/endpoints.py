@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.device import Device
@@ -27,6 +28,7 @@ from app.services.endpoint_identity_publish import merge_identity_draft, publish
 from app.services.endpoint_scrubber_identity_hints import paths_from_device_mapping
 from app.services.endpoint_scrubber_semantics_identity_sync import sync_v2_endpoint_identity_from_device_mapping
 from app.services.endpoint_sample_service import normalize_sample_document
+from app.services.functional_audit_alert import emit_functional_audit_alert
 from app.services.payload_field_catalog import build_payload_field_entries
 from app.schemas.endpoint import (
     MapMarkerListResponse,
@@ -46,6 +48,13 @@ from app.schemas.endpoint import (
 
 router = APIRouter()
 log = logging.getLogger(__name__)
+
+
+def _linked_device_id_for_endpoint(db: Session, ep: Endpoint) -> uuid.UUID | None:
+    if not ep.device_endpoint_id:
+        return None
+    de = db.get(DeviceEndpoint, ep.device_endpoint_id)
+    return de.device_id if de else None
 
 
 def _utcnow() -> datetime:
@@ -74,7 +83,7 @@ def list_endpoints(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     if allowed is not None and len(allowed) == 0:
         return EndpointListResponse(items=[])
 
@@ -98,7 +107,7 @@ def create_endpoint(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unknown site for this tenant")
@@ -152,6 +161,20 @@ def create_endpoint(
     db.commit()
     db.refresh(ep)
     log.debug("endpoints.create id=%s site_id=%s object_name=%s", ep.id, ep.site_id, ep.object_name)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="created",
+        resource_type="Ingest endpoint",
+        resource_label=ep.endpoint_name,
+        site_id=ep.site_id,
+        device_id=_linked_device_id_for_endpoint(db, ep),
+        resource_created_at=ep.created_at,
+        resource_updated_at=ep.updated_at,
+        source_object_type="endpoint",
+        source_object_id=ep.id,
+    )
     return EndpointRead.model_validate(ep)
 
 
@@ -161,7 +184,7 @@ def get_endpoint(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -179,7 +202,7 @@ def get_endpoint_scrubber_identity_hints(
     db: Session = Depends(get_db),
 ):
     """Primary key / label JSON paths implied by Scrubber Studio semantics on the linked device."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -209,7 +232,7 @@ def get_endpoint_sample_field_metadata(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -225,12 +248,26 @@ def post_publish_endpoint_identity(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
     _ensure_endpoint_visible(ep, user, allowed)
     ep = publish_endpoint_identity(db, ep)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Ingest endpoint",
+        resource_label=f"{ep.endpoint_name} (identity published)",
+        site_id=ep.site_id,
+        device_id=_linked_device_id_for_endpoint(db, ep),
+        resource_created_at=ep.created_at,
+        resource_updated_at=ep.updated_at,
+        source_object_type="endpoint",
+        source_object_id=ep.id,
+    )
     return EndpointRead.model_validate(ep)
 
 
@@ -241,7 +278,7 @@ def update_endpoint(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -316,6 +353,20 @@ def update_endpoint(
             )
     db.commit()
     db.refresh(ep)
+    emit_functional_audit_alert(
+        db,
+        customer_id=user.customer_id,
+        actor=user,
+        verb="updated",
+        resource_type="Ingest endpoint",
+        resource_label=ep.endpoint_name,
+        site_id=ep.site_id,
+        device_id=_linked_device_id_for_endpoint(db, ep),
+        resource_created_at=ep.created_at,
+        resource_updated_at=ep.updated_at,
+        source_object_type="endpoint",
+        source_object_id=ep.id,
+    )
     return EndpointRead.model_validate(ep)
 
 
@@ -327,7 +378,7 @@ def list_resolved_devices(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -352,7 +403,7 @@ def list_latest_device_states(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -380,7 +431,7 @@ def list_scrubbed_events(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -434,7 +485,7 @@ def get_latest_state_for_resolved_device(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -458,7 +509,7 @@ def list_endpoint_map_markers(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     ep = _load_endpoint(db, endpoint_id, user.customer_id)
     if not ep:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
@@ -520,7 +571,7 @@ def latest_device_state_field_metadata(
     row = db.get(LatestDeviceState, latest_device_state_id)
     if not row or row.customer_id != user.customer_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "latest_device_state not found")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "endpoints.read")
     if not user_may_access_site(user, row.site_id, allowed):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted for this user")
     payload = {

@@ -1,17 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import {
-  ArrowLeft,
-  Braces,
-  ChevronLeft,
-  ChevronRight,
-  GitBranch,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Braces, ChevronLeft, ChevronRight, GitBranch, Pencil, Plus, Search } from "lucide-react";
 
 import { apiFetch, isApiHttpError } from "@/api/client";
 import { listDevices, type DeviceRead } from "@/api/devices";
@@ -20,13 +10,15 @@ import { PageStatus } from "@/components/PageStatus";
 import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsDataTable } from "@/components/ops/OpsDataTable";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
+import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { AppModalShell } from "@/components/app/AppModalShell";
 import { EndpointIdentityPanel } from "@/components/endpoint/EndpointIdentityPanel";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
-import { OpsStatusPill } from "@/components/ops/OpsStatusPill";
+import { OpsStatusPill, type OpsVariant } from "@/components/ops/OpsStatusPill";
 import { AarButton } from "@/components/system/AarButton";
 import { useOpsShell } from "@/contexts/OpsShellContext";
+import { useSitePermissionsOptional } from "@/contexts/SitePermissionsContext";
 import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { ScrubbedEventsSelectModal } from "@/pages/scrubber2/ScrubbedEventsSelectModal";
@@ -49,29 +41,20 @@ type SiteRow = { id: string; name: string };
 
 const PAGE_SIZE = 25;
 
-function lifecyclePillVariant(
-  s: string | null | undefined,
-): "online" | "degraded" | "offline" | "error" | "muted" {
+function lifecyclePillVariant(s: string | null | undefined): OpsVariant {
   const v = (s || "").toLowerCase();
   if (v === "active") return "online";
-  if (v === "needs_identity_mapping") return "degraded";
-  if (v === "error") return "error";
-  if (v === "disabled") return "offline";
+  if (v === "needs_identity_mapping") return "muted";
+  if (v === "error") return "offline";
+  if (v === "disabled") return "disabled";
   return "muted";
-}
-
-function formatLifecycleLabel(s: string | null | undefined): string {
-  const v = (s || "").trim();
-  if (!v) return "—";
-  return v.replace(/_/g, " ");
 }
 
 export function IngestDevicesPage() {
   const { siteId: opsSiteId, refreshToken } = useOpsShell();
+  const sitePerms = useSitePermissionsOptional();
   const [searchParams, setSearchParams] = useSearchParams();
-  const didInitScopeSite = useRef(false);
   const [sites, setSites] = useState<SiteRow[]>([]);
-  const [filterSiteId, setFilterSiteId] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [appliedQ, setAppliedQ] = useState("");
   const [filterProtocol, setFilterProtocol] = useState<string>("all");
@@ -98,6 +81,7 @@ export function IngestDevicesPage() {
   const [scrubbedModalOpen, setScrubbedModalOpen] = useState(false);
   const [scrubbedEndpointId, setScrubbedEndpointId] = useState("");
   const [scrubbedEndpointLabel, setScrubbedEndpointLabel] = useState("");
+  const [lineageModalOpen, setLineageModalOpen] = useState(false);
 
   useShellFeedback(err, ok);
 
@@ -130,25 +114,20 @@ export function IngestDevicesPage() {
     );
   }, [setSearchParams]);
 
+  const canEndpointsWrite = Boolean(sitePerms && !sitePerms.loading && sitePerms.hasUnion("endpoints.write"));
+
   useEffect(() => {
     void apiFetch<SiteRow[]>("/administration/sites")
       .then((rows) => setSites(rows ?? []))
       .catch(() => setSites([]));
   }, []);
 
-  useEffect(() => {
-    if (didInitScopeSite.current || !opsSiteId) return;
-    didInitScopeSite.current = true;
-    setFilterSiteId(opsSiteId);
-    setFormSiteId(opsSiteId);
-  }, [opsSiteId]);
-
   const loadEndpoints = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
       const r = await listEndpoints({
-        site_id: filterSiteId || undefined,
+        site_id: opsSiteId ?? undefined,
         q: appliedQ.trim() || undefined,
       });
       setItems(r?.items ?? []);
@@ -165,14 +144,14 @@ export function IngestDevicesPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterSiteId, appliedQ]);
+  }, [opsSiteId, appliedQ]);
 
   useEffect(() => {
     void loadEndpoints();
   }, [loadEndpoints, refreshToken]);
 
   useEffect(() => {
-    const sid = formSiteId || filterSiteId;
+    const sid = formSiteId || opsSiteId;
     if (!sid) {
       setDevices([]);
       return;
@@ -192,7 +171,9 @@ export function IngestDevicesPage() {
     return () => {
       cancelled = true;
     };
-  }, [formSiteId, filterSiteId, refreshToken]);
+  }, [formSiteId, opsSiteId, refreshToken]);
+
+  useEffect(() => setPage(0), [appliedQ, filterProtocol, filterLifecycle, opsSiteId]);
 
   const sitesById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -209,8 +190,11 @@ export function IngestDevicesPage() {
   }, [devices]);
 
   const linkableDevices = useMemo(
-    () => devices.filter((d) => d.endpoint?.id && (formSiteId || filterSiteId ? d.site_id === (formSiteId || filterSiteId) : true)),
-    [devices, formSiteId, filterSiteId],
+    () =>
+      devices.filter((d) =>
+        d.endpoint?.id && (formSiteId || opsSiteId ? d.site_id === (formSiteId || opsSiteId || "") : true),
+      ),
+    [devices, formSiteId, opsSiteId],
   );
 
   const filteredItems = useMemo(() => {
@@ -240,7 +224,7 @@ export function IngestDevicesPage() {
 
   function resetForm() {
     setEditing(null);
-    setFormSiteId(filterSiteId || opsSiteId || "");
+    setFormSiteId(opsSiteId || "");
     setEndpointName("");
     setProtocol(V2_ENDPOINT_PROTOCOL_OPTIONS[1]?.value ?? "mqtt");
     setLinkDeviceEndpointId("");
@@ -339,9 +323,9 @@ export function IngestDevicesPage() {
     }
   }
 
-  function onSearch(e: FormEvent) {
+  function onFilterSearch(e: FormEvent) {
     e.preventDefault();
-    setAppliedQ(searchInput);
+    setAppliedQ(searchInput.trim());
   }
 
   function toggleInSet(setter: Dispatch<SetStateAction<Set<string>>>, key: string) {
@@ -470,8 +454,8 @@ export function IngestDevicesPage() {
         <AarButton type="button" variant="outline" onClick={() => { resetForm(); setEndpointModalOpen(false); }}>
           Cancel
         </AarButton>
-        <AarButton type="submit" variant="primary" disabled={loading}>
-          {editing ? "Save changes" : "Create endpoint"}
+        <AarButton type="submit" variant="primary" disabled={loading || !canEndpointsWrite} title={!canEndpointsWrite ? "Requires endpoints.write" : undefined}>
+          {editing ? "Save Changes" : "Create Endpoint"}
         </AarButton>
       </div>
     </form>
@@ -482,15 +466,20 @@ export function IngestDevicesPage() {
       <div className="dm-root">
         <OpsPageHeader
           title="Endpoints"
-          subtitle="Create v2 ingest endpoints, link Manage Devices endpoints, and map identity for resolution."
+          subtitle="Create v2 ingest endpoints, link registered device endpoints, and map identity for resolution."
           actions={
             <>
-              <Link className="dm-btn dm-btn--outline" to="/devices/register">
-                Manage Devices
-              </Link>
-              <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateEndpointModal}>
+              <button
+                type="button"
+                className="dm-btn dm-btn--outline"
+                onClick={() => setLineageModalOpen(true)}
+              >
+                <GitBranch size={16} strokeWidth={2} aria-hidden style={{ verticalAlign: "middle", marginRight: 6 }} />
+                View Lineage
+              </button>
+              <button type="button" className="dm-btn dm-btn--primary" onClick={openCreateEndpointModal} disabled={!canEndpointsWrite} title={!canEndpointsWrite ? "Requires endpoints.write" : undefined}>
                 <Plus size={16} strokeWidth={2} aria-hidden style={{ verticalAlign: "middle", marginRight: 6 }} />
-                Create endpoint
+                Create Endpoint
               </button>
             </>
           }
@@ -529,73 +518,11 @@ export function IngestDevicesPage() {
           </div>
         </OpsKpiRow>
 
-        <section className="ops-list-page__section">
         <OpsFilterPanel ariaLabel="Endpoint filters">
-          <form className="dm-controls-form" onSubmit={onSearch}>
+          <form className="dm-controls-form" onSubmit={onFilterSearch}>
             <div className="dm-controls-form__row">
-              <div className="dm-filter-field">
-                <label htmlFor="ingest-f-site">Site</label>
-                <select
-                  id="ingest-f-site"
-                  className="dm-search-input"
-                  value={filterSiteId}
-                  onChange={(e) => setFilterSiteId(e.target.value)}
-                >
-                  <option value="">All sites</option>
-                  {sites.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="dm-filter-field">
-                <label htmlFor="ingest-f-proto">Protocol</label>
-                <select
-                  id="ingest-f-proto"
-                  className="dm-search-input"
-                  value={filterProtocol}
-                  onChange={(e) => setFilterProtocol(e.target.value)}
-                >
-                  <option value="all">All</option>
-                  {V2_ENDPOINT_PROTOCOL_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="dm-filter-field">
-                <label htmlFor="ingest-f-life">Lifecycle</label>
-                <select
-                  id="ingest-f-life"
-                  className="dm-search-input"
-                  value={filterLifecycle}
-                  onChange={(e) => setFilterLifecycle(e.target.value)}
-                >
-                  {ENDPOINT_LIFECYCLE_FILTERS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="dm-filter-field ingest-ept-filter-refresh">
-                <label htmlFor="ingest-filter-refresh">Refresh</label>
-                <AarButton
-                  id="ingest-filter-refresh"
-                  type="button"
-                  variant="outline"
-                  disabled={loading}
-                  title="Reload endpoints from the server"
-                  className="ingest-ept-filter-refresh__btn"
-                  onClick={() => void loadEndpoints()}
-                >
-                  <RefreshCw size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                  <span className="ingest-ept-filter-refresh__label">Refresh</span>
-                </AarButton>
-              </div>
-              <div className="dm-search-wrap ingest-ept-search-wrap">
+              <OpsScopeControls variant="filters" timeRangeLabel="Range" />
+              <div className="dm-search-wrap">
                 <Search size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                 <input
                   id="ingest-q"
@@ -606,43 +533,43 @@ export function IngestDevicesPage() {
                   aria-label="Search endpoints"
                 />
               </div>
-              <AarButton type="submit" variant="primary" className="aar-btn--search dm-btn--search">
+              <div className="dm-filter-field">
+                <label htmlFor="ingest-f-proto">Protocol</label>
+                <select id="ingest-f-proto" value={filterProtocol} onChange={(e) => setFilterProtocol(e.target.value)}>
+                  <option value="all">All</option>
+                  {V2_ENDPOINT_PROTOCOL_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="dm-filter-field">
+                <label htmlFor="ingest-f-life">Lifecycle</label>
+                <select id="ingest-f-life" value={filterLifecycle} onChange={(e) => setFilterLifecycle(e.target.value)}>
+                  {ENDPOINT_LIFECYCLE_FILTERS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="submit" className="dm-btn dm-btn--primary dm-btn--search" disabled={loading}>
                 Search
-              </AarButton>
+              </button>
             </div>
           </form>
         </OpsFilterPanel>
-        </section>
 
-          <nav className="ingest-ept-subnav" aria-label="Ingest endpoints navigation">
-            <Link to="/devices/register" className="ingest-ept-subnav__back">
-              <ArrowLeft size={16} strokeWidth={2} aria-hidden />
-              Manage Devices
-            </Link>
-          </nav>
-
+        <div className="ingest-ept-endpoints-table">
           {err ? <PageStatus variant="error">{err}</PageStatus> : null}
           {ok ? <PageStatus variant="success">{ok}</PageStatus> : null}
 
-            <section className="ingest-ept-panel ingest-ept-panel--fullbleed">
-              <h2 className="ingest-ept-table-title">Endpoints</h2>
-              <p
-                style={{
-                  margin: "0.2rem 0 0.55rem",
-                  fontSize: "0.78rem",
-                  color: "var(--color-text-muted)",
-                  lineHeight: 1.4,
-                }}
-              >
-                Scrubbed event history (Timescale) for each ingest stream: use the <strong>braces</strong>{" "}
-                <Braces size={12} strokeWidth={2} aria-hidden style={{ verticalAlign: "text-bottom" }} /> action in
-                each row (same pattern as raw samples on Register devices).
-              </p>
-              <OpsDataTable id="v2-ingest-endpoints-table">
+          <OpsDataTable id="v2-ingest-endpoints-table">
                 {loading && filteredItems.length === 0 ? (
                   <p className="dm-empty">Loading…</p>
                 ) : filteredItems.length === 0 ? (
-                  <p className="dm-empty">No endpoints match the current filters.</p>
+                  <p className="dm-data-table__empty">No endpoints match the current filters.</p>
                 ) : (
                   <div className="dm-device-table-shell">
                     <div className="dm-table-scroll">
@@ -696,7 +623,7 @@ export function IngestDevicesPage() {
                                 </td>
                                 <td className="dm-data-table__td dm-data-table__td--center">
                                   <OpsStatusPill
-                                    status={formatLifecycleLabel(ep.lifecycle_status)}
+                                    status={ep.lifecycle_status?.trim() ? ep.lifecycle_status : "—"}
                                     variant={lifecyclePillVariant(ep.lifecycle_status)}
                                   />
                                 </td>
@@ -774,7 +701,21 @@ export function IngestDevicesPage() {
                   </OpsActionButton>
                 </div>
               ) : null}
-            </section>
+        </div>
+
+        <AppModalShell
+          open={lineageModalOpen}
+          title="Device lineage"
+          titleId="ingest-lineage-modal-title"
+          subtitle="Trace how data flows from devices through ingest and downstream systems."
+          onClose={() => setLineageModalOpen(false)}
+          size="lg"
+        >
+          <p className="dash-widget__muted" style={{ margin: 0, lineHeight: 1.5 }}>
+            Lineage visualization is not available yet. This dialog will show version history, endpoint links, and
+            related context for the current scope.
+          </p>
+        </AppModalShell>
 
         <AppModalShell
           open={endpointModalOpen}

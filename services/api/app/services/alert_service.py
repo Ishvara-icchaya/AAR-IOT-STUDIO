@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, user_may_access_site
+from app.access_control import user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.core.alert_category import ALLOWED_ALERT_CATEGORIES
 from app.core.alert_severity import normalize_severity
 from app.models.alert import Alert
@@ -37,7 +38,7 @@ def _effective_platform_site_id(db: Session, a: Alert) -> uuid.UUID | None:
 def _may_view_alert(db: Session, user: User, a: Alert) -> bool:
     if a.customer_id != user.customer_id:
         return False
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     if allowed is None:
         return True
     eff = _effective_platform_site_id(db, a)
@@ -66,7 +67,7 @@ def _alert_filter_parts(
     search: str | None,
 ) -> tuple[list, object] | None:
     """Returns (where_parts, effective_site_expr) or None if no rows may be returned."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "devices.read")
     effective_site = func.coalesce(Device.site_id, Alert.site_id)
     parts: list = [Alert.customer_id == user.customer_id]
     if allowed is not None and len(allowed) == 0:
@@ -115,15 +116,19 @@ def _enrich_alert_rows(db: Session, rows: list[Alert]) -> list[AlertRead]:
     for a in rows:
         psid: uuid.UUID | None = None
         pname: str | None = None
+        pdname: str | None = None
         if a.device_id and a.device_id in devices_by_id:
             d = devices_by_id[a.device_id]
             psid = d.site_id
             pname = site_names.get(d.site_id)
+            pdname = ((d.name or "").strip() or None) if d.name else None
         elif a.site_id:
             psid = a.site_id
             pname = site_names.get(a.site_id)
         base = AlertRead.model_validate(a)
-        out.append(base.model_copy(update={"platform_site_id": psid, "platform_site_name": pname}))
+        out.append(
+            base.model_copy(update={"platform_site_id": psid, "platform_site_name": pname, "platform_device_name": pdname})
+        )
     return out
 
 

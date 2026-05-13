@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.access_control import allowed_site_ids_for_user, ensure_site_in_tenant, user_may_access_site
+from app.access_control import ensure_site_in_tenant, user_may_access_site
+from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.endpoint import Endpoint
@@ -100,7 +101,7 @@ def map_eligible_objects(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -147,7 +148,7 @@ def map_markers(
     db: Session = Depends(get_db),
 ):
     """Runtime markers for a site (Redis-first, same shape as dashboard map widget when light=false)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -195,7 +196,7 @@ def map_markers_query(
 ):
     """Resolve markers for dashboard map widgets without embedding large arrays in live widget payloads."""
     t0 = time.perf_counter()
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, body.site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -350,7 +351,7 @@ def map_object_detail(
             status.HTTP_400_BAD_REQUEST,
             "source_type must be data_object, result_object, latest_device_state, or device_state",
         )
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -384,7 +385,7 @@ def map_intelligence_expanded(
     db: Session = Depends(get_db),
 ):
     """Endpoint/site device roster with mobility + server-side freshness (Phases 2–3)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -424,7 +425,7 @@ def map_intelligence_path(
     """Historical footprint from scrubbed_events (Phase 4–5: polyline, gaps, stale segments)."""
     if scope != "resolved_device":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only scope=resolved_device is supported")
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")
@@ -456,7 +457,7 @@ def map_intelligence_historical_markers(
     db: Session = Depends(get_db),
 ):
     """Deduped scrubbed-event coordinates for historical map overlay (all devices in scope)."""
-    allowed = allowed_site_ids_for_user(db, user)
+    allowed = site_ids_with_permission(db, user, "dashboards.read")
     site = ensure_site_in_tenant(db, user.customer_id, site_id)
     if not site:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Site not found")

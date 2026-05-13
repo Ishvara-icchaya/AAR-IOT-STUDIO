@@ -11,7 +11,6 @@ type Props = {
   onSelectAll: () => void;
   onClearAll: () => void;
   sampledLabel: string;
-  onRefreshSample: () => void;
 };
 
 export function FieldExplorerPanel({
@@ -24,7 +23,6 @@ export function FieldExplorerPanel({
   onSelectAll,
   onClearAll,
   sampledLabel,
-  onRefreshSample,
 }: Props) {
   const q = fieldSearch.trim().toLowerCase();
   const rows = q ? fields.filter((f) => f.path.toLowerCase().includes(q) || f.type.toLowerCase().includes(q)) : fields;
@@ -53,9 +51,6 @@ export function FieldExplorerPanel({
             value={fieldSearch}
             onChange={(e) => onFieldSearchChange(e.target.value)}
           />
-          <AarButton type="button" variant="outline" onClick={onRefreshSample}>
-            Refresh
-          </AarButton>
         </div>
         <div className="scrubber2-toolbar" style={{ justifyContent: "space-between" }}>
           <span className="scrubber2-muted">
@@ -63,10 +58,10 @@ export function FieldExplorerPanel({
           </span>
           <span style={{ display: "flex", gap: "0.35rem" }}>
             <AarButton type="button" variant="outline" onClick={onSelectAll}>
-              Select all
+              Select All
             </AarButton>
             <AarButton type="button" variant="outline" onClick={onClearAll}>
-              Clear all
+              Clear All
             </AarButton>
           </span>
         </div>
