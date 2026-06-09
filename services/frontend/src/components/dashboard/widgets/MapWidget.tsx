@@ -768,6 +768,10 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
     deck.applyLayerControls(layerControls);
   }, [intelOverlay, layerControls, syncKey]);
 
+  const onLegendColorMode = useCallback((m: MapLayerColorMode) => {
+    setLayerControls((lc) => ({ ...lc, colorMode: m }));
+  }, []);
+
   if (d.error) {
     return (
       <DashboardWidgetFrame
@@ -790,10 +794,6 @@ export function MapWidget({ block }: { block: DashboardLiveWidgetDTO }) {
   const isEnterprise = enterpriseMode === true;
   const intelEndpointId = dominantEndpointId(filteredMarkers);
   const intelSiteId = chrome.siteId ?? "";
-
-  const onLegendColorMode = useCallback((m: MapLayerColorMode) => {
-    setLayerControls((lc) => ({ ...lc, colorMode: m }));
-  }, []);
 
   const mapHostKey = enterpriseMode ? "enterprise" : "intel-cockpit";
 
