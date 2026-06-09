@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppModalShell } from "@/components/app/AppModalShell";
+import { AarPill, type AarPillTone } from "@/components/system/AarPill";
 import {
   getMapIntelligenceExpanded,
   getMapIntelligenceHistoricalMarkers,
@@ -57,12 +58,12 @@ export type MapIntelligencePanelProps = {
   layersPanel: ReactNode;
 };
 
-function freshnessPillClass(s: string | undefined): string {
+function freshnessPillTone(s: string | undefined): AarPillTone {
   const x = (s ?? "").toLowerCase();
-  if (x === "active") return "dm-pill dm-pill--neon";
-  if (x === "stale") return "dm-pill dm-pill--warn";
-  if (x === "offline") return "dm-pill dm-pill--bad";
-  return "dm-pill dm-pill--muted";
+  if (x === "active") return "neon";
+  if (x === "stale") return "warn";
+  if (x === "offline") return "bad";
+  return "muted";
 }
 
 function formatDetailCell(v: unknown): string {
@@ -736,18 +737,18 @@ export function MapIntelligencePanel({
                   </div>
                 </div>
                 <div className="map-intelligence-panel__status-row" aria-label="Freshness counts">
-                  <span className="dm-pill dm-pill--neon" title="Active">
+                  <AarPill tone="neon" title="Active">
                     A {typeof ep?.active_count === "number" ? ep.active_count : "—"}
-                  </span>
-                  <span className="dm-pill dm-pill--warn" title="Stale">
+                  </AarPill>
+                  <AarPill tone="warn" title="Stale">
                     S {typeof ep?.stale_count === "number" ? ep.stale_count : "—"}
-                  </span>
-                  <span className="dm-pill dm-pill--bad" title="Offline">
+                  </AarPill>
+                  <AarPill tone="bad" title="Offline">
                     O {typeof ep?.offline_count === "number" ? ep.offline_count : "—"}
-                  </span>
-                  <span className="dm-pill dm-pill--muted" title="Unknown">
+                  </AarPill>
+                  <AarPill tone="muted" title="Unknown">
                     ? {typeof ep?.unknown_count === "number" ? ep.unknown_count : "—"}
-                  </span>
+                  </AarPill>
                 </div>
               </>
             )}
@@ -836,7 +837,7 @@ export function MapIntelligencePanel({
                           </button>
                         </td>
                         <td className="dm-data-table__td dm-data-table__td--center">
-                          <span className={freshnessPillClass(d.freshness_status)}>{d.freshness_status ?? "—"}</span>
+                          <AarPill tone={freshnessPillTone(d.freshness_status)}>{d.freshness_status ?? "—"}</AarPill>
                         </td>
                         <td className="dm-data-table__td">{d.mobility_type ?? "—"}</td>
                         <td className="dm-data-table__td map-intelligence-panel__td-compact">
@@ -929,7 +930,7 @@ export function MapIntelligencePanel({
           <>
             <div className="map-intelligence-panel__selected-head">
               <span className="map-intelligence-panel__selected-name">{selected.display_name ?? selected.entityId}</span>
-              <span className="dm-pill dm-pill--muted">{selected.mobility_type ?? "unknown"}</span>
+              <AarPill tone="muted">{selected.mobility_type ?? "unknown"}</AarPill>
             </div>
             {modalDetailRows.length > 0 ? (
               <div className="map-intelligence-panel__kv map-intelligence-panel__kv--modal">
