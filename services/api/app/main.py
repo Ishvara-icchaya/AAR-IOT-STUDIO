@@ -95,7 +95,7 @@ origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(DebugHttpMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["http://localhost:5173"],
+    allow_origins=origins or ["http://localhost:8888"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

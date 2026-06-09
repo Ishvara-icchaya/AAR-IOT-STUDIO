@@ -50,7 +50,7 @@ docker compose up -d --build
 
 | URL | Service |
 |-----|---------|
-| http://localhost:5173 | Web UI |
+| http://localhost:8888 | Web UI |
 | http://localhost:8000 | API (OpenAPI at `/docs`) |
 | `GET /health` | Health check |
 
@@ -59,7 +59,7 @@ docker compose up -d --build
 ```bash
 ./run.sh debug   # tear down, rebuild frontend + images, foreground stack (DEBUG logs)
 ./run.sh up      # detached stack (set SKIP_FRONTEND_BUILD=1 to skip npm build)
-./run.sh down    # stop stack and free ports 8000 / 5173
+./run.sh down    # stop stack and free ports 8000 / 8888
 ```
 
 Debug mode sets `LOG_LEVEL=DEBUG` for Python services, uvicorn access logs, and Vite debug output.
@@ -68,7 +68,7 @@ Debug mode sets `LOG_LEVEL=DEBUG` for Python services, uvicorn access logs, and 
 
 | Service | Port | Notes |
 |---------|------|-------|
-| Frontend | 5173 | Vite in container |
+| Frontend | 8888 | Vite in container |
 | API | 8000 | |
 | Postgres | 5434 | Avoids local 5432 conflicts |
 | TimescaleDB | 5433 | |

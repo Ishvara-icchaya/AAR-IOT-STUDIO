@@ -46,7 +46,7 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    port: 5173,
+    port: 8888,
     strictPort: true,
     ...(process.env.VITE_HMR_CLIENT_HOST || process.env.VITE_HMR_CLIENT_PORT
       ? {
@@ -58,7 +58,7 @@ export default defineConfig({
           },
         }
       : {}),
-    /** API must be reachable here or `/api/*` proxy returns 502; browser still talks to Vite on :5173. */
+    /** API must be reachable here or `/api/*` proxy returns 502; browser still talks to Vite on :8888. */
     proxy: {
       "/api": {
         target: devProxyTarget,

@@ -66,7 +66,7 @@ free_stack_host_ports() {
   local mqtt
   mqtt="$(mqtt_broker_publish_port)"
   local -a ports=(
-    5173 8000
+    8888 8000
     9092
     9000 9001
     5433 5434
@@ -174,7 +174,7 @@ cmd_up() {
   fi
   "${COMPOSE_BASE[@]}" up -d
   "${COMPOSE_BASE[@]}" up -d worker-rest-poller
-  echo "[run.sh] UI:  http://localhost:5173"
+  echo "[run.sh] UI:  http://localhost:8888"
   echo "[run.sh] API: http://localhost:8000  (OpenAPI: /docs)"
   echo "[run.sh] Tip: REST outbound polling logs — ./run.sh rest-poller   or   docker compose logs -f worker-rest-poller"
 }
@@ -215,7 +215,7 @@ Usage: ./run.sh <command> [args]
                   ingress workers (REST poller is in the default stack) and Ollama (see docker-compose.yml profiles).
 
   down            Stop compose stacks, then kill listeners on published stack ports (API 8000,
-                  Vite 5173, Kafka 9092, MinIO 9000/9001, Postgres 5433/5434, Redis 16379, MQTT host port
+                  Vite 8888, Kafka 9092, MinIO 9000/9001, Postgres 5433/5434, Redis 16379, MQTT host port
                   18883 (or MQTT_BROKER_PUBLISH_PORT from .env). Set RUN_SH_KILL_PORTS for extras.
 
   rest-poller     docker compose up -d --build worker-rest-poller, then logs -f worker-rest-poller

@@ -15,7 +15,7 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-/** Relative default (`/api/v1`) uses Vite dev proxy → same host as the UI (works with LAN IP :5173). */
+/** Relative default (`/api/v1`) uses Vite dev proxy → same host as the UI (works with LAN IP :8888). */
 const rawBase = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 const base = String(rawBase).replace(/\/$/, "");
 

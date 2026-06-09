@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         default="raw.ingest",
         validation_alias="KAFKA_RAW_INGEST_TOPIC",
     )
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:8888,http://127.0.0.1:8888"
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     jwt_secret_key: str = Field(
         default="change-me-in-production-use-long-random-string",

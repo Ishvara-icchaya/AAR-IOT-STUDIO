@@ -120,7 +120,7 @@ services:
       MINIO_ACCESS_KEY: ${API_MINIO_ACCESS_KEY:-minio}
       MINIO_SECRET_KEY: ${API_MINIO_SECRET_KEY:-minio_dev_change_me}
       MINIO_BUCKET_RAW: ${API_MINIO_BUCKET_RAW:-aar-raw}
-      CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:8888,http://127.0.0.1:8888}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PYTHONUNBUFFERED: "1"
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-change-me}
@@ -180,11 +180,11 @@ services:
       context: ./services/frontend
       dockerfile: Dockerfile
     environment:
-      # Same-origin /api/v1 → Vite proxies to API (works from localhost or LAN :5173). Override with full URL if needed.
+      # Same-origin /api/v1 → Vite proxies to API (works from localhost or LAN :8888). Override with full URL if needed.
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
       VITE_DEV_PROXY_TARGET: ${VITE_DEV_PROXY_TARGET:-http://api:8000}
     ports:
-      - "5173:5173"
+      - "8888:8888"
     depends_on:
       api:
         condition: service_healthy
