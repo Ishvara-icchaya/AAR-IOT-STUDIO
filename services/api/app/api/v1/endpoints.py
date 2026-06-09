@@ -15,7 +15,7 @@ from app.access_control import ensure_site_in_tenant, user_may_access_site
 from app.services.permission_service import site_ids_with_permission
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.device import Device
+from app.models.device_version import DeviceVersion
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.device_object import DeviceObject
 from app.models.endpoint import Endpoint
@@ -24,7 +24,13 @@ from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
 from app.models.user import User
 from app.schemas.payload_field_metadata import PayloadFieldEntry, PayloadFieldMetadataResponse
-from app.services.endpoint_identity_publish import merge_identity_draft, publish_endpoint_identity, sample_document_for_validation
+from app.services.device_version_read_context import (
+    LiveReadLane,
+    batch_effective_shared_device_version_ids,
+    candidate_latest_row,
+    device_id_for_resolved_device,
+    resolve_operational_read_for_resolved_device,
+)
 from app.services.endpoint_scrubber_identity_hints import paths_from_device_mapping
 from app.services.endpoint_scrubber_semantics_identity_sync import sync_v2_endpoint_identity_from_device_mapping
 from app.services.endpoint_sample_service import normalize_sample_document
@@ -142,6 +148,7 @@ def create_endpoint(
         auth_config=body.auth_config,
         device_endpoint_id=body.device_endpoint_id,
         enabled=body.enabled,
+        version_identity=body.version_identity,
     )
     db.add(ep)
     db.flush()
@@ -284,6 +291,18 @@ def update_endpoint(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
     _ensure_endpoint_visible(ep, user, allowed)
 
+    patch_keys = set(body.model_dump(exclude_unset=True).keys())
+    if ep.identity_managed_by_scrubber and patch_keys.intersection(
+        {"primary_device_key_fields", "device_label_fields", "location_fields", "identity_draft"}
+    ):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Identity paths are managed by the published scrubber pipeline (Field Explorer identity/display roles). "
+                "Update the scrubber and republish, or use Ingest → View identity to inspect the applied sample."
+            ),
+        )
+
     data = body.model_dump(exclude_unset=True)
     if "object_name" in data:
         raise HTTPException(
@@ -331,6 +350,8 @@ def update_endpoint(
         ep.protocol = data["protocol"].strip().lower()[:32]
     if "auth_config" in data:
         ep.auth_config = data["auth_config"]
+    if "version_identity" in data:
+        ep.version_identity = data.pop("version_identity")
     if "device_endpoint_id" in data:
         ep.device_endpoint_id = data["device_endpoint_id"]
     if "enabled" in data and data["enabled"] is not None:
@@ -506,6 +527,11 @@ def get_latest_state_for_resolved_device(
 @router.get("/{endpoint_id}/map-markers", response_model=MapMarkerListResponse)
 def list_endpoint_map_markers(
     endpoint_id: uuid.UUID,
+    device_version_id: uuid.UUID | None = Query(
+        None,
+        alias="deviceVersionId",
+        description="Explicit operational cut (candidate lane overlays live fields).",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -515,18 +541,56 @@ def list_endpoint_map_markers(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Endpoint not found")
     _ensure_endpoint_visible(ep, user, allowed)
 
-    rows = db.scalars(
-        select(LatestDeviceState)
-        .where(
-            LatestDeviceState.endpoint_id == endpoint_id,
-            LatestDeviceState.customer_id == user.customer_id,
-        )
-        .order_by(LatestDeviceState.updated_at.desc())
-    ).all()
+    rows = list(
+        db.scalars(
+            select(LatestDeviceState)
+            .where(
+                LatestDeviceState.endpoint_id == endpoint_id,
+                LatestDeviceState.customer_id == user.customer_id,
+            )
+            .order_by(LatestDeviceState.updated_at.desc())
+        ).all()
+    )
+    rids = [r.resolved_device_id for r in rows]
+    eff_map = batch_effective_shared_device_version_ids(
+        db, customer_id=user.customer_id, resolved_device_ids=rids
+    )
+    pin_dv = db.get(DeviceVersion, device_version_id) if device_version_id else None
 
     markers: list[MapMarkerRead] = []
     for row in rows:
         loc = row.location_json if isinstance(row.location_json, dict) else {}
+        disp = row.display_json if isinstance(row.display_json, dict) else {}
+        kpi = row.kpi_json if isinstance(row.kpi_json, dict) else {}
+        hj = row.health_json if isinstance(row.health_json, dict) else None
+        up_at = row.updated_at
+        if pin_dv is not None:
+            pid_dev = device_id_for_resolved_device(db, row.resolved_device_id)
+            if pid_dev == pin_dv.device_id:
+                try:
+                    ctx = resolve_operational_read_for_resolved_device(
+                        db,
+                        customer_id=user.customer_id,
+                        resolved_device_id=row.resolved_device_id,
+                        explicit_device_version_id=pin_dv.id,
+                    )
+                except (LookupError, PermissionError):
+                    ctx = None
+                else:
+                    if ctx.live_read_lane == LiveReadLane.unavailable:
+                        continue
+                    if ctx.live_read_lane == LiveReadLane.candidate_lds:
+                        crow = candidate_latest_row(
+                            db, resolved_device_id=row.resolved_device_id, device_version_id=pin_dv.id
+                        )
+                        if crow:
+                            loc = crow.location_json if isinstance(crow.location_json, dict) else {}
+                            disp = crow.display_json if isinstance(crow.display_json, dict) else {}
+                            kpi = crow.kpi_json if isinstance(crow.kpi_json, dict) else {}
+                            hj = crow.health_json if isinstance(crow.health_json, dict) else None
+                            up_at = crow.updated_at
+                        else:
+                            continue
         lat = loc.get("lat", loc.get("latitude"))
         lon = loc.get("lon", loc.get("longitude"))
         try:
@@ -549,11 +613,12 @@ def list_endpoint_map_markers(
                 latitude=lat_f,
                 longitude=lon_f,
                 heading=heading,
-                updated_at=row.updated_at,
+                updated_at=up_at,
                 identity_json=row.identity_json if isinstance(row.identity_json, dict) else {},
-                display_json=row.display_json if isinstance(row.display_json, dict) else {},
-                kpi_json=row.kpi_json if isinstance(row.kpi_json, dict) else {},
-                health_json=row.health_json if isinstance(row.health_json, dict) else None,
+                display_json=disp,
+                kpi_json=kpi,
+                health_json=hj,
+                effective_device_version_id=eff_map.get(row.resolved_device_id),
             )
         )
     return MapMarkerListResponse(items=markers)

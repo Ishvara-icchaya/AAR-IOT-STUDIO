@@ -39,7 +39,7 @@ def find_published_workflows_for_data_object(
           (n.config_json->>'resolved_device_id') IS NOT NULL
           AND EXISTS (
             SELECT 1 FROM scrubbed_events se
-            WHERE se.payload_ref = %s::uuid
+            WHERE se.payload_ref = %s
               AND se.resolved_device_id::text = (n.config_json->>'resolved_device_id')
           )
         )
@@ -48,7 +48,7 @@ def find_published_workflows_for_data_object(
           AND EXISTS (
             SELECT 1 FROM latest_device_state lds
             INNER JOIN scrubbed_events se ON se.id = lds.scrubbed_event_id
-            WHERE se.payload_ref = %s::uuid
+            WHERE se.payload_ref = %s
               AND lds.id::text = (n.config_json->>'latest_device_state_id')
           )
         )

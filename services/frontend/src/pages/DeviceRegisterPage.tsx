@@ -8,11 +8,10 @@ import {
   Pencil,
   Search,
   LayoutList,
-  Rocket,
   Settings2,
   Upload,
 } from "lucide-react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/auth/AuthContext";
 import { apiFetch, isApiHttpError } from "@/api/client";
 import { validateDeviceEndpoint } from "@/api/deviceEndpoints";
@@ -34,7 +33,6 @@ import { OpsActionButton } from "@/components/ops/OpsActionButton";
 import { OpsFilterPanel } from "@/components/ops/OpsFilterPanel";
 import { OpsKpiRow } from "@/components/ops/OpsKpiRow";
 import { AppModalShell } from "@/components/app/AppModalShell";
-import { AppTabs } from "@/components/app";
 import { OpsPageHeader } from "@/components/ops/OpsPageHeader";
 import { OpsStatusPill, type OpsVariant } from "@/components/ops/OpsStatusPill";
 import { AarButton } from "@/components/system/AarButton";
@@ -55,6 +53,7 @@ import {
 } from "@/lib/deviceImportCsv";
 import { formatStatusDisplayLabel } from "@/lib/statusDisplay";
 import {
+  DEVICE_VERSION_STATUS_UI_OPTIONS,
   formatFirmwareChannelLabel,
   formatVersionStatusLabel,
   firmwareChannelPillSuffix,
@@ -63,22 +62,13 @@ import {
   versionStatusPillSuffix,
 } from "@/lib/deviceVersionUi";
 import { DeviceBoolPill, DeviceVersionHistoryDrawer } from "@/components/device/DeviceVersionHistoryDrawer";
-import { OtaCampaignNewWizard } from "@/components/ota/OtaCampaignNewWizard";
-import { OtaCampaignsListPanel } from "@/components/ota/OtaCampaignsListPanel";
 
 import "./device-register-page.css";
 import "@/pages/ingest-endpoints-page.css";
 
 type TimeScope = "all" | "last_1_hour" | "last_24_hours" | "last_7_days" | "last_30_days";
 
-type DeviceRegModalTab = "identity" | "readiness";
-
-function parseOptionalPositiveInt(raw: string): number | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  const n = Number.parseInt(t, 10);
-  return Number.isFinite(n) ? n : undefined;
-}
+type DeviceRegModalTab = "identity" | "ingest";
 
 function opsTimeRangeToScope(tr: OpsTimeRange): TimeScope {
   switch (tr) {
@@ -324,14 +314,12 @@ function connectivityTitle(d: DeviceRead): string | undefined {
 
 export function DeviceRegisterPage() {
   const location = useLocation();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { me } = useAuth();
   const isAdmin = userIsAdmin(me?.role, me?.is_superuser);
   const sitePerms = useSitePermissionsOptional();
   const canDevicesWrite = Boolean(isAdmin || sitePerms?.hasUnion("devices.write"));
   const canDevicesImport = Boolean(isAdmin || sitePerms?.hasUnion("devices.import"));
-  const canOtaCreate = Boolean(isAdmin || sitePerms?.hasUnion("ota.create"));
   const { siteId: opsSiteId, timeRange: opsTimeRange, refreshToken } = useOpsShell();
   const timeScope = useMemo(() => opsTimeRangeToScope(opsTimeRange), [opsTimeRange]);
   const [sites, setSites] = useState<SiteRow[]>([]);
@@ -359,13 +347,9 @@ export function DeviceRegisterPage() {
   const [siteId, setSiteId] = useState("");
   const [deviceModalTab, setDeviceModalTab] = useState<DeviceRegModalTab>("identity");
   const [icon, setIcon] = useState("");
-  const [expectedInterval, setExpectedInterval] = useState("");
-  const [lateThreshold, setLateThreshold] = useState("");
-  const [offlineThreshold, setOfflineThreshold] = useState("");
   const [firmwareVersion, setFirmwareVersion] = useState("");
-  const [firmwareChannel, setFirmwareChannel] = useState<"" | "stable" | "beta" | "dev" | "custom">("");
-  const [otaSupported, setOtaSupported] = useState(false);
-  const [rollbackSupported, setRollbackSupported] = useState(false);
+  const [deviceIsActive, setDeviceIsActive] = useState(true);
+  const [deviceVersionStatus, setDeviceVersionStatus] = useState("active");
 
   const [rawSampleOpen, setRawSampleOpen] = useState(false);
   const [rawSampleDeviceId, setRawSampleDeviceId] = useState("");
@@ -388,12 +372,6 @@ export function DeviceRegisterPage() {
   const [importCommitBusy, setImportCommitBusy] = useState(false);
   const [versionDrawerDeviceId, setVersionDrawerDeviceId] = useState<string | null>(null);
   const [versionDrawerFetched, setVersionDrawerFetched] = useState<DeviceRead | null>(null);
-  const [otaListOpen, setOtaListOpen] = useState(false);
-  const [otaNewOpen, setOtaNewOpen] = useState(false);
-  const [otaWizardSiteId, setOtaWizardSiteId] = useState<string | null>(null);
-  const [otaWizardDeviceId, setOtaWizardDeviceId] = useState<string | null>(null);
-  const [otaWizardDeviceName, setOtaWizardDeviceName] = useState<string | null>(null);
-  const [otaWizardSiteName, setOtaWizardSiteName] = useState<string | null>(null);
 
   const openRawSampleModal = useCallback((d: DeviceRead) => {
     setRawSampleDeviceId(d.id);
@@ -565,13 +543,9 @@ export function DeviceRegisterPage() {
     setSaving(false);
     setDeviceModalTab("identity");
     setIcon("");
-    setExpectedInterval("");
-    setLateThreshold("");
-    setOfflineThreshold("");
     setFirmwareVersion("");
-    setFirmwareChannel("");
-    setOtaSupported(false);
-    setRollbackSupported(false);
+    setDeviceIsActive(true);
+    setDeviceVersionStatus("active");
   }, []);
 
   useEffect(() => {
@@ -671,6 +645,11 @@ export function DeviceRegisterPage() {
     () => (modalMode === "edit" && editId ? items.find((x) => x.id === editId) ?? null : null),
     [modalMode, editId, items],
   );
+
+  const deviceModalSiteLabel = useMemo(() => {
+    if (!siteId) return "—";
+    return sitesById[siteId] ?? sites.find((s) => s.id === siteId)?.name ?? `${siteId.slice(0, 8)}…`;
+  }, [siteId, sitesById, sites]);
 
   useEffect(() => {
     if (!versionDrawerDeviceId) {
@@ -779,18 +758,16 @@ export function DeviceRegisterPage() {
     setEditId(null);
     setName("");
     setDescription("");
-    setSiteId(sites[0]?.id ?? "");
+    const oid = opsSiteId?.trim();
+    const preferred = oid && sites.some((s) => s.id === oid) ? oid : sites[0]?.id ?? "";
+    setSiteId(preferred);
     setDeviceModalTab("identity");
     setIcon("");
-    setExpectedInterval("");
-    setLateThreshold("");
-    setOfflineThreshold("");
     setFirmwareVersion("");
-    setFirmwareChannel("");
-    setOtaSupported(false);
-    setRollbackSupported(false);
+    setDeviceIsActive(true);
+    setDeviceVersionStatus("active");
     setModalMode("create");
-  }, [sites]);
+  }, [sites, opsSiteId]);
 
   const openEditModal = useCallback((d: DeviceRead) => {
     setErr(null);
@@ -801,18 +778,9 @@ export function DeviceRegisterPage() {
     setSiteId(d.site_id);
     setDeviceModalTab("identity");
     setIcon(d.icon ?? "");
-    setExpectedInterval(d.expected_interval_seconds != null ? String(d.expected_interval_seconds) : "");
-    setLateThreshold(d.late_threshold_seconds != null ? String(d.late_threshold_seconds) : "");
-    setOfflineThreshold(d.offline_threshold_seconds != null ? String(d.offline_threshold_seconds) : "");
     setFirmwareVersion(d.firmware_version?.trim() ?? "");
-    const ch = (d.firmware_channel ?? "").trim().toLowerCase();
-    if (ch === "stable" || ch === "beta" || ch === "dev" || ch === "custom") {
-      setFirmwareChannel(ch);
-    } else {
-      setFirmwareChannel("");
-    }
-    setOtaSupported(Boolean(d.ota_supported));
-    setRollbackSupported(Boolean(d.rollback_supported));
+    setDeviceIsActive(d.is_active !== false);
+    setDeviceVersionStatus(normalizeVersionStatus(d.version_status));
     setModalMode("edit");
   }, []);
 
@@ -887,27 +855,14 @@ export function DeviceRegisterPage() {
   async function onModalSubmit(e: FormEvent) {
     e.preventDefault();
     if (!siteId || !name.trim()) return;
-    const lateN = parseOptionalPositiveInt(lateThreshold);
-    const offN = parseOptionalPositiveInt(offlineThreshold);
-    if (lateN !== undefined && offN !== undefined && offN < lateN) {
-      setErr("Offline threshold must be greater than or equal to late threshold.");
-      return;
-    }
     setSaving(true);
     setErr(null);
     setOk(null);
     try {
       const iconTrim = icon.trim();
-      const expN = parseOptionalPositiveInt(expectedInterval);
       const meta = {
         icon: iconTrim ? iconTrim : null,
-        expected_interval_seconds: expN ?? null,
-        late_threshold_seconds: lateN ?? null,
-        offline_threshold_seconds: offN ?? null,
         firmware_version: firmwareVersion.trim() ? firmwareVersion.trim() : null,
-        firmware_channel: firmwareChannel ? firmwareChannel : null,
-        ota_supported: otaSupported,
-        rollback_supported: rollbackSupported,
       };
       if (modalMode === "create") {
         await createDevice({
@@ -922,6 +877,8 @@ export function DeviceRegisterPage() {
           name: name.trim(),
           description: description.trim() || null,
           site_id: siteId,
+          is_active: deviceIsActive,
+          version_status: deviceVersionStatus,
           ...meta,
         });
         setOk("Device updated.");
@@ -952,14 +909,6 @@ export function DeviceRegisterPage() {
           subtitle="View and manage all devices across your sites."
           actions={
             <>
-              <button
-                type="button"
-                className="dm-btn dm-btn--outline"
-                onClick={() => setOtaListOpen(true)}
-                title="View OTA campaigns in a modal (same as Devices → OTA)"
-              >
-                OTA Campaigns
-              </button>
               <Link to="/devices/lineage" className="dm-btn dm-btn--outline">
                 Operational Lineage
               </Link>
@@ -1345,7 +1294,7 @@ export function DeviceRegisterPage() {
                               <Link
                                 className="dm-act-grid__btn"
                                 to={deviceDetailsUrl(d.id)}
-                                title="Device details — versions, lineage, impact, OTA"
+                                title="Device details — versions, lineage, impact, simulation"
                                 aria-label={`Device details hub for ${d.name}`}
                               >
                                 <LayoutList size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
@@ -1365,21 +1314,6 @@ export function DeviceRegisterPage() {
                                 onClick={() => openRawSampleModal(d)}
                               >
                                 <FileJson2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
-                              </OpsActionButton>
-                              <OpsActionButton
-                                tone="plain"
-                                title={!canOtaCreate ? "Requires ota.create" : "New OTA Campaign — site prefilled from this device"}
-                                aria-label={`New OTA Campaign for site of ${d.name}`}
-                                disabled={!canOtaCreate}
-                                onClick={() => {
-                                  setOtaWizardSiteId(d.site_id);
-                                  setOtaWizardDeviceId(d.id);
-                                  setOtaWizardDeviceName(d.name);
-                                  setOtaWizardSiteName(sitesById[d.site_id] ?? d.site_id);
-                                  setOtaNewOpen(true);
-                                }}
-                              >
-                                <Rocket size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
                               </OpsActionButton>
                             </div>
                           </td>
@@ -1739,197 +1673,120 @@ export function DeviceRegisterPage() {
       <AppModalShell
         open={Boolean(modalMode)}
         onClose={closeModal}
-        title={modalMode === "create" ? "Register device" : "Edit device"}
+        title="Register Device"
         titleId="device-modal-title"
         size="lg"
+        dialogClassName="device-register-device-modal"
       >
         <form onSubmit={onModalSubmit}>
-          <div style={modalStack}>
-            <AppTabs<DeviceRegModalTab>
-              tabs={[
-                { id: "identity", label: "Identity" },
-                { id: "readiness", label: "Readiness & firmware" },
-              ]}
-              active={deviceModalTab}
-              onChange={setDeviceModalTab}
-              plain
-              ariaLabel="Device registration sections"
-            />
-            {deviceModalTab === "identity" ? (
-              <div role="tabpanel" style={{ marginTop: "0.65rem" }}>
-                <label style={modalFieldStacked}>
-                  Site
-                  <select value={siteId} onChange={(e) => setSiteId(e.target.value)} required style={inpFull}>
-                    <option value="" disabled>
-                      Select site
-                    </option>
-                    {sites.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label style={modalFieldStacked}>
-                  Device name
-                  <input value={name} onChange={(e) => setName(e.target.value)} required style={inpFull} />
-                </label>
-                <label style={modalFieldStacked}>
-                  Description
-                  <input value={description} onChange={(e) => setDescription(e.target.value)} style={inpFull} />
-                </label>
-                <label style={modalFieldStacked}>
-                  Icon (optional URL or key)
-                  <input value={icon} onChange={(e) => setIcon(e.target.value)} style={inpFull} placeholder="e.g. device-icon-key" />
-                </label>
+          <div className="device-register-device-modal__stack">
+            <div
+              className="monitoring-page__tabs device-lineage-detail-tabs device-register-device-modal__tabs"
+              role="region"
+              aria-label="Device registration"
+            >
+              <div className="device-lineage-detail-tabs__bar" role="tablist" aria-label="Device registration tabs">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={deviceModalTab === "identity"}
+                  id="device-reg-tab-identity"
+                  className={`device-lineage-detail-tabs__tab${deviceModalTab === "identity" ? " device-lineage-detail-tabs__tab--active" : ""}`}
+                  onClick={() => setDeviceModalTab("identity")}
+                >
+                  Identity
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={deviceModalTab === "ingest"}
+                  id="device-reg-tab-ingest"
+                  className={`device-lineage-detail-tabs__tab${deviceModalTab === "ingest" ? " device-lineage-detail-tabs__tab--active" : ""}`}
+                  onClick={() => setDeviceModalTab("ingest")}
+                >
+                  Ingest Control
+                </button>
               </div>
-            ) : (
-              <div role="tabpanel" style={{ marginTop: "0.65rem" }}>
-                <p className="dash-widget__muted" style={{ margin: "0 0 0.65rem", fontSize: "0.78rem", lineHeight: 1.45 }}>
-                  Declared readiness and firmware metadata (Phase 1). Empty numeric fields keep platform defaults (60 /
-                  120 / 300 seconds). Full version lineage controls follow later milestones.
-                </p>
-                {editDeviceSnapshot ? (
-                  <dl
-                    style={{
-                      margin: "0 0 0.75rem",
-                      display: "grid",
-                      gridTemplateColumns: "11rem 1fr",
-                      gap: "0.25rem 0.5rem",
-                      fontSize: "0.82rem",
-                    }}
-                  >
-                    <dt style={{ color: "var(--color-text-muted)" }}>Device version</dt>
-                    <dd style={{ margin: 0 }}>{editDeviceSnapshot.device_version ?? "1"}</dd>
-                    <dt style={{ color: "var(--color-text-muted)" }}>Version status</dt>
-                    <dd style={{ margin: 0 }}>{formatVersionStatusLabel(normalizeVersionStatus(editDeviceSnapshot.version_status))}</dd>
-                  </dl>
-                ) : null}
-                <label style={modalFieldStacked}>
-                  Expected interval (seconds)
-                  <input
-                    type="number"
-                    min={5}
-                    max={86400}
-                    value={expectedInterval}
-                    onChange={(e) => setExpectedInterval(e.target.value)}
-                    style={inpFull}
-                    placeholder="60"
-                  />
-                </label>
-                <label style={modalFieldStacked}>
-                  Late threshold (seconds)
-                  <input
-                    type="number"
-                    min={1}
-                    max={86400}
-                    value={lateThreshold}
-                    onChange={(e) => setLateThreshold(e.target.value)}
-                    style={inpFull}
-                    placeholder="120"
-                  />
-                </label>
-                <label style={modalFieldStacked}>
-                  Offline threshold (seconds)
-                  <input
-                    type="number"
-                    min={1}
-                    max={86400}
-                    value={offlineThreshold}
-                    onChange={(e) => setOfflineThreshold(e.target.value)}
-                    style={inpFull}
-                    placeholder="300"
-                  />
-                </label>
-                <label style={modalFieldStacked}>
-                  Firmware Version
-                  <input value={firmwareVersion} onChange={(e) => setFirmwareVersion(e.target.value)} style={inpFull} placeholder="Opaque build label" />
-                </label>
-                <label style={modalFieldStacked}>
-                  Firmware channel
-                  <select
-                    value={firmwareChannel}
-                    onChange={(e) =>
-                      setFirmwareChannel(e.target.value as "" | "stable" | "beta" | "dev" | "custom")
-                    }
-                    style={inpFull}
-                  >
-                    <option value="">Default (stable)</option>
-                    <option value="stable">stable</option>
-                    <option value="beta">beta</option>
-                    <option value="dev">dev</option>
-                    <option value="custom">custom</option>
-                  </select>
-                </label>
-                <label style={{ ...modalFieldStacked, flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
-                  <input type="checkbox" checked={otaSupported} onChange={(e) => setOtaSupported(e.target.checked)} />
-                  OTA supported
-                </label>
-                <label style={{ ...modalFieldStacked, flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
-                  <input type="checkbox" checked={rollbackSupported} onChange={(e) => setRollbackSupported(e.target.checked)} />
-                  Rollback supported
-                </label>
-              </div>
-            )}
-            <div style={modalActionsRow}>
+            </div>
+            <div className="device-register-device-modal__tab-panels">
+              {deviceModalTab === "identity" ? (
+                <div role="tabpanel" aria-labelledby="device-reg-tab-identity" style={{ marginTop: "0.35rem" }}>
+                  <div className="device-register-device-modal__section">
+                    <div className="device-register-device-modal__section-label">Site</div>
+                    <p className="device-register-device-modal__section-value">{deviceModalSiteLabel}</p>
+                  </div>
+                  {editDeviceSnapshot ? (
+                    <div className="device-register-device-modal__section">
+                      <div className="device-register-device-modal__section-label">Device version label</div>
+                      <p className="device-register-device-modal__section-value">{editDeviceSnapshot.device_version ?? "1"}</p>
+                    </div>
+                  ) : null}
+                  <div className="device-register-device-modal__section">
+                    <label style={modalFieldStacked}>
+                      Device name
+                      <input value={name} onChange={(e) => setName(e.target.value)} required style={inpFull} />
+                    </label>
+                    <label style={{ ...modalFieldStacked, marginTop: "0.65rem" }}>
+                      Description
+                      <input value={description} onChange={(e) => setDescription(e.target.value)} style={inpFull} />
+                    </label>
+                    <label style={{ ...modalFieldStacked, marginTop: "0.65rem" }}>
+                      Icon (optional URL or key)
+                      <input value={icon} onChange={(e) => setIcon(e.target.value)} style={inpFull} placeholder="e.g. device-icon-key" />
+                    </label>
+                    <label style={{ ...modalFieldStacked, marginTop: "0.65rem" }}>
+                      Declared firmware version
+                      <input value={firmwareVersion} onChange={(e) => setFirmwareVersion(e.target.value)} style={inpFull} placeholder="Opaque build label" />
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <div role="tabpanel" aria-labelledby="device-reg-tab-ingest" style={{ marginTop: "0.35rem" }}>
+                  <div className="device-register-device-modal__section">
+                    {modalMode === "edit" ? (
+                      <>
+                        <p className="dash-widget__muted" style={{ margin: "0 0 0.75rem", fontSize: "0.78rem", lineHeight: 1.45 }}>
+                          Use these controls to stop telemetry without deleting the device. Uncheck <strong>Device is active</strong> or set{" "}
+                          <strong>Version status</strong> to <strong>Deprecated</strong> or <strong>Rolled back</strong> to block new raw ingest and scrubber
+                          processing (MQTT, REST poller, HTTP upload). Set back to <strong>Active</strong> to resume.
+                        </p>
+                        <label style={{ ...modalFieldStacked, flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+                          <input type="checkbox" checked={deviceIsActive} onChange={(e) => setDeviceIsActive(e.target.checked)} />
+                          Device is active
+                        </label>
+                        <label style={{ ...modalFieldStacked, marginTop: "0.65rem" }}>
+                          Device version status
+                          <select
+                            value={deviceVersionStatus}
+                            onChange={(e) => setDeviceVersionStatus(e.target.value)}
+                            style={inpFull}
+                            aria-label="Device version status"
+                          >
+                            {DEVICE_VERSION_STATUS_UI_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </>
+                    ) : (
+                      <p className="dash-widget__muted" style={{ margin: 0, fontSize: "0.78rem", lineHeight: 1.45 }}>
+                        Register the device first, then choose <strong>Edit</strong> in the table and open <strong>Ingest Control</strong> to pause ingest or
+                        deactivate the device.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="device-register-device-modal__actions" style={modalActionsRow}>
               <button type="submit" style={btnPrimary} disabled={saving || !sites.length || !canDevicesWrite} title={!canDevicesWrite ? "Requires devices.write" : undefined}>
-                {saving ? "Saving…" : modalMode === "create" ? "Register device" : "Save changes"}
+                {saving ? "Saving…" : "Save"}
               </button>
             </div>
           </div>
         </form>
-      </AppModalShell>
-
-      <AppModalShell
-        open={otaListOpen}
-        onClose={() => setOtaListOpen(false)}
-        title="OTA Campaigns"
-        subtitle="Filter by shell site scope. Open a campaign to manage rollout details."
-        titleId="ota-list-from-manage-devices-modal-title"
-        size="xl"
-        dialogClassName="device-endpoint-config-modal ota-campaigns-list-modal"
-      >
-        <OtaCampaignsListPanel />
-      </AppModalShell>
-
-      <AppModalShell
-        open={otaNewOpen}
-        onClose={() => {
-          setOtaNewOpen(false);
-          setOtaWizardSiteId(null);
-          setOtaWizardDeviceId(null);
-          setOtaWizardDeviceName(null);
-          setOtaWizardSiteName(null);
-        }}
-        title="New OTA Campaign"
-        subtitle="Choose a firmware artifact, pick device targets, review, then create the draft and submit or launch when you are ready."
-        titleId="ota-new-from-manage-devices-modal-title"
-        size="xl"
-        dialogClassName="device-endpoint-config-modal ota-campaign-new-modal"
-      >
-        <div className="ota-campaigns-page device-register-page__ota-wizard-wrap">
-          <OtaCampaignNewWizard
-            initialSiteId={otaWizardSiteId ?? opsSiteId ?? null}
-            contextDeviceId={otaWizardDeviceId}
-            contextDeviceName={otaWizardDeviceName ?? undefined}
-            contextSiteName={otaWizardSiteName ?? undefined}
-            onCancel={() => {
-              setOtaNewOpen(false);
-              setOtaWizardSiteId(null);
-              setOtaWizardDeviceId(null);
-              setOtaWizardDeviceName(null);
-              setOtaWizardSiteName(null);
-            }}
-            onSuccess={(id) => {
-              setOtaNewOpen(false);
-              setOtaWizardSiteId(null);
-              setOtaWizardDeviceId(null);
-              setOtaWizardDeviceName(null);
-              setOtaWizardSiteName(null);
-              navigate(`/devices/ota/${encodeURIComponent(id)}`);
-            }}
-          />
-        </div>
       </AppModalShell>
 
       <DeviceVersionHistoryDrawer
@@ -1988,13 +1845,6 @@ const tdDesc: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const modalStack: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.85rem",
-  width: "100%",
-};
-
 const modalFieldStacked: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -2007,6 +1857,5 @@ const modalFieldStacked: CSSProperties = {
 const modalActionsRow: CSSProperties = {
   display: "flex",
   justifyContent: "flex-end",
-  marginTop: "0.15rem",
 };
 

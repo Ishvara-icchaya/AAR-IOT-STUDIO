@@ -78,12 +78,34 @@ class DeviceCreate(DeviceWriteMetadata):
 
 
 class DeviceUpdate(DeviceWriteMetadata):
+    """PATCH body for ``/devices/{id}``.
+
+    **Version cuts:** a new immutable ``device_versions`` row and lineage transition are recorded only when
+    ``device_version`` is present in this request and the value differs from the device's current label.
+    Changing ``ota_supported``, ``rollback_supported``, ``firmware_channel``, or declared ``firmware_version`` alone
+    updates device metadata only and never mints a version.
+    """
+
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     icon: str | None = Field(None, max_length=512)
     site_id: uuid.UUID | None = None
     is_active: bool | None = None
     polling_enabled: bool | None = None
+    #: When ``device_version`` changes the label in the same request, stored on the new ``device_versions`` row / lineage payload.
+    release_notes: str | None = Field(None, max_length=4096)
+    snapshot_config_version: str | None = Field(None, max_length=64)
+    snapshot_software_version: str | None = Field(None, max_length=128)
+
+    @field_validator("release_notes", "snapshot_config_version", "snapshot_software_version", mode="before")
+    @classmethod
+    def _strip_optional_version_meta(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            t = v.strip()
+            return t if t else None
+        return str(v).strip() or None
 
 
 class DeviceEndpointNested(BaseModel):
@@ -133,6 +155,10 @@ class DeviceRead(BaseModel):
     rollback_supported: bool = False
     device_version: str = "1"
     version_status: str = "active"
+    #: When an active shared ``device_versions`` row exists, its customer-facing label (denormalized ``device_version`` may lag until promote).
+    active_governed_display_version: str | None = None
+    #: Internal governed key (``device_versions.version_label``) for the active shared row, when present.
+    active_governed_version_label: str | None = None
 
 
 class DeviceListResponse(BaseModel):
@@ -185,10 +211,75 @@ class DeviceVersionRead(BaseModel):
     id: uuid.UUID
     device_id: uuid.UUID
     version_label: str
+    display_version_label: str
+    system_version_key: str | None = None
     status: str
     routing_lane: str
     firmware_version: str | None = None
     previous_device_version_id: uuid.UUID | None = None
+    activation_artifacts_json: dict[str, Any] | None = None
+    frozen_operational_summary_json: dict[str, Any] | None = None
+
+
+class DeviceVersionActivationCopyForwardRequest(BaseModel):
+    """Optional baseline row to copy from; default = current active shared version."""
+
+    from_device_version_id: uuid.UUID | None = None
+
+
+class DeviceVersionActivationAcceptRequest(BaseModel):
+    """Accept staged groups: ``all`` or any of ``endpoint``, ``scrubber``, ``workflows``, ``dashboards``."""
+
+    kinds: list[str] = Field(default_factory=lambda: ["all"])
+
+
+class DeviceOperationalVersionResponse(BaseModel):
+    """Active shared operational cut used for default ingest / dashboard resolution."""
+
+    device_id: uuid.UUID
+    active_device_version_id: uuid.UUID | None = None
+    #: Internal governed key (stable identity; may be ``det-…`` for detection).
+    version_label: str | None = None
+    #: Customer-facing label for the active cut.
+    display_version_label: str | None = None
+    frozen_operational_summary_json: dict[str, Any] | None = None
+
+
+class DeviceVersionCreateBody(BaseModel):
+    """Create a governed ``device_versions`` draft (manual source)."""
+
+    display_version_label: str = Field(..., min_length=1, max_length=64)
+    system_version_key: str | None = Field(None, max_length=128)
+    notes: str | None = Field(None, max_length=4096)
+    source: str = Field(default="manual", max_length=32)
+    firmware_version: str | None = Field(None, max_length=128)
+    snapshot_config_version: str | None = Field(None, max_length=64)
+    snapshot_software_version: str | None = Field(None, max_length=128)
+
+    @field_validator("display_version_label", mode="before")
+    @classmethod
+    def _strip_display(cls, v: object) -> str:
+        if v is None:
+            return ""
+        return str(v).strip()
+
+    @field_validator("system_version_key", "notes", "firmware_version", "snapshot_config_version", "snapshot_software_version", mode="before")
+    @classmethod
+    def _strip_optional(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            t = v.strip()
+            return t if t else None
+        return str(v).strip() or None
+
+    @field_validator("source", mode="before")
+    @classmethod
+    def _manual_only(cls, v: object) -> str:
+        s = str(v or "manual").strip().lower()
+        if s != "manual":
+            raise ValueError("Only source=manual is supported for this endpoint.")
+        return "manual"
 
 
 class DeviceVersionSnapshotRead(BaseModel):
@@ -199,6 +290,8 @@ class DeviceVersionSnapshotRead(BaseModel):
     id: uuid.UUID
     device_id: uuid.UUID
     version_label: str
+    display_version_label: str
+    system_version_key: str | None = None
     status: str
     routing_lane: str
     compatibility: str | None = None
@@ -214,6 +307,12 @@ class DeviceVersionSnapshotRead(BaseModel):
     created_at: datetime
     activated_at: datetime | None = None
     previous_device_version_id: uuid.UUID | None = None
+    resolved_device_id: uuid.UUID | None = None
+    identity_fingerprint: str | None = None
+    software_version: str | None = None
+    created_from_detection_event_id: uuid.UUID | None = None
+    activation_artifacts_json: dict[str, Any] | None = None
+    frozen_operational_summary_json: dict[str, Any] | None = None
 
 
 class DeviceVersionSnapshotListResponse(BaseModel):
@@ -272,18 +371,4 @@ class DeviceVersionImpactResponse(BaseModel):
     catalog_attribute_ids: list[str] = Field(default_factory=list)
     widget_attribute_impact: list[ImpactWidgetAttributeRow] = Field(default_factory=list)
     notes: list[DeviceVersionImpactNote]
-
-
-class OtaTargetHistoryItem(BaseModel):
-    target_id: str
-    campaign_id: str
-    campaign_name: str
-    campaign_status: str
-    target_status: str
-    target_firmware_version: str | None = None
-    completed_at: datetime | None = None
-
-
-class DeviceOtaTargetHistoryResponse(BaseModel):
-    items: list[OtaTargetHistoryItem]
 

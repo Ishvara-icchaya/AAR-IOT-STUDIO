@@ -25,11 +25,11 @@ export function OverviewHealthInsights({ cc, dataRevision }: Props) {
           radius: ["52%", "78%"],
           center: ["50%", "50%"],
           avoidLabelOverlap: true,
-          label: { fontSize: 10, color: "#cbd5e1" },
+          label: { fontSize: 10, color: "#475569" },
           data: [
-            { value: health.online, name: "Online", itemStyle: { color: "#22c55e" } },
-            { value: health.degraded, name: "Degraded", itemStyle: { color: "#f59e0b" } },
-            { value: health.offline, name: "Offline", itemStyle: { color: "#ef4444" } },
+            { value: health.online, name: "Online", itemStyle: { color: "#5fd4a8" } },
+            { value: health.degraded, name: "Degraded", itemStyle: { color: "#fcd34d" } },
+            { value: health.offline, name: "Offline", itemStyle: { color: "#f9a8b4" } },
           ],
         },
       ],
@@ -55,14 +55,14 @@ export function OverviewHealthInsights({ cc, dataRevision }: Props) {
       xAxis: {
         type: "category",
         data: names,
-        axisLabel: { fontSize: 9, color: "#94a3b8", rotate: names.some((n) => n.length > 10) ? 28 : 0 },
-        axisLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+        axisLabel: { fontSize: 9, color: "#64748b", rotate: names.some((n) => n.length > 10) ? 28 : 0 },
+        axisLine: { lineStyle: { color: "rgba(56, 118, 168, 0.22)" } },
       },
       yAxis: {
         type: "value",
         minInterval: 1,
-        splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
-        axisLabel: { fontSize: 9, color: "#8b9cb3" },
+        splitLine: { lineStyle: { color: "rgba(30, 76, 120, 0.09)" } },
+        axisLabel: { fontSize: 9, color: "#5c6f82" },
       },
       series: [
         {
@@ -72,8 +72,8 @@ export function OverviewHealthInsights({ cc, dataRevision }: Props) {
           itemStyle: {
             borderRadius: [4, 4, 0, 0],
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: "#fb7185" },
-              { offset: 1, color: "#9f1239" },
+              { offset: 0, color: "#fbcfe8" },
+              { offset: 1, color: "#f472b6" },
             ]),
           },
         },

@@ -55,6 +55,11 @@ def validate_identity_draft_against_sample(
 
 
 def publish_endpoint_identity(db: Session, ep: Endpoint) -> Endpoint:
+    if ep.identity_managed_by_scrubber:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="Identity paths are managed by the published scrubber pipeline. Adjust Field semantics (identity/display roles) and republish the scrubber.",
+        )
     draft = ep.identity_draft if isinstance(ep.identity_draft, dict) else {}
     sample = sample_document_for_validation(ep)
     errs, _warns, pk, labels, loc = validate_identity_draft_against_sample(sample=sample, draft=draft)
@@ -68,6 +73,7 @@ def publish_endpoint_identity(db: Session, ep: Endpoint) -> Endpoint:
         ep.location_fields = loc
     ep.identity_published_at = now
     ep.lifecycle_status = "active"
+    ep.identity_managed_by_scrubber = False
     db.add(ep)
     db.commit()
     db.refresh(ep)

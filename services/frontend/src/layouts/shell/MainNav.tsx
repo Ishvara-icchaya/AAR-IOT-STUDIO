@@ -4,9 +4,9 @@ import { NavLink, useLocation } from "react-router-dom";
 import { MainNavFlatIcon, MainNavGroupIcon } from "./mainNavIcons";
 import {
   activeMainSectionId,
-  MAIN_NAV_FLAT_LINKS,
   MAIN_NAV_GROUPS,
   pathMatchesFlatLink,
+  visibleMainNavFlatLinks,
   type MainNavFlatLink,
   type NavGroup,
 } from "./navigation";
@@ -116,7 +116,7 @@ export function MainNav({ mobileOpen, onNavigate }: { mobileOpen: boolean; onNav
       aria-label="Primary modules"
       data-main-nav-root
     >
-      {MAIN_NAV_FLAT_LINKS.map((link) => (
+      {visibleMainNavFlatLinks().map((link) => (
         <NavFlatLink key={link.id} link={link} onPick={onNavigate} />
       ))}
       {MAIN_NAV_GROUPS.map((group) => (

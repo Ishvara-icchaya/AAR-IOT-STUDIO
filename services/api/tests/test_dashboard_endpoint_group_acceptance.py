@@ -113,7 +113,8 @@ def test_status_bucket_vocabulary_mapping() -> None:
     assert health_summary_bucket("something-else") == "unknown"
 
 
-def test_live_source_loader_has_no_data_object_fallback() -> None:
+def test_live_source_loader_data_object_returns_none_without_db_session() -> None:
+    """ORM load requires a Session; callers with db=None get a null payload (e.g. unit stubs)."""
     payload, updated_at, display_name = _load_source_record(
         db=None,  # type: ignore[arg-type]
         customer_id=uuid.uuid4(),

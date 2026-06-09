@@ -16,10 +16,12 @@ export type EndpointRead = {
   sample_payload?: Record<string, unknown> | unknown[] | null;
   sample_ingested_at?: string | null;
   identity_published_at?: string | null;
+  identity_managed_by_scrubber?: boolean;
   identity_draft?: Record<string, unknown> | null;
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  version_identity?: Record<string, unknown> | null;
 };
 
 export type EndpointCreateBody = {
@@ -32,10 +34,12 @@ export type EndpointCreateBody = {
   auth_config?: Record<string, unknown> | null;
   device_endpoint_id?: string | null;
   enabled?: boolean;
+  version_identity?: Record<string, unknown> | null;
 };
 
 export type EndpointUpdateBody = Partial<EndpointCreateBody> & {
   identity_draft?: Record<string, unknown> | null;
+  version_identity?: Record<string, unknown> | null;
 };
 
 export type PayloadFieldEntry = { path: string; type: string; sample: unknown; section?: string | null };

@@ -44,5 +44,10 @@ class Endpoint(Base, TimestampMixin):
     identity_published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    identity_managed_by_scrubber: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     identity_draft: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # JSON ``version_identity`` block (paths, fingerprint_fields, enabled, …) — see docs/ENDPOINT_VERSION_IDENTITY.md.
+    version_identity: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

@@ -2,6 +2,8 @@
 
 Portable description of **Scrubber**, **device / data source configuration**, **Dashboards**, **Enterprise Dashboard** (primary), **Enterprise AI**, and the **Phase 1 platform architecture**. This document is the **formal engineering baseline** for DDL, APIs, workers, Kafka, Redis, Docker Compose, frontend routes, and runtime behavior.
 
+**Consolidated product requirements (v1–v8+, evolving Dashboard & Enterprise AI):** [CONSOLIDATED_REQUIREMENTS.md](./CONSOLIDATED_REQUIREMENTS.md).
+
 **Primary app:** `frontend/` (React + Vite) → **api** (FastAPI).  
 **Reuse policy:** Import and adapt prior **Scrubber Studio**, **Workflow Studio**, **Dashboard Builder**, **Enterprise Dashboard**, **Enterprise AI**, **Workload Studio**, **Monitoring**, and **Published Services** — do not rewrite from scratch; plug them into this canonical architecture.
 

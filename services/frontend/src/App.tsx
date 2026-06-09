@@ -15,9 +15,6 @@ import { DeviceDetailsPage } from "./pages/DeviceDetailsPage";
 import { DeviceLineagePage } from "./pages/DeviceLineagePage";
 import { DeviceRegisterPage } from "./pages/DeviceRegisterPage";
 import { IngestDevicesPage } from "./pages/IngestDevicesPage";
-import { OtaCampaignDetailPage } from "./pages/OtaCampaignDetailPage";
-import { OtaCampaignNewPage } from "./pages/OtaCampaignNewPage";
-import { OtaCampaignsPage } from "./pages/OtaCampaignsPage";
 import { EndpointIdentityPage } from "./pages/EndpointIdentityPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ScrubberCreatePage } from "./pages/ScrubberCreatePage";
@@ -92,9 +89,9 @@ export default function App() {
             />
             <Route element={<PlatformShell />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              <Route path="/devices/ota/new" element={<OtaCampaignNewPage />} />
-              <Route path="/devices/ota/:campaignId" element={<OtaCampaignDetailPage />} />
-              <Route path="/devices/ota" element={<OtaCampaignsPage />} />
+              <Route path="/devices/ota/new" element={<Navigate to="/devices/register" replace />} />
+              <Route path="/devices/ota/:campaignId" element={<Navigate to="/devices/register" replace />} />
+              <Route path="/devices/ota" element={<Navigate to="/devices/register" replace />} />
               <Route path="/devices/register" element={<DeviceRegisterPage />} />
               <Route path="/devices/detail/:deviceId" element={<DeviceDetailsPage />} />
               <Route path="/devices/lineage" element={<DeviceLineagePage />} />

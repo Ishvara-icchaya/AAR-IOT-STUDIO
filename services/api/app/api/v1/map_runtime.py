@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.access_control import ensure_site_in_tenant, user_may_access_site
@@ -81,6 +81,10 @@ class MapMarkersQueryBody(BaseModel):
     single_source_id: uuid.UUID | None = None
     aggregate_by_device: bool = False
     binding_fingerprint: str | None = None
+    device_version_id: uuid.UUID | None = Field(
+        default=None,
+        description="Explicit operational cut (e.g. candidate lane). Omit for active shared default.",
+    )
 
 
 class MapMarkersQueryResponse(BaseModel):
@@ -144,6 +148,11 @@ def map_markers(
         True,
         description="If true, omit KPI maps and long health text (use /detail on click).",
     ),
+    device_version_id: uuid.UUID | None = Query(
+        None,
+        alias="deviceVersionId",
+        description="Explicit operational cut (candidate lane). Omit for active shared default.",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -182,6 +191,7 @@ def map_markers(
         allowed_device_ids=allowed_devices,
         pg_markers_fn=_map_markers_site,
         pg_light=light,
+        pin_device_version_id=device_version_id,
     )
     if light:
         markers = [map_marker_to_light(m) for m in markers]
@@ -245,6 +255,7 @@ def map_markers_query(
             title_field=body.title_field,
             health_field=body.health_field,
             pg_single_marker_fn=build_map_marker_for_source,
+            pin_device_version_id=body.device_version_id,
         )
     elif mode == "manual":
         raw = body.included_sources or []
@@ -261,6 +272,7 @@ def map_markers_query(
             title_field=body.title_field,
             health_field=body.health_field,
             pg_single_marker_fn=build_map_marker_for_source,
+            pin_device_version_id=body.device_version_id,
         )
     else:
         markers = markers_with_redis_first(
@@ -276,6 +288,7 @@ def map_markers_query(
             allowed_device_ids=allowed_devices,
             pg_markers_fn=_map_markers_site,
             pg_light=bool(body.light),
+            pin_device_version_id=body.device_version_id,
         )
 
     if mode != "single" and body.aggregate_by_device:
@@ -342,6 +355,11 @@ def map_object_detail(
         alias="includeTimescaleHistory",
         description="When true, load Timescale KPI samples (slower). Default false for fast popups.",
     ),
+    device_version_id: uuid.UUID | None = Query(
+        None,
+        alias="deviceVersionId",
+        description="Explicit operational cut for latest_device_state (candidate / audit).",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -367,6 +385,7 @@ def map_object_detail(
         kpi_keys=kpi_keys,
         trend_scope=trend_scope,
         include_timescale_history=include_timescale_history,
+        device_version_id=device_version_id,
     )
     if not detail:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Object not found")

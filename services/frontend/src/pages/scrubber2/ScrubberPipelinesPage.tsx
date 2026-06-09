@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Eye, GitBranch, Pencil, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, FileJson2, GitBranch, Pencil, Search } from "lucide-react";
 import { apiFetch } from "@/api/client";
 import { listDevices, type DeviceRead } from "@/api/devices";
 import { listEndpoints } from "@/api/endpoints";
@@ -16,8 +16,10 @@ import { OpsScopeControls } from "@/components/ops/OpsScopeControls";
 import { OpsStatusPill, type OpsVariant } from "@/components/ops/OpsStatusPill";
 import { useOpsShell } from "@/contexts/OpsShellContext";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
+import { ICON_SIZES, ICON_STROKE_WIDTH } from "@/lib/appIcons";
 import { normalizeProtocol } from "@/lib/deviceEndpointConfig";
 import { lastDataReceivedMs } from "@/lib/deviceLivenessDisplay";
+import { ScrubberRawSelectModal } from "@/pages/scrubber2/ScrubberRawSelectModal";
 
 type SiteRow = { id: string; name: string };
 
@@ -110,7 +112,20 @@ export function ScrubberPipelinesPage() {
   const [status, setStatus] = useState<"all" | PipelineStatus>("all");
   const [protocol, setProtocol] = useState("all");
   const [page, setPage] = useState(0);
+  const [rawSampleOpen, setRawSampleOpen] = useState(false);
+  const [rawSampleDeviceId, setRawSampleDeviceId] = useState("");
+  const [rawSampleDeviceName, setRawSampleDeviceName] = useState("");
   useShellFeedback(err, null);
+
+  const openRawSampleModal = useCallback((r: PipelineRow) => {
+    setRawSampleDeviceId(r.deviceId);
+    setRawSampleDeviceName(r.deviceName);
+    setRawSampleOpen(true);
+  }, []);
+
+  const closeRawSampleModal = useCallback(() => {
+    setRawSampleOpen(false);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -218,8 +233,9 @@ export function ScrubberPipelinesPage() {
   useEffect(() => setPage(0), [appliedSearch, status, protocol, opsSiteId]);
 
   return (
-    <OpsListPage
-      className="scrubber-pipelines-page device-manage-page"
+    <>
+      <OpsListPage
+        className="scrubber-pipelines-page device-manage-page"
       header={
         <OpsPageHeader
           title="Scrubber Pipelines"
@@ -345,6 +361,14 @@ export function ScrubberPipelinesPage() {
                           <Link className="dm-act-grid__btn dm-act-grid__btn--plain" to={`/devices/manage?device=${encodeURIComponent(r.deviceId)}`} title="View device">
                             <Eye size={16} aria-hidden />
                           </Link>
+                          <OpsActionButton
+                            tone="plain"
+                            title="View last scrubbed payload"
+                            aria-label={`View last scrubbed payload for ${r.deviceName}`}
+                            onClick={() => openRawSampleModal(r)}
+                          >
+                            <FileJson2 size={ICON_SIZES.table} strokeWidth={ICON_STROKE_WIDTH} aria-hidden />
+                          </OpsActionButton>
                           <OpsActionButton tone="plain" title="Versions (coming soon)" disabled>
                             <GitBranch size={16} aria-hidden />
                           </OpsActionButton>
@@ -381,5 +405,12 @@ export function ScrubberPipelinesPage() {
           </div>
       }
     />
+      <ScrubberRawSelectModal
+        open={rawSampleOpen && Boolean(rawSampleDeviceId)}
+        onClose={closeRawSampleModal}
+        deviceId={rawSampleDeviceId}
+        deviceName={rawSampleDeviceName}
+      />
+    </>
   );
 }

@@ -24,8 +24,8 @@ export function OverviewTrendCard({ title, series, dataRevision }: Props) {
     const labelInterval = n <= 8 ? 0 : 1;
 
     chart.setOption({
-      color: ["#dc2626", "#d97706", "#e2e8f0"],
-      textStyle: { fontSize: 11, color: "#8b9cb3" },
+      color: ["#f9a8b4", "#fcd34d", "#7eb8e8"],
+      textStyle: { fontSize: 11, color: "#5c6f82" },
       animationDuration: 520,
       animationEasing: "cubicOut",
       grid: { left: 40, right: 14, top: 28, bottom: 28 },
@@ -34,7 +34,7 @@ export function OverviewTrendCard({ title, series, dataRevision }: Props) {
         right: 10,
         itemWidth: 11,
         itemHeight: 11,
-        textStyle: { fontSize: 11, color: "#8b9cb3" },
+        textStyle: { fontSize: 11, color: "#5c6f82" },
         data: [
           { name: "Critical", icon: "roundRect" },
           { name: "Warning", icon: "roundRect" },
@@ -49,19 +49,19 @@ export function OverviewTrendCard({ title, series, dataRevision }: Props) {
       xAxis: {
         type: "category",
         data: labels,
-        axisLine: { lineStyle: { color: "rgba(255,255,255,0.12)" } },
+        axisLine: { lineStyle: { color: "rgba(56, 118, 168, 0.28)" } },
         axisTick: { show: false },
         axisLabel: {
           fontSize: 10,
-          color: "#8b9cb3",
+          color: "#5c6f82",
           interval: labelInterval,
         },
       },
       yAxis: {
         type: "value",
         minInterval: 1,
-        splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
-        axisLabel: { fontSize: 10, color: "#8b9cb3" },
+        splitLine: { lineStyle: { color: "rgba(30, 76, 120, 0.09)" } },
+        axisLabel: { fontSize: 10, color: "#5c6f82" },
       },
       series: [
         {
@@ -71,8 +71,8 @@ export function OverviewTrendCard({ title, series, dataRevision }: Props) {
           barWidth: "52%",
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: "#fca5a5" },
-              { offset: 1, color: "#991b1b" },
+              { offset: 0, color: "#fecdd3" },
+              { offset: 1, color: "#f472a8" },
             ]),
             borderRadius: [4, 4, 0, 0],
           },
@@ -85,8 +85,8 @@ export function OverviewTrendCard({ title, series, dataRevision }: Props) {
           barWidth: "52%",
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: "#fcd34d" },
-              { offset: 1, color: "#b45309" },
+              { offset: 0, color: "#fef3c7" },
+              { offset: 1, color: "#facc15" },
             ]),
             borderRadius: [4, 4, 0, 0],
           },
@@ -99,8 +99,8 @@ export function OverviewTrendCard({ title, series, dataRevision }: Props) {
           yAxisIndex: 0,
           showSymbol: true,
           symbolSize: 5,
-          lineStyle: { width: 2, color: "rgba(226,232,240,0.55)" },
-          itemStyle: { color: "#e2e8f0" },
+          lineStyle: { width: 2, color: "rgba(90, 174, 230, 0.75)" },
+          itemStyle: { color: "#7eb8e8" },
           tooltip: { valueFormatter: (v: number) => `${v} alerts` },
           data: total,
         },

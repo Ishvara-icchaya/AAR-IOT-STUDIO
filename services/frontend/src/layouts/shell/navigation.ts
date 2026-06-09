@@ -32,12 +32,6 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
     end: true,
   },
   {
-    id: "ota-campaigns",
-    label: "OTA",
-    to: "/devices/ota",
-    alsoActiveOn: ["/devices/ota/new"],
-  },
-  {
     id: "register-endpoints",
     label: "Endpoints",
     to: "/devices/ingest",
@@ -69,10 +63,14 @@ export const MAIN_NAV_FLAT_LINKS: MainNavFlatLink[] = [
   },
 ];
 
+/** Primary nav links (feature-flag filtering reserved for future use). */
+export function visibleMainNavFlatLinks(): MainNavFlatLink[] {
+  return [...MAIN_NAV_FLAT_LINKS];
+}
+
 export function pathMatchesFlatLink(pathname: string, link: MainNavFlatLink): boolean {
   if (link.alsoActiveOn?.includes(pathname)) return true;
   if (link.id === "devices" && pathname.startsWith("/devices/detail/")) return true;
-  if (link.id === "ota-campaigns" && pathname.startsWith("/devices/ota/") && pathname !== "/devices/ota") return true;
   if (link.end) return pathname === link.to;
   return pathname === link.to || pathname.startsWith(`${link.to}/`);
 }
@@ -127,7 +125,7 @@ export function isChildActive(pathname: string, child: NavChild): boolean {
 
 /** Main nav section id when pathname belongs to that module, or null. */
 export function activeMainSectionId(pathname: string): string | null {
-  for (const link of MAIN_NAV_FLAT_LINKS) {
+  for (const link of visibleMainNavFlatLinks()) {
     if (pathMatchesFlatLink(pathname, link)) return link.id;
   }
   for (const g of MAIN_NAV_GROUPS) {
@@ -151,8 +149,6 @@ export function titleFromPath(pathname: string): string {
   if (pathname === "/scrubber/v2/pipelines") return "Scrubber Pipelines";
   if (pathname.startsWith("/scrubber/v2")) return "Scrubber Studio 2.0";
   if (pathname === "/devices/register") return "Manage Devices";
-  if (pathname === "/devices/ota" || pathname === "/devices/ota/new") return "OTA Campaigns";
-  if (pathname.startsWith("/devices/ota/")) return "OTA Campaign";
   if (pathname.startsWith("/devices/detail/")) return "Device details";
   if (pathname === "/devices/lineage") return "Operational Lineage";
   if (pathname === "/devices/manage") return "Manage device";

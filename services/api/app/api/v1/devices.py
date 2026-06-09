@@ -20,9 +20,10 @@ from app.schemas.device import (
     DeviceCreate,
     DeviceDeleteResponse,
     DeviceListResponse,
-    DeviceOtaTargetHistoryResponse,
+    DeviceOperationalVersionResponse,
     DeviceRead,
     DeviceUpdate,
+    DeviceVersionCreateBody,
     DeviceVersionImpactNote,
     DeviceVersionImpactResponse,
     DeviceVersionSnapshotListResponse,
@@ -30,7 +31,6 @@ from app.schemas.device import (
     ImpactDashboardRef,
     ImpactWidgetAttributeRow,
     ImpactWorkflowRef,
-    OtaTargetHistoryItem,
     VersionFieldDiffEntry,
     VersionLineageResponse,
 )
@@ -51,14 +51,14 @@ from app.services.device_operational_footprint_service import (
     build_device_footprint_payload,
     evaluate_footprint_for_device,
 )
-from app.services.device_version_impact_service import (
-    build_static_impact_payload,
-    list_device_version_snapshots,
-    list_ota_target_history_for_device,
+from app.services.device_version_operational_service import (
+    active_operational_device_version,
+    batch_active_operational_device_versions,
 )
+from app.services.device_version_impact_service import build_static_impact_payload, list_device_version_snapshots
+from app.services.device_version_lifecycle_service import create_manual_device_version_draft
 from app.services.device_version_lineage_service import (
     build_version_lineage_response,
-    bump_device_version_monotonic_label,
     ensure_bootstrap_lineage_row,
     kpi_snapshot_from_footprint_dict,
     record_version_lineage_transition,
@@ -88,21 +88,23 @@ def _device_reads_with_footprint(db: Session, user: User, devices: list[Device])
     dash_counts = batch_dashboard_association_counts(
         db, customer_id=user.customer_id, device_ids={d.id for d in devices}
     )
+    act = batch_active_operational_device_versions(db, device_ids=[d.id for d in devices])
     out: list[DeviceRead] = []
     for d in devices:
         dr = DeviceRead.model_validate(d)
+        adv = act.get(d.id)
         st, code, msg = evaluate_footprint_for_device(
             db, d, ep_by_de=ep_by_de, dobjs=dobjs, dashboard_counts=dash_counts
         )
-        out.append(
-            dr.model_copy(
-                update={
-                    "footprint_operational_status": st,
-                    "footprint_recommendation_code": code,
-                    "footprint_recommendation_message": msg,
-                }
-            )
-        )
+        upd: dict[str, Any] = {
+            "footprint_operational_status": st,
+            "footprint_recommendation_code": code,
+            "footprint_recommendation_message": msg,
+        }
+        if adv is not None:
+            upd["active_governed_display_version"] = adv.resolved_display_label()
+            upd["active_governed_version_label"] = adv.version_label
+        out.append(dr.model_copy(update=upd))
     return out
 
 
@@ -292,6 +294,11 @@ def get_device(
 @router.get("/{device_id}/footprint")
 def get_device_footprint(
     device_id: uuid.UUID,
+    device_version_id: uuid.UUID | None = Query(
+        None,
+        alias="deviceVersionId",
+        description="Optional explicit device_versions row for governance metadata on this footprint.",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -311,6 +318,7 @@ def get_device_footprint(
         dobjs=dobjs,
         dashboard_counts=dash_counts,
         dashboard_ref_list=dash_refs[device.id],
+        pin_device_version_id=device_version_id,
     )
 
 
@@ -341,6 +349,59 @@ def get_device_version_lineage(
     out = build_version_lineage_response(db, device, fp)
     db.commit()
     return out
+
+
+@router.get("/{device_id}/operational-device-version", response_model=DeviceOperationalVersionResponse)
+def get_operational_device_version_endpoint(
+    device_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return the active shared ``device_versions`` row used as the default operational cut."""
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "device_versions.read")
+    adv = active_operational_device_version(db, device_id=device_id)
+    return DeviceOperationalVersionResponse(
+        device_id=device_id,
+        active_device_version_id=adv.id if adv else None,
+        version_label=adv.version_label if adv else None,
+        display_version_label=adv.resolved_display_label() if adv else None,
+        frozen_operational_summary_json=adv.frozen_operational_summary_json if adv else None,
+    )
+
+
+@router.post("/{device_id}/versions", response_model=DeviceVersionSnapshotRead, status_code=status.HTTP_201_CREATED)
+def post_device_version_manual(
+    device_id: uuid.UUID,
+    body: DeviceVersionCreateBody,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create a governed ``device_versions`` draft (manual); ``devices.device_version`` updates on promote."""
+    allowed = allowed_site_ids_for_user(db, user)
+    device = _load_device(db, device_id, user.customer_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
+    _ensure_device_visible(device, user, allowed)
+    ensure_site_permission(db, user, device.site_id, "devices.write")
+    dv = create_manual_device_version_draft(
+        db,
+        user,
+        device_id=device_id,
+        display_version_label=body.display_version_label,
+        system_version_key=body.system_version_key,
+        notes=body.notes,
+        firmware_version=body.firmware_version,
+        snapshot_config_version=body.snapshot_config_version,
+        snapshot_software_version=body.snapshot_software_version,
+    )
+    db.commit()
+    db.refresh(dv)
+    return DeviceVersionSnapshotRead.model_validate(dv)
 
 
 @router.get("/{device_id}/device-versions", response_model=DeviceVersionSnapshotListResponse)
@@ -393,27 +454,6 @@ def get_device_version_impact_endpoint(
     )
 
 
-@router.get("/{device_id}/ota-target-history", response_model=DeviceOtaTargetHistoryResponse)
-def list_device_ota_target_history_endpoint(
-    device_id: uuid.UUID,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """OTA campaign targets involving this device (Phase 8 OTA History tab)."""
-    allowed = allowed_site_ids_for_user(db, user)
-    device = _load_device(db, device_id, user.customer_id)
-    if not device:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Device not found")
-    _ensure_device_visible(device, user, allowed)
-    ensure_site_permission(db, user, device.site_id, "ota.read")
-    rows = list_ota_target_history_for_device(
-        db, customer_id=user.customer_id, device_id=device_id, limit=100
-    )
-    return DeviceOtaTargetHistoryResponse(
-        items=[OtaTargetHistoryItem.model_validate(r) for r in rows],
-    )
-
-
 @router.patch("/{device_id}", response_model=DeviceRead)
 def update_device(
     device_id: uuid.UUID,
@@ -421,6 +461,12 @@ def update_device(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Update device fields.
+
+    Governance: a new ``device_versions`` snapshot + lineage row is created only when the body includes
+    ``device_version`` with a value different from the current label. Readiness toggles and channel/firmware
+    metadata alone never perform that cut.
+    """
     log.debug("devices.update_device %s", device_id)
     allowed = allowed_site_ids_for_user(db, user)
     device = _load_device(db, device_id, user.customer_id)
@@ -429,7 +475,6 @@ def update_device(
     _ensure_device_visible(device, user, allowed)
     ensure_site_permission(db, user, device.site_id, "devices.write")
     was_active = device.is_active
-    prev_ota_supported = device.ota_supported
     old_device_version = (device.device_version or "").strip() or "1"
 
     if body.site_id is not None:
@@ -470,20 +515,15 @@ def update_device(
     if body.version_status is not None:
         device.version_status = body.version_status.strip() or "active"
 
-    ota_changed = body.ota_supported is not None and device.ota_supported != prev_ota_supported
-    if ota_changed:
-        cur_ver = (device.device_version or "").strip() or "1"
-        if cur_ver == old_device_version:
-            device.device_version = bump_device_version_monotonic_label(old_device_version)
-
     new_device_version = (device.device_version or "").strip() or "1"
     version_label_changed = new_device_version != old_device_version
+    explicit_version_in_request = body.device_version is not None
+    record_explicit_version_cut = explicit_version_in_request and version_label_changed
 
     db.add(device)
     db.flush()
 
-    if version_label_changed:
-        trigger = "explicit" if body.device_version is not None else ("ota" if ota_changed else "explicit")
+    if record_explicit_version_cut:
         ep_by_de, dobjs = batch_load_footprint_sidecars(db, [device])
         dash_refs = batch_dashboard_references(db, customer_id=user.customer_id, device_ids={device.id})
         dash_counts = {device.id: len(dash_refs[device.id])}
@@ -495,15 +535,26 @@ def update_device(
             dashboard_counts=dash_counts,
             dashboard_ref_list=dash_refs[device.id],
         )
+        lineage_payload: dict[str, Any] | None = None
+        if body.release_notes:
+            lineage_payload = {
+                "kind": "manual_version_cut",
+                "release_notes": body.release_notes,
+            }
+        snap_cv = body.snapshot_config_version
+        snap_sv = body.snapshot_software_version
         record_version_lineage_transition(
             db,
             device,
             previous_label=old_device_version,
             new_label=new_device_version,
-            trigger_code=trigger,
+            trigger_code="explicit",
             kpi_snapshot=kpi_snapshot_from_footprint_dict(fp_snap),
             ota_external_ref=None,
             created_by=user.id,
+            payload_json=lineage_payload,
+            snapshot_config_version=snap_cv,
+            snapshot_software_version=snap_sv,
         )
 
     if body.device_version is not None or body.version_status is not None:

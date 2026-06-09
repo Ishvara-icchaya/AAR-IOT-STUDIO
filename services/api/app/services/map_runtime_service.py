@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models.data_object import DataObject
 from app.models.latest_device_state import LatestDeviceState
+from app.models.resolved_device import ResolvedDevice
 from app.services.data_object_query import as_of_timestamp
 from app.services.workflow_result_query import (
     as_of_timestamp as result_object_as_of_timestamp,
@@ -28,7 +29,12 @@ from app.services.map_eligibility import (
     map_eligible_data_object,
     map_eligible_result_object,
 )
-from app.models.resolved_device import ResolvedDevice
+from app.services.device_version_read_context import (
+    LiveReadLane,
+    candidate_latest_row,
+    governance_dict,
+    resolve_operational_read_for_resolved_device,
+)
 from app.services.map_object_kpi_timescale import query_map_kpi_recent_pair
 from app.services.map_runtime_redis import (
     aggregator_stats,
@@ -202,6 +208,15 @@ def map_marker_to_light(marker: dict[str, Any]) -> dict[str, Any]:
     did = marker.get("device_id")
     if did is not None:
         out["device_id"] = str(did)
+    edv = marker.get("effective_device_version_id")
+    if edv is not None:
+        out["effective_device_version_id"] = str(edv)
+    pdv = marker.get("pinned_device_version_id")
+    if pdv is not None:
+        out["pinned_device_version_id"] = str(pdv)
+    rlane = marker.get("read_lane")
+    if rlane is not None:
+        out["read_lane"] = str(rlane)
     gix_out = marker.get("marker_group_index")
     if gix_out is None:
         gix_out = marker.get("markerGroupIndex")
@@ -317,6 +332,7 @@ def markers_with_redis_first(
     allowed_device_ids: set[uuid.UUID] | None = None,
     pg_markers_fn: Callable[..., list[dict[str, Any]]],
     pg_light: bool = False,
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     """Load Postgres markers, then overlay Redis-only keys.
 
@@ -335,6 +351,7 @@ def markers_with_redis_first(
         health_field=health_field,
         allowed_device_ids=allowed_device_ids,
         light=pg_light,
+        pin_device_version_id=pin_device_version_id,
     )
     r = redis_client()
     if r is not None:
@@ -410,6 +427,7 @@ def markers_manual_sources(
     title_field: str | None,
     health_field: str | None,
     pg_single_marker_fn,
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     """Resolve one marker per included source (Postgres authoritative; Redis only if PG has no marker)."""
     r = redis_client()
@@ -436,6 +454,7 @@ def markers_manual_sources(
                 kpi_fields=kpi_fields,
                 title_field=title_field,
                 health_field=health_field,
+                pin_device_version_id=pin_device_version_id,
             )
             gix = entry.get("marker_group_index")
             if gix is None:
@@ -478,6 +497,7 @@ def map_marker_detail(
     kpi_keys: list[str] | None,
     trend_scope: str | None = None,
     include_timescale_history: bool = False,
+    device_version_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """Full detail for popup: display fields, health, KPI latest, Redis windows, Timescale samples."""
     r = redis_client()
@@ -497,6 +517,7 @@ def map_marker_detail(
                 pass
 
     st_lower = source_type.lower()
+    read_ctx_lds = None
     if st_lower == "data_object":
         row = db.get(DataObject, source_id)
         if not row or row.customer_id != customer_id or row.site_id != site_id:
@@ -518,10 +539,34 @@ def map_marker_detail(
         row = db.get(LatestDeviceState, source_id)
         if not row or row.customer_id != customer_id or row.site_id != site_id:
             return None
-        payload = dict(row.display_json or {})
-        payload["_kpi"] = dict(row.kpi_json or {})
-        if row.health_status:
-            payload["health_status"] = row.health_status
+        try:
+            read_ctx_lds = resolve_operational_read_for_resolved_device(
+                db,
+                customer_id=customer_id,
+                resolved_device_id=row.resolved_device_id,
+                explicit_device_version_id=device_version_id,
+            )
+        except (LookupError, PermissionError):
+            return None
+        if device_version_id is not None and read_ctx_lds.live_read_lane == LiveReadLane.unavailable:
+            return None
+        if read_ctx_lds.live_read_lane == LiveReadLane.candidate_lds and device_version_id is not None:
+            crow = candidate_latest_row(
+                db, resolved_device_id=row.resolved_device_id, device_version_id=device_version_id
+            )
+            if not crow:
+                return None
+            payload = dict(crow.display_json or {})
+            payload["_kpi"] = dict(crow.kpi_json or {})
+            hj = crow.health_json if isinstance(crow.health_json, dict) else {}
+            hs = hj.get("health_status") if isinstance(hj.get("health_status"), str) else None
+            if hs:
+                payload["health_status"] = hs
+        else:
+            payload = dict(row.display_json or {})
+            payload["_kpi"] = dict(row.kpi_json or {})
+            if row.health_status:
+                payload["health_status"] = row.health_status
         merged = {**payload, **(payload.get("_kpi") or {})}
     else:
         return None
@@ -626,7 +671,7 @@ def map_marker_detail(
             elif getattr(row, "object_name", None):
                 device_display_name = str(row.object_name).strip()
 
-    return {
+    out: dict[str, Any] = {
         "source_type": st_lower,
         "source_id": str(source_id),
         "site_id": str(site_id),
@@ -640,6 +685,9 @@ def map_marker_detail(
         "redis_state": state,
         "trend_context": trend_context,
     }
+    if read_ctx_lds is not None:
+        out["governance"] = governance_dict(read_ctx_lds)
+    return out
 
 
 def internal_aggregator_visibility() -> dict[str, Any]:

@@ -120,6 +120,33 @@ def _assert_site_access_endpoint(db: Session, *, customer_id: uuid.UUID, site_id
         raise PermissionError("endpoint site mismatch")
 
 
+def _trends_governance(
+    db: Session,
+    *,
+    customer_id: uuid.UUID,
+    scope: str,
+    entity_id: uuid.UUID,
+    device_version_id: uuid.UUID | None,
+) -> dict[str, str | None] | None:
+    if scope != "resolved_device":
+        return None
+    from app.services.device_version_read_context import (
+        governance_dict,
+        resolve_operational_read_for_resolved_device,
+    )
+
+    try:
+        ctx = resolve_operational_read_for_resolved_device(
+            db,
+            customer_id=customer_id,
+            resolved_device_id=entity_id,
+            explicit_device_version_id=device_version_id,
+        )
+    except (LookupError, PermissionError):
+        return None
+    return governance_dict(ctx)
+
+
 def build_trends_window_response(
     db: Session,
     *,
@@ -132,6 +159,7 @@ def build_trends_window_response(
     bucket: str,
     as_of_raw: str | None,
     max_points: int | None = None,
+    device_version_id: uuid.UUID | None = None,
 ) -> TrendsWindowResponse:
     if bucket != "5m":
         raise ValueError("only bucket=5m is supported")
@@ -167,6 +195,7 @@ def build_trends_window_response(
             bucket="5m",
             as_of=as_of_iso,
             series={},
+            governance=None,
         )
 
     r = redis_client()
@@ -200,4 +229,5 @@ def build_trends_window_response(
         bucket="5m",
         as_of=as_of_iso,
         series=series,
+        governance=_trends_governance(db, customer_id=customer_id, scope=scope_l, entity_id=entity_id, device_version_id=device_version_id),
     )

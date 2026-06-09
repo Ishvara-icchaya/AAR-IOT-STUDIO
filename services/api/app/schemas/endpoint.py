@@ -22,6 +22,10 @@ class EndpointCreate(BaseModel):
     auth_config: dict[str, Any] | None = None
     device_endpoint_id: uuid.UUID | None = None
     enabled: bool = True
+    version_identity: dict[str, Any] | None = Field(
+        None,
+        description="Raw-payload version identity (paths, fingerprint_fields, enabled). See docs/ENDPOINT_VERSION_IDENTITY.md.",
+    )
 
 
 class EndpointUpdate(BaseModel):
@@ -40,6 +44,10 @@ class EndpointUpdate(BaseModel):
     auth_config: dict[str, Any] | None = None
     device_endpoint_id: uuid.UUID | None = None
     enabled: bool | None = None
+    version_identity: dict[str, Any] | None = Field(
+        None,
+        description="Replace endpoint version_identity JSON (null clears).",
+    )
 
 
 class EndpointRead(BaseModel):
@@ -60,7 +68,12 @@ class EndpointRead(BaseModel):
     sample_payload: dict[str, Any] | list[Any] | None = None
     sample_ingested_at: datetime | None = None
     identity_published_at: datetime | None = None
+    identity_managed_by_scrubber: bool = Field(
+        False,
+        description="When true, primary key / label paths are applied from published scrubber semantics; PATCH identity fields is rejected.",
+    )
     identity_draft: dict[str, Any] | None = None
+    version_identity: dict[str, Any] | None = None
     enabled: bool
     created_at: datetime
     updated_at: datetime
@@ -164,6 +177,7 @@ class MapMarkerRead(BaseModel):
     display_json: dict[str, Any]
     kpi_json: dict[str, Any]
     health_json: dict[str, Any] | None
+    effective_device_version_id: uuid.UUID | None = None
 
 
 class MapMarkerListResponse(BaseModel):

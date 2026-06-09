@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.access_control import user_may_access_site
 from app.services.permission_service import site_ids_with_permission
 from app.core.config import settings
+from app.core.device_ingest_policy import device_version_status_allows_ingest
 from app.core.protocol_sources import normalize_protocol_id, raw_row_protocol_source
 from app.core.raw_lifecycle import (
     INGEST_ARCHIVED,
@@ -110,6 +111,12 @@ async def ingest_raw_upload(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Site not permitted")
     if not device.is_active:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Device is inactive")
+    if not device_version_status_allows_ingest(getattr(device, "version_status", None)):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Device version_status is terminal (deprecated or rolled_back); ingest is disabled. "
+            "Set version_status back to active or deactivate the endpoint if you only want to stop traffic.",
+        )
     endpoint = db.execute(
         select(Endpoint).where(
             Endpoint.id == endpoint_id,

@@ -656,7 +656,14 @@ def list_result_objects(
     from app.schemas.workflow_graph import WorkflowResultObjectRead
 
     return WorkflowResultListResponse(
-        items=[WorkflowResultObjectRead.model_validate(r) for r in rows]
+        items=[WorkflowResultObjectRead.model_validate(r) for r in rows],
+        governance={
+            "operationalReadPolicy": "active_shared_per_device",
+            "note": (
+                "Result rows are not stamped with device_versions.id; resolve the active shared cut per "
+                "bound device via GET /devices/{device_id}/operational-device-version."
+            ),
+        },
     )
 
 

@@ -157,6 +157,7 @@ def sync_v2_endpoint_identity_from_device_mapping(
             )
             if ep.identity_published_at is None:
                 ep.lifecycle_status = "needs_identity_mapping"
+            ep.identity_managed_by_scrubber = False
             db.add(ep)
             continue
 
@@ -168,6 +169,7 @@ def sync_v2_endpoint_identity_from_device_mapping(
                 errs,
             )
             ep.lifecycle_status = "needs_identity_mapping"
+            ep.identity_managed_by_scrubber = False
             db.add(ep)
             continue
 
@@ -178,6 +180,7 @@ def sync_v2_endpoint_identity_from_device_mapping(
             ep.location_fields = loc
         ep.identity_published_at = now
         ep.lifecycle_status = "active"
+        ep.identity_managed_by_scrubber = True
         if ep.sample_payload is None and scrubbed_for_bootstrap is not None:
             ep.sample_payload = normalize_sample_document(scrubbed_for_bootstrap)
             ep.sample_ingested_at = now

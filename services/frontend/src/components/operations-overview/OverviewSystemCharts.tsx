@@ -24,32 +24,32 @@ export function OverviewSystemCharts({ cc, dataRevision }: Props) {
     const rates = cc.ingestion_series.map((p) => Number(p.rate_per_min) || 0);
     chart.setOption({
       animationDuration: 380,
-      textStyle: { color: "#8b9cb3", fontSize: 11 },
+      textStyle: { color: "#5c6f82", fontSize: 11 },
       grid: { left: 42, right: 10, top: 22, bottom: 22 },
       tooltip: { trigger: "axis" },
       xAxis: {
         type: "category",
         data: labels,
-        axisLabel: { fontSize: 9, color: "#8b9cb3", interval: labels.length > 16 ? 3 : labels.length > 10 ? 2 : 0 },
-        axisLine: { lineStyle: { color: "rgba(255,255,255,0.1)" } },
+        axisLabel: { fontSize: 9, color: "#5c6f82", interval: labels.length > 16 ? 3 : labels.length > 10 ? 2 : 0 },
+        axisLine: { lineStyle: { color: "rgba(56, 118, 168, 0.25)" } },
       },
       yAxis: {
         type: "value",
         name: "msg/min",
         nameTextStyle: { fontSize: 10, color: "#64748b" },
-        splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
-        axisLabel: { fontSize: 10, color: "#8b9cb3" },
+        splitLine: { lineStyle: { color: "rgba(30, 76, 120, 0.09)" } },
+        axisLabel: { fontSize: 10, color: "#5c6f82" },
       },
       series: [
         {
           type: "line",
           smooth: 0.35,
           showSymbol: false,
-          lineStyle: { width: 2.5, color: "#38bdf8" },
+          lineStyle: { width: 2.5, color: "#5aaee6" },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: "rgba(56,189,248,0.35)" },
-              { offset: 1, color: "rgba(56,189,248,0.02)" },
+              { offset: 0, color: "rgba(90, 174, 230, 0.32)" },
+              { offset: 1, color: "rgba(90, 174, 230, 0.02)" },
             ]),
           },
           data: rates,
@@ -72,32 +72,32 @@ export function OverviewSystemCharts({ cc, dataRevision }: Props) {
     const vals = cc.latency_series.map((p) => Number(p.latency_ms) || 0);
     chart.setOption({
       animationDuration: 380,
-      textStyle: { color: "#8b9cb3", fontSize: 11 },
+      textStyle: { color: "#5c6f82", fontSize: 11 },
       grid: { left: 44, right: 10, top: 22, bottom: 22 },
       tooltip: { trigger: "axis" },
       xAxis: {
         type: "category",
         data: labels,
-        axisLabel: { fontSize: 9, color: "#8b9cb3", interval: labels.length > 16 ? 3 : labels.length > 10 ? 2 : 0 },
-        axisLine: { lineStyle: { color: "rgba(255,255,255,0.1)" } },
+        axisLabel: { fontSize: 9, color: "#5c6f82", interval: labels.length > 16 ? 3 : labels.length > 10 ? 2 : 0 },
+        axisLine: { lineStyle: { color: "rgba(56, 118, 168, 0.25)" } },
       },
       yAxis: {
         type: "value",
         name: "ms",
         nameTextStyle: { fontSize: 10, color: "#64748b" },
-        splitLine: { lineStyle: { color: "rgba(255,255,255,0.06)" } },
-        axisLabel: { fontSize: 10, color: "#8b9cb3" },
+        splitLine: { lineStyle: { color: "rgba(30, 76, 120, 0.09)" } },
+        axisLabel: { fontSize: 10, color: "#5c6f82" },
       },
       series: [
         {
           type: "line",
           smooth: 0.35,
           showSymbol: false,
-          lineStyle: { width: 2.5, color: "#a78bfa" },
+          lineStyle: { width: 2.5, color: "#a89fe8" },
           areaStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: "rgba(167,139,250,0.32)" },
-              { offset: 1, color: "rgba(167,139,250,0.02)" },
+              { offset: 0, color: "rgba(168, 159, 232, 0.34)" },
+              { offset: 1, color: "rgba(168, 159, 232, 0.02)" },
             ]),
           },
           data: vals,

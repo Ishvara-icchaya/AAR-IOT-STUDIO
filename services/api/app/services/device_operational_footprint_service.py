@@ -28,6 +28,10 @@ from app.models.resolved_device import ResolvedDevice
 from app.models.workflow import Workflow
 from app.models.workflow_node import WorkflowNode
 from app.services.dashboard_dependency_service import _layout_refs
+from app.services.device_version_read_context import (
+    governance_dict,
+    resolve_operational_read_for_resolved_device,
+)
 
 log = logging.getLogger(__name__)
 
@@ -332,6 +336,7 @@ def build_device_footprint_payload(
     dashboard_counts: dict[uuid.UUID, int] | None = None,
     dashboard_ref_list: list[dict[str, Any]] | None = None,
     now: datetime | None = None,
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """Response body for GET /devices/{id}/footprint (v1 minimal shape)."""
     n = now or datetime.now(timezone.utc)
@@ -342,6 +347,34 @@ def build_device_footprint_payload(
     endpoint_row = ep_by_de.get(ep.id) if ep else None
     wf_rows = workflows_for_device(db, customer_id=device.customer_id, device=device, ep_by_de=ep_by_de)
     dash_list = dashboard_ref_list if dashboard_ref_list is not None else []
+    from app.services.device_version_operational_service import active_operational_device_version
+
+    gov: dict[str, str | None]
+    rid_s = ctx.resolved_device_id
+    if rid_s:
+        try:
+            ru = uuid.UUID(str(rid_s).strip())
+            gctx = resolve_operational_read_for_resolved_device(
+                db,
+                customer_id=device.customer_id,
+                resolved_device_id=ru,
+                explicit_device_version_id=pin_device_version_id,
+            )
+            gov = governance_dict(gctx)
+        except (ValueError, LookupError, PermissionError):
+            adv = active_operational_device_version(db, device_id=device.id)
+            gov = {
+                "effectiveDeviceVersionId": str(adv.id) if adv else None,
+                "pinnedDeviceVersionId": str(pin_device_version_id) if pin_device_version_id else None,
+                "liveReadLane": "shared_lds",
+            }
+    else:
+        adv = active_operational_device_version(db, device_id=device.id)
+        gov = {
+            "effectiveDeviceVersionId": str(adv.id) if adv else None,
+            "pinnedDeviceVersionId": str(pin_device_version_id) if pin_device_version_id else None,
+            "liveReadLane": "shared_lds",
+        }
     return {
         "device": {
             "device_id": str(device.id),
@@ -383,4 +416,5 @@ def build_device_footprint_payload(
         },
         "status": st,
         "recommendation": {"code": code, "message": msg},
+        "governance": gov,
     }

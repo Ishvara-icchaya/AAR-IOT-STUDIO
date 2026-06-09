@@ -123,6 +123,12 @@ class DashboardWidgetsResolveBatchRequest(BaseModel):
         validation_alias="scopeHours",
         serialization_alias="scopeHours",
     )
+    device_version_id: uuid.UUID | None = Field(
+        default=None,
+        validation_alias="deviceVersionId",
+        serialization_alias="deviceVersionId",
+        description="Optional explicit operational cut for map widgets (candidate lane).",
+    )
 
 
 class DashboardRuntimeDashboardMeta(BaseModel):

@@ -103,6 +103,7 @@ def _resolve_one(
     allowed_site_ids: list[uuid.UUID] | None,
     resolved_since: datetime | None,
     widget: dict[str, Any],
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> DashboardWidgetPayload:
     wid = str(widget.get("widgetId") or widget.get("widget_id") or "")
     block_type = str(widget.get("type") or "")
@@ -143,6 +144,7 @@ def _resolve_one(
         dashboard_site_id=dashboard_site_id,
         allowed_site_ids=allowed_site_ids,
         resolved_since=resolved_since,
+        pin_device_version_id=pin_device_version_id,
     )
     raw_data = legacy.get("data") if isinstance(legacy.get("data"), dict) else {}
 
@@ -215,6 +217,7 @@ def resolve_dashboard_widgets_batch(
                 allowed_site_ids=allowed,
                 resolved_since=resolved_since,
                 widget=w_def,
+                pin_device_version_id=body.device_version_id,
             )
         )
 

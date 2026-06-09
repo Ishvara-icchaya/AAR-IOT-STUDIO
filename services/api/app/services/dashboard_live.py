@@ -10,9 +10,11 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.alert import Alert
+from app.models.candidate_lane import CandidateLatestDeviceState
 from app.models.data_object import DataObject
 from app.models.device import Device
 from app.models.device_endpoint import DeviceEndpoint
+from app.models.device_version import DeviceVersion
 from app.models.endpoint import Endpoint
 from app.models.latest_device_state import LatestDeviceState
 from app.models.resolved_device import ResolvedDevice
@@ -43,6 +45,13 @@ from app.services.map_intelligence_service import (
     infer_mobility,
     read_display_mobility,
     read_endpoint_intelligence_defaults,
+)
+from app.services.device_version_read_context import (
+    LiveReadLane,
+    batch_effective_shared_device_version_ids,
+    candidate_latest_row,
+    device_id_for_resolved_device,
+    resolve_operational_read_for_resolved_device,
 )
 
 # Bounded scans for site-wide map markers (dashboard /map-runtime); keeps list endpoints fast.
@@ -96,6 +105,10 @@ def _resolve_kpi_metric_value(merged: dict[str, Any], metric: str) -> Any:
     scrubber output often uses named fields, and ``kpi_json`` is merged so ``metrics`` / ``displayFields``
     appear at the top level. When the configured metric is exactly ``value`` and no path matches, we try
     those structures and then a single top-level numeric scalar.
+
+    Scrubber ``kpi_json`` typically stores ``displayFields`` as ``{payloadPath: snapshotValue}`` and
+    ``metrics`` as ``{metricKey: {field, value, raw, ...}}`` where ``metricKey`` may differ from ``field``;
+    we match the configured metric against ``field`` when the direct key lookup misses.
     """
     m = str(metric).strip() or "value"
     v = _get_path(merged, m)
@@ -103,6 +116,13 @@ def _resolve_kpi_metric_value(merged: dict[str, Any], metric: str) -> Any:
         v = merged.get(m)
     if v is not None:
         return v
+
+    df0 = merged.get("displayFields")
+    if isinstance(df0, dict) and m in df0:
+        dv = df0.get(m)
+        if dv is not None:
+            return dv
+
     metrics = merged.get("metrics")
     if isinstance(metrics, dict):
         meta = metrics.get(m)
@@ -111,6 +131,15 @@ def _resolve_kpi_metric_value(merged: dict[str, Any], metric: str) -> Any:
                 return meta.get("value")
             if meta.get("raw") is not None:
                 return meta.get("raw")
+        for meta in metrics.values():
+            if not isinstance(meta, dict):
+                continue
+            field_path = str(meta.get("field") or "").strip()
+            if field_path and field_path == m:
+                if meta.get("value") is not None:
+                    return meta.get("value")
+                if meta.get("raw") is not None:
+                    return meta.get("raw")
     if m != "value":
         return None
     if isinstance(metrics, dict) and metrics:
@@ -188,8 +217,21 @@ def _load_source_record(
     """Returns (flat_payload, updated_at, display_name)."""
     st = str(source_type).lower()
     if st == "data_object":
-        # Guardrail: v2 dashboards should not resolve data_object bindings.
-        return None, None, None
+        if db is None:
+            return None, None, None
+        row = db.get(DataObject, source_id)
+        if not row or row.customer_id != customer_id:
+            return None, None, None
+        payload = dict(row.payload or {})
+        payload["_kpi"] = dict(row.kpi_json or {})
+        if row.health_status:
+            payload["health_status"] = row.health_status
+        label = row.name
+        device = db.get(Device, row.device_id)
+        if device and getattr(device, "name", None):
+            label = f"{row.name} · {device.name}" if row.name else str(device.name)
+        ts = row.latest_seen_at if row.latest_seen_at is not None else row.updated_at
+        return payload, ts, label
     if st in ("latest_device_state", "device_state"):
         row = db.get(LatestDeviceState, source_id)
         if not row or row.customer_id != customer_id:
@@ -762,6 +804,90 @@ def _marker_dict_from_lds_row(
     }
 
 
+def _marker_dict_from_candidate_row(
+    crow: CandidateLatestDeviceState,
+    lds_row: LatestDeviceState,
+    *,
+    latf: str,
+    lonf: str,
+    kpi_fields: list[str],
+    title_field: str | None,
+    health_field: str | None,
+    site_name: str | None,
+    rd: ResolvedDevice | None,
+    ep_row: Endpoint | None,
+) -> dict[str, Any] | None:
+    """Candidate-lane live body for the same ``latest_device_state`` marker identity (shared id)."""
+    loc_json = crow.location_json if isinstance(crow.location_json, dict) else {}
+    payload = dict(crow.display_json or {})
+    payload["_kpi"] = dict(crow.kpi_json or {})
+    hj = crow.health_json if isinstance(crow.health_json, dict) else {}
+    hs = hj.get("health_status") if isinstance(hj.get("health_status"), str) else None
+    if hs:
+        payload["health_status"] = hs
+    lat_canon, lon_canon = lat_lon_from_lds_row_fragments(
+        location_json=loc_json if loc_json else None,
+        display_json=crow.display_json if isinstance(crow.display_json, dict) else None,
+        kpi_json=crow.kpi_json if isinstance(crow.kpi_json, dict) else None,
+    )
+    if lat_canon is not None and lon_canon is not None:
+        gps = payload.get("gps")
+        if not isinstance(gps, dict):
+            payload["gps"] = {}
+            gps = payload["gps"]
+        if "lat" not in gps:
+            gps["lat"] = lat_canon
+        if "lon" not in gps:
+            gps["lon"] = lon_canon
+    lat, lon = _extract_lat_lon(payload, latf, lonf)
+    if lat is None or lon is None:
+        return None
+    device_name = (rd.device_label if rd and rd.device_label else None) or lds_row.object_name
+    hf_source = payload
+    if health_field and health_field != "health_status":
+        hf_source = {**payload, "health_status": _get_path(payload, health_field)}
+    hf = extract_health_fields(hf_source)
+    blink = derive_blink_mode(
+        health_status=hf.get("health_status") if isinstance(hf.get("health_status"), str) else None,
+        health_blink=hf.get("health_blink") if isinstance(hf.get("health_blink"), bool) else None,
+        health_severity=hf.get("health_severity") if isinstance(hf.get("health_severity"), int) else None,
+        offline=hf.get("offline") if isinstance(hf.get("offline"), bool) else None,
+    )
+    merged = {**payload, **payload.get("_kpi", {})}
+    kpis = {str(k): _resolve_kpi_metric_value(merged, str(k)) for k in kpi_fields}
+    title = lds_row.object_name
+    if title_field:
+        tv = _get_path(payload, title_field)
+        if tv is not None:
+            title = str(tv)
+    hmsg = payload.get("health_message") or hj.get("health_message")
+    hdeg = extract_heading_deg(loc_json)
+    exp_sec, ep_mob = read_endpoint_intelligence_defaults(ep_row) if ep_row else (15, None)
+    disp_for_mob = dict(crow.display_json) if isinstance(crow.display_json, dict) else {}
+    mob, has_h = infer_mobility(ep_mob, read_display_mobility(disp_for_mob), hdeg, str(lds_row.object_name or ""))
+    return {
+        "source_type": "latest_device_state",
+        "source_id": str(lds_row.id),
+        "resolved_device_id": str(lds_row.resolved_device_id),
+        "endpoint_id": str(lds_row.endpoint_id),
+        "display_name": title,
+        "device_name": device_name,
+        "site_name": site_name,
+        "latitude": lat,
+        "longitude": lon,
+        "kpis": kpis,
+        "health_status": hf.get("health_status") or hs,
+        "health_message": str(hmsg) if hmsg else None,
+        "blink_mode": blink,
+        "updated_at": crow.updated_at.isoformat() if crow.updated_at else None,
+        "heading_deg": hdeg,
+        "mobility_type": mob,
+        "has_heading": has_h,
+        "expected_frequency_sec": exp_sec,
+        "read_lane": "candidate_lds",
+    }
+
+
 def _map_markers_site(
     db: Session,
     *,
@@ -775,6 +901,7 @@ def _map_markers_site(
     health_field: str | None,
     allowed_device_ids: set[uuid.UUID] | None = None,
     light: bool = False,
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> list[dict[str, Any]]:
     markers: list[dict[str, Any]] = []
     site_row = db.get(Site, site_id)
@@ -897,22 +1024,79 @@ def _map_markers_site(
         for e in db.scalars(select(Endpoint).where(Endpoint.id.in_(ep_ids))):
             ep_by_id[e.id] = e
 
+    effective_by_rd = batch_effective_shared_device_version_ids(
+        db, customer_id=customer_id, resolved_device_ids=list(rd_ids)
+    )
+    pin_dv: DeviceVersion | None = db.get(DeviceVersion, pin_device_version_id) if pin_device_version_id else None
+
     for row in lds_rows:
         sid = str(row.id)
         if sid in excluded:
             continue
-        m = _marker_dict_from_lds_row(
-            row,
-            latf=latf,
-            lonf=lonf,
-            kpi_fields=kpi_for_marker,
-            title_field=title_field,
-            health_field=health_field,
-            site_name=site_name,
-            rd=rd_by_id.get(row.resolved_device_id),
-            ep_row=ep_by_id.get(row.endpoint_id),
-        )
+        rd_id = row.resolved_device_id
+        rd_obj = rd_by_id.get(rd_id)
+        pid_dev = device_id_for_resolved_device(db, rd_id) if rd_obj is not None else None
+        m: dict[str, Any] | None = None
+        if pin_dv is not None and pid_dev == pin_dv.device_id:
+            try:
+                ctx = resolve_operational_read_for_resolved_device(
+                    db,
+                    customer_id=customer_id,
+                    resolved_device_id=rd_id,
+                    explicit_device_version_id=pin_dv.id,
+                )
+            except (LookupError, PermissionError):
+                ctx = None
+            else:
+                if ctx.live_read_lane == LiveReadLane.unavailable:
+                    continue
+                if ctx.live_read_lane == LiveReadLane.candidate_lds:
+                    crow = candidate_latest_row(db, resolved_device_id=rd_id, device_version_id=pin_dv.id)
+                    if crow:
+                        m = _marker_dict_from_candidate_row(
+                            crow,
+                            row,
+                            latf=latf,
+                            lonf=lonf,
+                            kpi_fields=kpi_for_marker,
+                            title_field=title_field,
+                            health_field=health_field,
+                            site_name=site_name,
+                            rd=rd_obj,
+                            ep_row=ep_by_id.get(row.endpoint_id),
+                        )
+                    else:
+                        continue
+                else:
+                    m = _marker_dict_from_lds_row(
+                        row,
+                        latf=latf,
+                        lonf=lonf,
+                        kpi_fields=kpi_for_marker,
+                        title_field=title_field,
+                        health_field=health_field,
+                        site_name=site_name,
+                        rd=rd_obj,
+                        ep_row=ep_by_id.get(row.endpoint_id),
+                    )
+        if m is None:
+            m = _marker_dict_from_lds_row(
+                row,
+                latf=latf,
+                lonf=lonf,
+                kpi_fields=kpi_for_marker,
+                title_field=title_field,
+                health_field=health_field,
+                site_name=site_name,
+                rd=rd_obj,
+                ep_row=ep_by_id.get(row.endpoint_id),
+            )
         if m:
+            eff = effective_by_rd.get(rd_id)
+            if eff:
+                m["effective_device_version_id"] = str(eff)
+            if pin_dv is not None and pid_dev == pin_dv.device_id:
+                m["pinned_device_version_id"] = str(pin_dv.id)
             markers.append(m)
 
     stmt_ro = (
@@ -982,6 +1166,7 @@ def build_map_marker_for_source(
     kpi_fields: list[str],
     title_field: str | None,
     health_field: str | None,
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> dict[str, Any] | None:
     """Single marker for manual multiselect (same shape as _map_markers_site rows)."""
     st = str(source_type).lower()
@@ -1056,17 +1241,74 @@ def build_map_marker_for_source(
         rd = db.get(ResolvedDevice, row.resolved_device_id)
         site = db.get(Site, row.site_id)
         ep_row = db.get(Endpoint, row.endpoint_id)
-        return _marker_dict_from_lds_row(
-            row,
-            latf=latf,
-            lonf=lonf,
-            kpi_fields=kpi_fields,
-            title_field=title_field,
-            health_field=health_field,
-            site_name=site.name if site else None,
-            rd=rd,
-            ep_row=ep_row,
-        )
+        pin_dv: DeviceVersion | None = db.get(DeviceVersion, pin_device_version_id) if pin_device_version_id else None
+        m: dict[str, Any] | None = None
+        pid_dev = device_id_for_resolved_device(db, row.resolved_device_id) if rd else None
+        if pin_dv is not None and pid_dev == pin_dv.device_id and rd is not None:
+            try:
+                ctx = resolve_operational_read_for_resolved_device(
+                    db,
+                    customer_id=customer_id,
+                    resolved_device_id=row.resolved_device_id,
+                    explicit_device_version_id=pin_dv.id,
+                )
+            except (LookupError, PermissionError):
+                ctx = None
+            else:
+                if ctx.live_read_lane == LiveReadLane.unavailable:
+                    return None
+                if ctx.live_read_lane == LiveReadLane.candidate_lds:
+                    crow = candidate_latest_row(
+                        db, resolved_device_id=row.resolved_device_id, device_version_id=pin_dv.id
+                    )
+                    if crow:
+                        m = _marker_dict_from_candidate_row(
+                            crow,
+                            row,
+                            latf=latf,
+                            lonf=lonf,
+                            kpi_fields=kpi_fields,
+                            title_field=title_field,
+                            health_field=health_field,
+                            site_name=site.name if site else None,
+                            rd=rd,
+                            ep_row=ep_row,
+                        )
+                    else:
+                        return None
+                else:
+                    m = _marker_dict_from_lds_row(
+                        row,
+                        latf=latf,
+                        lonf=lonf,
+                        kpi_fields=kpi_fields,
+                        title_field=title_field,
+                        health_field=health_field,
+                        site_name=site.name if site else None,
+                        rd=rd,
+                        ep_row=ep_row,
+                    )
+        if m is None:
+            m = _marker_dict_from_lds_row(
+                row,
+                latf=latf,
+                lonf=lonf,
+                kpi_fields=kpi_fields,
+                title_field=title_field,
+                health_field=health_field,
+                site_name=site.name if site else None,
+                rd=rd,
+                ep_row=ep_row,
+            )
+        if m:
+            eff = batch_effective_shared_device_version_ids(
+                db, customer_id=customer_id, resolved_device_ids=[row.resolved_device_id]
+            ).get(row.resolved_device_id)
+            if eff:
+                m["effective_device_version_id"] = str(eff)
+            if pin_dv is not None and pid_dev == pin_dv.device_id:
+                m["pinned_device_version_id"] = str(pin_dv.id)
+        return m
 
     if st == "result_object":
         row = db.get(WorkflowResultObject, source_id)
@@ -1123,6 +1365,7 @@ def resolve_widget_data(
     dashboard_site_id: uuid.UUID | None = None,
     allowed_site_ids: list[uuid.UUID] | None = None,
     resolved_since: datetime | None = None,
+    pin_device_version_id: uuid.UUID | None = None,
 ) -> dict[str, Any]:
     wtype = str(widget.get("type") or "")
     title = str(widget.get("title") or "")
@@ -1383,6 +1626,7 @@ def resolve_widget_data(
                 title_field=title_field,
                 health_field=health_field,
                 pg_single_marker_fn=build_map_marker_for_source,
+                pin_device_version_id=pin_device_version_id,
             )
             light = lighten_map_markers(markers)
             mi = compute_map_init_from_markers(light)
@@ -1428,6 +1672,7 @@ def resolve_widget_data(
                 allowed_device_ids=allowed_devices,
                 pg_markers_fn=_map_markers_site,
                 pg_light=True,
+                pin_device_version_id=pin_device_version_id,
             )
             light = lighten_map_markers(markers)
             mi = compute_map_init_from_markers(light)

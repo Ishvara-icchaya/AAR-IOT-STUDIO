@@ -26,5 +26,6 @@ class TrendsWindowResponse(BaseModel):
     bucket: Literal["5m"] = "5m"
     as_of: str
     series: dict[str, list[TrendBucketPoint]]
+    governance: dict[str, str | None] | None = None
 
     model_config = {"populate_by_name": True}

@@ -13,14 +13,25 @@ from sqlalchemy.orm import Session
 
 from app.models.device import Device
 from app.models.device_version import DeviceVersion
+from app.models.endpoint import Endpoint
+from app.models.resolved_device import ResolvedDevice
 from app.models.scrubbed_event import ScrubbedEvent
 from app.models.simulation_job import SimulationJob
 from app.models.user import User
 from app.services.device_version_impact_service import build_static_impact_payload
-from app.services.ota_campaign_service import resolved_device_id_for_device
 from app.services.permission_service import ensure_site_permission
 
 log = logging.getLogger(__name__)
+
+
+def _resolved_device_id_for_device(db: Session, device: Device) -> uuid.UUID | None:
+    ep_de = device.endpoint
+    if ep_de is None:
+        return None
+    endpoint_id = db.scalar(select(Endpoint.id).where(Endpoint.device_endpoint_id == ep_de.id).limit(1))
+    if endpoint_id is None:
+        return None
+    return db.scalar(select(ResolvedDevice.id).where(ResolvedDevice.endpoint_id == endpoint_id).limit(1))
 
 
 def _audit_replay_job(db: Session, user: User, device: Device, job: SimulationJob) -> None:
@@ -145,7 +156,7 @@ def create_and_run_replay_job(
         if not baseline_dv or baseline_dv.device_id != device.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "baseline_device_version_id invalid for this device")
 
-    rd = resolved_device_id_for_device(db, device)
+    rd = _resolved_device_id_for_device(db, device)
     job = SimulationJob(
         id=uuid.uuid4(),
         customer_id=user.customer_id,

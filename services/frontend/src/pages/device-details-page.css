@@ -9,6 +9,11 @@
   margin: 0 0 1rem;
 }
 
+.device-details-page__sub--compact {
+  margin-bottom: 0.55rem;
+  line-height: 1.45;
+}
+
 .device-details-page__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -21,6 +26,25 @@
   border-radius: 10px;
   padding: 12px 14px;
   background: var(--color-surface-raised, rgba(0, 0, 0, 0.2));
+}
+
+.device-details-page__card--span-full {
+  grid-column: 1 / -1;
+}
+
+.device-details-page__footprint-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.device-details-page__footprint-msg {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  min-width: 0;
 }
 
 .device-details-page__card-label {
@@ -46,9 +70,19 @@
 
 .device-details-page__row-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 6px;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.device-details-page__version-actions-icons {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
 }
 
 .device-details-page__mini-action {
@@ -139,6 +173,22 @@
   margin: 0;
 }
 
+/* Fill modal body; tab panel scrolls so dialog height stays constant across tabs */
+.device-details-modal .device-details-page--modal {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.device-details-modal .device-endpoint-drawer-toolbar {
+  flex-shrink: 0;
+}
+
+.device-details-modal .monitoring-page__tabs.device-lineage-detail-tabs {
+  flex-shrink: 0;
+}
+
 .device-details-page__section {
   margin-top: 0.75rem;
   padding: 1rem 1.1rem;
@@ -147,14 +197,33 @@
   background: var(--color-surface-raised, rgba(0, 0, 0, 0.18));
 }
 
+.device-details-modal .device-details-page__section {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.8rem;
+}
+
+.device-details-modal .device-details-page__section:first-of-type {
+  margin-top: 0;
+}
+
+.device-details-modal .device-details-page__grid {
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+  margin-bottom: 0.5rem;
+}
+
+.device-details-modal .device-details-page__card {
+  padding: 10px 12px;
+}
+
 .device-details-page__section:first-of-type {
   margin-top: 0;
 }
 
-/* Stable tab strip + panel height (avoid layout jump between tabs) */
+/* Tab strip: width follows tab count (4 when OTA tab hidden, 5 when shown) */
 .device-details-modal .device-details-page--modal .device-lineage-detail-tabs__bar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   flex-wrap: nowrap;
   gap: 0.25rem;
 }
@@ -167,5 +236,130 @@
 }
 
 .device-details-page__tab-panels {
-  min-height: 28rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.device-details-page__versions-toolbar {
+  margin-bottom: 0.65rem;
+}
+
+.device-details-page__add-version {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1));
+  background: color-mix(in oklab, var(--color-surface-sunken, rgba(0, 0, 0, 0.12)) 90%, transparent);
+}
+
+.device-details-page__add-version-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.88rem;
+}
+
+.device-details-page__add-version-source {
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.device-details-page__add-version-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.45rem 0.65rem;
+  margin-bottom: 0.55rem;
+}
+
+.device-details-page__add-version-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.device-details-page__add-version-field--full {
+  grid-column: 1 / -1;
+}
+
+.device-details-page__add-version-field input,
+.device-details-page__add-version-field textarea,
+.device-details-page__add-version-field select {
+  font: inherit;
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--color-text, #f4f6f8);
+  padding: 0.38rem 0.45rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, rgba(255, 255, 255, 0.12));
+  background: var(--color-bg, #0a0e14);
+  min-width: 0;
+}
+
+.device-details-page__add-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.device-details-page__traffic-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-width: 36rem;
+}
+
+.device-details-page__traffic-panel {
+  margin-top: 0.85rem;
+}
+
+.device-details-page__tab-jump {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-accent, #4da3ff);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+.device-details-page__ingest-panel {
+  margin: 0.65rem 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--color-surface-raised, rgba(0, 0, 0, 0.18));
+}
+
+.device-details-page__ingest-dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin: 0 0 0.65rem;
+}
+
+.device-details-page__ingest-dl > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.device-details-page__ingest-dl dt {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.device-details-page__ingest-dl dd {
+  margin: 0;
 }

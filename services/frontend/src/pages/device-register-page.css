@@ -2197,3 +2197,93 @@
   font-size: 0.82rem;
   color: var(--page-status-error-fg, #f87171);
 }
+
+/* Register / Edit device modal — fixed shell height so Identity / Ingest Control tabs do not resize the dialog */
+.app-modal__dialog.device-register-device-modal {
+  max-width: min(704px, 100%);
+  height: min(72vh, 520px);
+  max-height: min(72vh, 520px);
+}
+
+.app-modal__dialog.device-register-device-modal .app-modal__body {
+  padding: 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-modal__dialog.device-register-device-modal .app-modal__body > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.device-register-device-modal__stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.device-register-device-modal__tab-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0.35rem;
+}
+
+.device-register-device-modal__actions {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.device-register-device-modal__section {
+  margin-bottom: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--color-surface-raised, rgba(0, 0, 0, 0.18));
+}
+
+.device-register-device-modal__section:last-child {
+  margin-bottom: 0;
+}
+
+.device-register-device-modal__section-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.35rem;
+}
+
+.device-register-device-modal__section-value {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--color-text, #f4f6f8);
+  word-break: break-word;
+}
+
+.device-register-device-modal__tabs.device-lineage-detail-tabs {
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+  margin-bottom: 0.4rem;
+}
+
+.device-register-device-modal__tabs .device-lineage-detail-tabs__bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+
+.device-register-device-modal__tabs .device-lineage-detail-tabs__tab {
+  min-width: 0;
+  text-align: center;
+}

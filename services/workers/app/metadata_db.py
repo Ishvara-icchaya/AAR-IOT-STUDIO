@@ -20,10 +20,10 @@ def _db_url() -> str:
     return u.replace("postgresql+psycopg2://", "postgresql://")
 
 
-def fetch_site_mapping_studio(*, device_id: str) -> tuple[str | None, dict[str, Any], dict[str, Any] | None]:
-    """Returns (site_id, device_objects.mapping dict, scrubberStudio dict or None)."""
+def fetch_site_mapping_studio(*, device_id: str) -> tuple[str | None, dict[str, Any], dict[str, Any] | None, str | None]:
+    """Returns (site_id, device_objects.mapping dict, scrubberStudio dict or None, device.version_status)."""
     sql = """
-    SELECT d.site_id::text, dobj.mapping
+    SELECT d.site_id::text, dobj.mapping, COALESCE(NULLIF(TRIM(d.version_status), ''), 'active')
     FROM devices d
     LEFT JOIN device_objects dobj ON dobj.device_id = d.id
     WHERE d.id = %s::uuid
@@ -34,13 +34,13 @@ def fetch_site_mapping_studio(*, device_id: str) -> tuple[str | None, dict[str, 
             cur.execute(sql, (device_id,))
             row = cur.fetchone()
             if not row:
-                return None, {}, None
-            site_id, mapping = row[0], row[1]
+                return None, {}, None, None
+            site_id, mapping, version_status = row[0], row[1], row[2]
             if not isinstance(mapping, dict):
                 mapping = {}
             ss = mapping.get("scrubberStudio")
             studio = ss if isinstance(ss, dict) else None
-            return site_id, mapping, studio
+            return site_id, mapping, studio, version_status
     finally:
         conn.close()
 

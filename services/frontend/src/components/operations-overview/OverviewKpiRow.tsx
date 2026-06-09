@@ -10,10 +10,10 @@ const ROW: {
   sub?: string;
   sparkAccent?: string;
 }[] = [
-  { id: "total_devices", key: "total_devices", label: "Total devices", sub: "In scope", sparkAccent: "#38bdf8" },
-  { id: "online", key: "online", label: "Online", dot: "online", sparkAccent: "#22c55e" },
-  { id: "degraded", key: "degraded", label: "Degraded", dot: "warn", sub: "Late or awaiting first payload", sparkAccent: "#f59e0b" },
-  { id: "offline", key: "offline", label: "Offline", dot: "offline", sparkAccent: "#ef4444" },
+  { id: "total_devices", key: "total_devices", label: "Total devices", sub: "In scope", sparkAccent: "#5aaee6" },
+  { id: "online", key: "online", label: "Online", dot: "online", sparkAccent: "#3cb878" },
+  { id: "degraded", key: "degraded", label: "Degraded", dot: "warn", sub: "Late or awaiting first payload", sparkAccent: "#e8c84a" },
+  { id: "offline", key: "offline", label: "Offline", dot: "offline", sparkAccent: "#f08c9a" },
   { id: "last", key: "last", label: "Last data received" },
 ];
 

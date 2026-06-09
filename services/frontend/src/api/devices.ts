@@ -199,6 +199,11 @@ export type DevicePatchBody = {
   rollback_supported?: boolean | null;
   device_version?: string | null;
   version_status?: string | null;
+  /** Stored on lineage payload when cutting a new label in the same request. */
+  release_notes?: string | null;
+  /** Stored on the new `device_versions` snapshot row when the label changes. */
+  snapshot_config_version?: string | null;
+  snapshot_software_version?: string | null;
 };
 
 export async function createDevice(body: DeviceCreateBody) {
@@ -265,6 +270,8 @@ export type DeviceVersionSnapshot = {
   id: string;
   device_id: string;
   version_label: string;
+  display_version_label: string;
+  system_version_key?: string | null;
   status: string;
   routing_lane: string;
   compatibility?: string | null;
@@ -280,7 +287,29 @@ export type DeviceVersionSnapshot = {
   created_at: string;
   activated_at?: string | null;
   previous_device_version_id?: string | null;
+  resolved_device_id?: string | null;
+  identity_fingerprint?: string | null;
+  software_version?: string | null;
+  created_from_detection_event_id?: string | null;
 };
+
+/** POST /devices/{id}/versions — governed draft row (manual); device cache updates on promote. */
+export type DeviceManualVersionCreateBody = {
+  display_version_label: string;
+  system_version_key?: string | null;
+  notes?: string | null;
+  source?: "manual";
+  firmware_version?: string | null;
+  snapshot_config_version?: string | null;
+  snapshot_software_version?: string | null;
+};
+
+export async function createManualDeviceVersionDraft(deviceId: string, body: DeviceManualVersionCreateBody) {
+  return apiFetch<DeviceVersionSnapshot>(`/devices/${encodeURIComponent(deviceId)}/versions`, {
+    method: "POST",
+    json: { source: "manual", ...body },
+  });
+}
 
 export async function listDeviceVersionSnapshots(deviceId: string) {
   return apiFetch<{ items: DeviceVersionSnapshot[] }>(
@@ -347,22 +376,6 @@ export async function getDeviceVersionImpact(deviceId: string, versionId: string
   );
 }
 
-export type OtaTargetHistoryItem = {
-  target_id: string;
-  campaign_id: string;
-  campaign_name: string;
-  campaign_status: string;
-  target_status: string;
-  target_firmware_version?: string | null;
-  completed_at?: string | null;
-};
-
-export async function getDeviceOtaTargetHistory(deviceId: string) {
-  return apiFetch<{ items: OtaTargetHistoryItem[] }>(
-    `/devices/${encodeURIComponent(deviceId)}/ota-target-history`,
-  );
-}
-
 export type DeviceVersionLifecycleRow = {
   id: string;
   device_id: string;
@@ -375,6 +388,12 @@ export type DeviceVersionLifecycleRow = {
 
 export async function promoteDeviceVersion(versionId: string) {
   return apiFetch<DeviceVersionLifecycleRow>(`/device-versions/${encodeURIComponent(versionId)}/promote`, {
+    method: "POST",
+  });
+}
+
+export async function submitDeviceVersionDraft(versionId: string) {
+  return apiFetch<DeviceVersionLifecycleRow>(`/device-versions/${encodeURIComponent(versionId)}/submit-draft`, {
     method: "POST",
   });
 }
@@ -397,7 +416,7 @@ export async function deprecateDeviceVersion(versionId: string) {
   });
 }
 
-export type DeviceDetailsTab = "overview" | "versions" | "lineage" | "ota" | "simulation";
+export type DeviceDetailsTab = "overview" | "ingest" | "versions" | "lineage" | "simulation";
 
 /** Hub route for Phase 8 Device Details (optional tab query). */
 export function deviceDetailsUrl(deviceId: string, tab?: DeviceDetailsTab) {

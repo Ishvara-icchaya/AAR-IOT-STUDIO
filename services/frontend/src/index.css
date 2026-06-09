@@ -6998,6 +6998,21 @@ a:hover {
   padding: 0.15rem 0 0.35rem !important;
 }
 
+/* Primary Dashboard (OperationsOverview): fill shell height and scroll — avoids clipping charts / health row */
+.page-card.dash-live-page .dash-resolved-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-card.dash-live-page .dash-live-capture-root.dash-resolved-capture {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
 .dash-live.dash-live--reference {
   display: flex;
   flex-direction: column;

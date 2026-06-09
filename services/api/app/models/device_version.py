@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,11 +27,16 @@ class DeviceVersion(Base):
         UUID(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), nullable=False, index=True
     )
     version_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    system_version_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    display_version_label: Mapped[str] = mapped_column(String(64), nullable=False)
     resolved_device_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("resolved_devices.id", ondelete="SET NULL"), nullable=True
     )
     previous_device_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("device_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    created_from_detection_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("version_detection_events.id", ondelete="SET NULL"), nullable=True
     )
     firmware_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     hardware_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -40,6 +45,8 @@ class DeviceVersion(Base):
     scrubber_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     schema_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     manifest_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    identity_fingerprint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    software_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     version_source: Mapped[str] = mapped_column(String(32), nullable=False, default="system")
     firmware_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="stable")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
@@ -51,6 +58,15 @@ class DeviceVersion(Base):
     deprecated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     routing_lane: Mapped[str] = mapped_column(String(16), nullable=False, default="shared")
     compatibility: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    activation_artifacts_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    frozen_operational_summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    def resolved_display_label(self) -> str:
+        """Customer-facing label; falls back to ``version_label`` for legacy rows."""
+        d = (self.display_version_label or "").strip()
+        if d:
+            return d
+        return (self.version_label or "").strip() or "1"
 
     device: Mapped["Device"] = relationship(back_populates="device_version_rows")
     resolved_device: Mapped["ResolvedDevice | None"] = relationship()

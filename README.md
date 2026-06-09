@@ -1,6 +1,41 @@
-# AAR-IoT-Studio
+# AAR IoT Studio
 
-Phase 1 on-prem platform scaffold aligned with `docs/ENTERPRISE_FEATURES_EXPORT_UPDATED.md`: **FastAPI** API, **React + Vite** UI, **Postgres** (metadata), **TimescaleDB** (time-series), **Redis**, **MinIO**, **Kafka (KRaft, no ZooKeeper)**, and **worker** containers.
+**Open-source, on-premises industrial IoT operations platform.**
+
+AAR IoT Studio ingests device telemetry over standard protocols, archives raw payloads, transforms them through published scrubber pipelines, and exposes fleet health through dashboards, maps, workflows, alerts, and governed Enterprise AI. Device versions are **immutable** and promoted through explicit operator activation—so schema and firmware changes do not silently break production KPIs.
+
+[Apache License 2.0](LICENSE)
+
+## Features
+
+- **Multi-protocol ingest** — MQTT, HTTP (push and pull), WebSocket, and listener-style adapters; every message archived before processing
+- **Endpoint-first identity** — Device endpoints as the canonical binding; resolved devices and latest state for operational reads
+- **Scrubber Studio** — Draft, compile, and publish pipelines; decode-series steps; semantic field catalog for KPIs and AI
+- **Dashboards and maps** — Frozen live dashboards, endpoint-group widgets, map trends, and expanded fleet intelligence
+- **Device version governance** — Detection from live traffic, impact analysis, lineage, replay simulation, and **Activate Version** promotion
+- **Workflows and publishing** — Automation graphs, outbound publish paths, unified alerts
+- **Enterprise AI** — Structured, catalog-grounded evidence; optional LLM summarization when enabled
+- **On-prem stack** — Docker Compose: FastAPI, React, Postgres, TimescaleDB, Redis, MinIO, Kafka (KRaft), workers
+
+## Architecture
+
+```text
+Devices → raw archive → Kafka → workers → scrubber → latest state
+                                              ↓
+                         workflows · dashboards · maps · AI · alerts
+```
+
+| Layer | Technology |
+|-------|------------|
+| API | FastAPI |
+| UI | React + Vite |
+| Metadata | PostgreSQL |
+| Time series | TimescaleDB |
+| Cache / live state | Redis |
+| Raw blobs | MinIO |
+| Streaming | Kafka (KRaft) |
+| Workers | ingest, scrubber, workflow, publish, AI, scheduler |
+| LLM (optional) | Ollama |
 
 ## Prerequisites
 
@@ -13,135 +48,103 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-### `run.sh` (shutdown, compile, start)
+| URL | Service |
+|-----|---------|
+| http://localhost:5173 | Web UI |
+| http://localhost:8000 | API (OpenAPI at `/docs`) |
+| `GET /health` | Health check |
+
+### Helper script
 
 ```bash
-./run.sh debug   # tear down stack + free ports 8000/5173, npm build frontend, rebuild images, compose up (foreground, DEBUG)
-./run.sh up      # same teardown + build, then detached stack (INFO logs; set SKIP_FRONTEND_BUILD=1 to skip npm build)
-./run.sh down    # compose down + free 8000/5173
+./run.sh debug   # tear down, rebuild frontend + images, foreground stack (DEBUG logs)
+./run.sh up      # detached stack (set SKIP_FRONTEND_BUILD=1 to skip npm build)
+./run.sh down    # stop stack and free ports 8000 / 5173
 ```
 
-Debug mode enables **`LOG_LEVEL=DEBUG`** for Python services, **uvicorn `--log-level debug --access-log`**, **Vite `--debug`**, and **`VITE_DEBUG=true`** for browser `console.debug` via `src/lib/debug.ts`.
+Debug mode sets `LOG_LEVEL=DEBUG` for Python services, uvicorn access logs, and Vite debug output.
 
-- **UI:** [http://localhost:5173](http://localhost:5173) (primary shell + routes from the baseline)
-- **API:** [http://localhost:8000](http://localhost:8000) — OpenAPI at `/docs`
-- **Health:** `GET /health`
+### Default host ports
 
-### Host port map (defaults)
+| Service | Port | Notes |
+|---------|------|-------|
+| Frontend | 5173 | Vite in container |
+| API | 8000 | |
+| Postgres | 5434 | Avoids local 5432 conflicts |
+| TimescaleDB | 5433 | |
+| Redis | 16379 | Avoids local Redis conflicts |
+| MinIO | 9000 | Console on 9001 |
+| Kafka | 9092 | `apache/kafka` KRaft image |
 
-| Service      | Host port | Notes                          |
-|-------------|-----------|--------------------------------|
-| Frontend    | 5173      | Vite dev server in container   |
-| API         | 8000      |                                |
-| Postgres    | **5434**  | Avoids clash with local 5432   |
-| TimescaleDB | 5433      |                                |
-| Redis       | **16379** | Avoids clash with local Redis  |
-| MinIO S3    | 9000      | Console 9001                   |
-| Kafka       | 9092      | **apache/kafka:3.8.1** KRaft   |
-
-Kafka uses the **Apache** image because **Bitnami** tags are not consistently available on all registries; behavior remains KRaft-only per baseline.
-
-### Optional LLM profile
+### Optional LLM
 
 ```bash
 docker compose --profile llm up -d ollama
 ```
 
-## Trend & map rollout (phases)
+## Repository layout
 
-Implementation status for **map popups**, **Redis trend windows**, and **Timescale durability** is summarized in **[`docs/TREND_MAP_PHASES_README.md`](docs/TREND_MAP_PHASES_README.md)** (with pointers to [`docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md`](docs/MAP_POPUP_TREND_WINDOWS_CONTRACT.md)). **Operators:** CLI, env, and map widget binding fields are in **[`docs/TREND_MAP_OPERATIONS.md`](docs/TREND_MAP_OPERATIONS.md)**.
-
-## Monorepo layout
-
-```
+```text
 services/
-  api/           # FastAPI — /api/v1/* routers (stubs + Kafka topic bootstrap)
-  frontend/      # React, authoritative nav + routes
-  workers/       # worker-ingest, scrubber, workflow, publish, ai, scheduler (scaffold)
+  api/        FastAPI application and migrations
+  frontend/   React SPA (navigation, dashboards, device management, scrubber)
+  workers/    Kafka consumers (ingest, scrubber, workflow, publish, AI, …)
+docs/         Product specs, contracts, and design notes
 ```
 
-From the **repo root**, `npm run build`, `npm run dev`, `npm run lint`, and `npm run lint:design` forward to `services/frontend` (run `npm install` in `services/frontend` first, or from root: `npm install --prefix services/frontend`).
-
-Workers subscribe to canonical topics (`raw.ingest`, `scrubber.input`, …); the API creates topics on startup.
-
-## Iteration log (recover from crashes)
-
-If a session or machine crashes before work is merged or summarized elsewhere, **the repo should still tell the story of what changed.**
-
-After **substantive** edits (code, migrations, config, or meaningful documentation—not one-line typos or pure Q&A), **prepend a new dated section at the top** of [`docs/ITERATION_LOG.md`](docs/ITERATION_LOG.md) (newest first). Each entry should include **date**, **what changed** (files or areas), **why / intent**, and **follow-ups** if any are open. Do not delete older sections; only add new ones at the top.
-
-That log is the durable trail so context is not lost when tooling or hosts fail mid-flight.
-
-## Local development (without Docker for JS/Python)
+From the repo root:
 
 ```bash
-# API
-cd services/api && python -m venv .venv && source .venv/bin/activate
+npm install --prefix services/frontend
+npm run build      # production frontend build
+npm run dev        # frontend dev server (with API running separately or in Compose)
+npm run lint
+```
+
+Workers subscribe to canonical topics (`raw.ingest`, `scrubber.input`, …). The API bootstraps Kafka topics on startup.
+
+## Local development (without full Compose for app code)
+
+**API**
+
+```bash
+cd services/api
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-export DATABASE_URL=...  # point at dockerized Postgres if desired
+export DATABASE_URL=postgresql://...   # e.g. dockerized Postgres on 5434
 uvicorn app.main:app --reload --port 8000
-
-# Frontend
-cd services/frontend && npm install && npm run dev
 ```
 
-Set `VITE_API_BASE_URL` in `services/frontend/.env` if the API is not on `http://localhost:8000/api/v1`.
+**Frontend**
 
-## Dashboard endpoint-group binding (v2)
-
-Dashboards now support endpoint-level logical groups as the default source mode:
-
-```json
-{
-  "sourceType": "resolved_device_collection",
-  "endpointId": "...",
-  "siteId": "...",
-  "objectName": "..."
-}
+```bash
+cd services/frontend
+npm install && npm run dev
 ```
 
-- **Default in builder:** Endpoint Group
-- **Advanced mode:** Individual Device
-- **No `data_object` fallback** for v2 dashboard binding validation/runtime
+Set `VITE_API_BASE_URL` in `services/frontend/.env` if the API is not at `http://localhost:8000/api/v1`.
 
-New dashboard APIs:
+## Documentation
 
-- `GET /api/v1/dashboards/sources/resolved-device-collections?site_id=...`
-- `GET /api/v1/dashboards/runtime/resolved-device-collection?site_id=...&endpoint_id=...&object_name=...`
+| Topic | Location |
+|-------|----------|
+| Platform purpose and customer translation | `docs/PLATFORM_FUNCTIONALITY.md` |
+| Requirements v1–v8+ | `docs/CONSOLIDATED_REQUIREMENTS.md` |
+| Enterprise baseline (navigation, scrubber, restore) | `docs/ENTERPRISE_FEATURES_EXPORT_UPDATED.md` |
+| Ingest and device identity | `docs/CANONICAL_INGRESS_PRODUCT.md` and related canonical docs |
+| Device versioning | `docs/DEVICE_VERSIONING_SPEC.md` |
+| Dashboard widget runtime | `docs/DASHBOARD_WIDGET_CONTRACT.md` |
 
-Runtime collection ordering/cursor are deterministic:
+## Contributing
 
-- `ORDER BY updated_at DESC, scrubbed_event_id DESC, resolved_device_id ASC`
-- cursor encodes `updated_at`, `scrubbed_event_id`, and `resolved_device_id`
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, expectations, and how to open issues and pull requests.
 
-## Recently completed
+## Security
 
-- **Manage Devices / MQTT ingest (v2-aligned):**
-  - API and workers treat **device endpoints** as the ingest anchor: MQTT bridge subscriptions, JSON payload ingest for linked endpoints, and connectivity/validation paths updated (`device_endpoint_v2_mqtt_sync.py` pushes MQTT config to linked v2 endpoints without legacy auto-bind heuristics).
-  - **UI:** `DeviceManagePage` / `DeviceRegisterPage` and `deviceEndpoints` client API aligned with endpoint JSON and previews.
-  - **Docs:** operational detail in [`docs/MANAGE_DEVICES_AND_INGEST_PIPELINES.md`](docs/MANAGE_DEVICES_AND_INGEST_PIPELINES.md).
-- **Scrubber derived (function-based) sandbox & UX:**
-  - Server-side `scrubber_engine` (API + workers) exposes a controlled surface: safe builtins, direct-call helpers (**`randint`**, **`random_float`**), **`datetime`** / **`date`** / **`timedelta`** / **`timezone`**, injected **`re`**, and math/stat/string/date utilities.
-  - **Scrubber v2:** tabbed “Allowed helpers (server)” beside derived transform (Math includes random); preview treats non-empty derived code as enabled for mapping only when saving still respects the checkbox.
-  - **Legacy Scrubber Studio** and **pipeline help modal** copy updated for the same globals and examples.
-- **Endpoint Group dashboard source (default):**
-  - builder source mode supports **Endpoint Group (default)** and **Individual Device (advanced)**;
-  - default bindings for key widgets (`kpi`, `table`, `chart`, `device_tile`) now use `resolved_device_collection`;
-  - endpoint-group source list/runtime APIs are live under `/api/v1/dashboards/sources/resolved-device-collections` and `/api/v1/dashboards/runtime/resolved-device-collection`.
-- **Runtime guards and policy:**
-  - v2 dashboard validation/runtime enforces no `data_object` fallback;
-  - endpoint/site coherence checks added for endpoint-group bindings.
-- **Acceptance tests (endpoint-group):**
-  - coverage includes source policy, required binding fields, cursor contract, status bucket mapping, auto-reflecting device cohort changes, pagination aggregation, map latest-device-state source usage, and OpenAPI route presence.
-- **Dashboard Edit / Configure Widget UX:**
-  - 3-column configure layout (settings, preview, debug JSON);
-  - preview clipping fixes for sticky panel/body scrolling and KPI-strip title enclosure in widget frame CSS.
-
-## Next implementation steps
-
-1. Implement **Restore to Default** (full reset) per §0.7 — orchestration + reseed.
-2. **Dashboard configure diagnostics:** In Dashboard → Edit → configure widget, surface runtime/preview failures clearly (e.g. resolved-device-collection API status, empty cohort summary, and hints for v2 identity publish, `endpoint_id` on scrubber envelopes, and binding `object_name` to `endpoints.object_name` vs scrubber UI label).
+Do not commit `.env` or credentials. For production deployments, restrict network exposure (especially UDP listeners), configure authentication on ingest APIs, and use customer-owned map tile endpoints for air-gapped sites. Report security concerns through your fork’s issue tracker or the channel your maintainers publish.
 
 ## License
 
-Proprietary — assign per your organization.
+Copyright 2026 AAR IoT Studio Contributors.
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).

@@ -40,6 +40,22 @@
   min-width: 0;
 }
 
+.eip-banner {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.12));
+  background: color-mix(in oklab, var(--color-accent, #4da3ff) 14%, var(--color-surface-elevated, #161b22));
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.eip-pre--compact {
+  min-height: 0;
+  max-height: 5.5rem;
+}
+
 .eip-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

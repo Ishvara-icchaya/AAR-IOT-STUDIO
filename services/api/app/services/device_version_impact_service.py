@@ -283,39 +283,3 @@ def build_static_impact_payload(
         "widget_attribute_impact": widget_rows,
         "notes": notes,
     }
-
-
-def list_ota_target_history_for_device(
-    db: Session,
-    *,
-    customer_id: uuid.UUID,
-    device_id: uuid.UUID,
-    limit: int = 100,
-) -> list[dict[str, Any]]:
-    """Recent OTA campaign targets for this device (Phase 8 OTA History tab)."""
-    from app.models.ota_campaign import OtaCampaign, OtaCampaignTarget
-
-    rows = db.execute(
-        select(OtaCampaignTarget, OtaCampaign)
-        .join(OtaCampaign, OtaCampaign.id == OtaCampaignTarget.campaign_id)
-        .where(
-            OtaCampaignTarget.device_id == device_id,
-            OtaCampaign.customer_id == customer_id,
-        )
-        .order_by(OtaCampaignTarget.completed_at.desc().nulls_last(), OtaCampaignTarget.id.desc())
-        .limit(limit)
-    ).all()
-    out: list[dict[str, Any]] = []
-    for tgt, camp in rows:
-        out.append(
-            {
-                "target_id": str(tgt.id),
-                "campaign_id": str(camp.id),
-                "campaign_name": camp.name,
-                "campaign_status": camp.status,
-                "target_status": tgt.status,
-                "target_firmware_version": tgt.target_firmware_version,
-                "completed_at": tgt.completed_at,
-            }
-        )
-    return out

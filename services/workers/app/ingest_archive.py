@@ -29,6 +29,7 @@ from psycopg2.extras import Json
 
 from app.db_url import db_url
 from app.device_endpoint_lifecycle import record_ingest_failure, touch_after_archived_success
+from app.device_ingest_policy import device_version_status_allows_ingest
 from app.kafka_publish import publish_json
 from app.minio_worker import put_raw_object_bytes, remove_raw_object
 
@@ -295,7 +296,8 @@ def resolve_device_row(cur, payload: dict[str, Any]) -> tuple[str, str, str] | N
     if _UUID_RE.match(dev_s):
         cur.execute(
             """
-            SELECT d.id::text, d.customer_id::text, d.site_id::text, d.is_active
+            SELECT d.id::text, d.customer_id::text, d.site_id::text, d.is_active,
+                   COALESCE(NULLIF(TRIM(d.version_status), ''), 'active')
             FROM devices d
             WHERE d.id = %s::uuid
             """,
@@ -305,9 +307,16 @@ def resolve_device_row(cur, payload: dict[str, Any]) -> tuple[str, str, str] | N
         if not row:
             log.error("ingest_archive no device for uuid %s", dev_s)
             return None
-        did, cid, sid, active = row[0], row[1], row[2], row[3]
+        did, cid, sid, active, vstat = row[0], row[1], row[2], row[3], row[4]
         if not active:
             log.error("ingest_archive device inactive id=%s", did)
+            return None
+        if not device_version_status_allows_ingest(vstat):
+            log.error(
+                "ingest_archive device version_status blocks ingest id=%s version_status=%s",
+                did,
+                vstat,
+            )
             return None
         return did, cid, sid
 
@@ -315,7 +324,8 @@ def resolve_device_row(cur, payload: dict[str, Any]) -> tuple[str, str, str] | N
     if isinstance(site_slug, str) and site_slug.strip():
         cur.execute(
             """
-            SELECT d.id::text, d.customer_id::text, d.site_id::text, d.is_active
+            SELECT d.id::text, d.customer_id::text, d.site_id::text, d.is_active,
+                   COALESCE(NULLIF(TRIM(d.version_status), ''), 'active')
             FROM devices d
             INNER JOIN sites s ON s.id = d.site_id
             WHERE d.name = %s AND s.name = %s
@@ -339,15 +349,23 @@ def resolve_device_row(cur, payload: dict[str, Any]) -> tuple[str, str, str] | N
                 len(rows),
             )
             return None
-        did, cid, sid, active = rows[0][0], rows[0][1], rows[0][2], rows[0][3]
+        did, cid, sid, active, vstat = rows[0][0], rows[0][1], rows[0][2], rows[0][3], rows[0][4]
         if not active:
             log.error("ingest_archive device inactive id=%s", did)
+            return None
+        if not device_version_status_allows_ingest(vstat):
+            log.error(
+                "ingest_archive device version_status blocks ingest id=%s version_status=%s",
+                did,
+                vstat,
+            )
             return None
         return did, cid, sid
 
     cur.execute(
         """
-        SELECT d.id::text, d.customer_id::text, d.site_id::text, d.is_active
+        SELECT d.id::text, d.customer_id::text, d.site_id::text, d.is_active,
+               COALESCE(NULLIF(TRIM(d.version_status), ''), 'active')
         FROM devices d
         WHERE d.name = %s
         """,
@@ -369,9 +387,16 @@ def resolve_device_row(cur, payload: dict[str, Any]) -> tuple[str, str, str] | N
             site_key,
         )
         return None
-    did, cid, sid, active = rows[0][0], rows[0][1], rows[0][2], rows[0][3]
+    did, cid, sid, active, vstat = rows[0][0], rows[0][1], rows[0][2], rows[0][3], rows[0][4]
     if not active:
         log.error("ingest_archive device inactive id=%s", did)
+        return None
+    if not device_version_status_allows_ingest(vstat):
+        log.error(
+            "ingest_archive device version_status blocks ingest id=%s version_status=%s",
+            did,
+            vstat,
+        )
         return None
     return did, cid, sid
 
@@ -660,7 +685,8 @@ def ingest_json_payload_for_endpoint(
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT de.device_id::text, d.customer_id::text, d.site_id::text, d.is_active, de.is_active
+                SELECT de.device_id::text, d.customer_id::text, d.site_id::text, d.is_active, de.is_active,
+                       COALESCE(NULLIF(TRIM(d.version_status), ''), 'active')
                 FROM device_endpoints de
                 INNER JOIN devices d ON d.id = de.device_id
                 WHERE de.id = %s::uuid
@@ -678,7 +704,14 @@ def ingest_json_payload_for_endpoint(
                     trace_id=str(payload.get("run_id") or "")[:128] or None,
                 )
                 return False
-            device_id_s, customer_id_s, site_id_s, d_active, e_active = row[0], row[1], row[2], row[3], row[4]
+            device_id_s, customer_id_s, site_id_s, d_active, e_active, d_vstat = (
+                row[0],
+                row[1],
+                row[2],
+                row[3],
+                row[4],
+                row[5],
+            )
             if not e_active:
                 quarantine_ingest(
                     reason_code="endpoint_binding_inactive",
@@ -698,6 +731,24 @@ def ingest_json_payload_for_endpoint(
                     device_endpoint_id,
                     device_id_s,
                     tid or "—",
+                )
+                return False
+            if not device_version_status_allows_ingest(d_vstat):
+                quarantine_ingest(
+                    reason_code="device_version_status_blocked",
+                    transport=protocol_source,
+                    attempted_binding_json={
+                        "device_endpoint_id": str(device_endpoint_id),
+                        "device_id": device_id_s,
+                        "version_status": str(d_vstat or ""),
+                    },
+                    attempted_payload_identity_json=build_ingest_metadata_from_payload(
+                        payload, device_endpoint_id=device_endpoint_id
+                    ),
+                    customer_id=uuid.UUID(customer_id_s),
+                    site_id=uuid.UUID(site_id_s),
+                    error_message="device version_status blocks ingest (deprecated or rolled_back)",
+                    trace_id=str(payload.get("run_id") or "").strip()[:128] or None,
                 )
                 return False
             device_id = uuid.UUID(device_id_s)
@@ -870,7 +921,8 @@ def ingest_json_payload_for_v2_endpoint(
             cur.execute(
                 f"""
                 SELECT e.customer_id::text, e.site_id::text, e.enabled, e.device_endpoint_id::text,
-                       de.device_id::text, de.is_active, d.is_active
+                       de.device_id::text, de.is_active, d.is_active,
+                       COALESCE(NULLIF(TRIM(d.version_status), ''), 'active')
                 FROM endpoints e
                 LEFT JOIN device_endpoints de ON de.id = e.device_endpoint_id
                 LEFT JOIN devices d ON d.id = de.device_id
@@ -893,7 +945,7 @@ def ingest_json_payload_for_v2_endpoint(
                 )
                 return False
 
-            customer_id_s, site_id_s, ep_enabled, de_id_s, device_id_s, de_active, d_active = row
+            customer_id_s, site_id_s, ep_enabled, de_id_s, device_id_s, de_active, d_active, d_vstat = row
             customer_id = uuid.UUID(customer_id_s)
             site_id = uuid.UUID(site_id_s)
             if not ep_enabled:
@@ -932,6 +984,23 @@ def ingest_json_payload_for_v2_endpoint(
                     site_id=site_id,
                     endpoint_id=endpoint_id,
                     error_message="linked device endpoint/device inactive",
+                    trace_id=str(payload.get("run_id") or "")[:128] or None,
+                )
+                return False
+            if not device_version_status_allows_ingest(d_vstat):
+                quarantine_ingest(
+                    reason_code="device_version_status_blocked",
+                    transport=protocol_source,
+                    attempted_binding_json={
+                        "endpoint_id": str(endpoint_id),
+                        "device_id": device_id_s,
+                        "version_status": str(d_vstat or ""),
+                    },
+                    attempted_payload_identity_json=build_ingest_metadata_from_payload(payload, device_endpoint_id=None),
+                    customer_id=customer_id,
+                    site_id=site_id,
+                    endpoint_id=endpoint_id,
+                    error_message="device version_status blocks ingest (deprecated or rolled_back)",
                     trace_id=str(payload.get("run_id") or "")[:128] or None,
                 )
                 return False

@@ -112,8 +112,11 @@ export function EndpointIdentityPanel({ endpointId, onClose, embedded = false }:
 
   const displaySample = useMemo(() => sampleDocumentForIdentityDisplay(ep), [ep]);
 
+  const identityReadOnly = Boolean(ep?.identity_managed_by_scrubber);
+
   async function onSave(e: FormEvent) {
     e.preventDefault();
+    if (identityReadOnly) return;
     setErr(null);
     setOk(null);
     setSaving(true);
@@ -136,6 +139,7 @@ export function EndpointIdentityPanel({ endpointId, onClose, embedded = false }:
   }
 
   async function onPublish() {
+    if (identityReadOnly) return;
     setErr(null);
     setOk(null);
     setPublishing(true);
@@ -193,6 +197,12 @@ export function EndpointIdentityPanel({ endpointId, onClose, embedded = false }:
 
       {ep ? (
         <form className="eip-form" onSubmit={onSave}>
+          {identityReadOnly ? (
+            <p className="eip-banner" role="status">
+              Primary key and label paths are <strong>managed by the published scrubber</strong> (Field Explorer{" "}
+              <code>identity</code> / <code>display</code> roles). Republish the scrubber to change them. This view is read-only.
+            </p>
+          ) : null}
           <div className="eip-grid">
             <section className="eip-cell">
               <h3 className="eip-cell__title">Captured sample</h3>
@@ -224,50 +234,62 @@ export function EndpointIdentityPanel({ endpointId, onClose, embedded = false }:
             <section className="eip-cell">
               <h3 className="eip-cell__title">Primary identity paths</h3>
               <p className="eip-cell__hint">Comma-separated dotted paths on the scrubbed output payload.</p>
-              <label className="eip-label">
-                <input
-                  className="eip-input"
-                  value={pkInput}
-                  onChange={(e) => setPkInput(e.target.value)}
-                  placeholder="e.g. device_id, unit.serial"
-                  autoComplete="off"
-                />
-              </label>
+              {identityReadOnly ? (
+                <pre className="eip-pre eip-pre--compact">{pkInput.trim() || "—"}</pre>
+              ) : (
+                <label className="eip-label">
+                  <input
+                    className="eip-input"
+                    value={pkInput}
+                    onChange={(e) => setPkInput(e.target.value)}
+                    placeholder="e.g. device_id, unit.serial"
+                    autoComplete="off"
+                  />
+                </label>
+              )}
             </section>
 
             <section className="eip-cell">
               <h3 className="eip-cell__title">Label fields</h3>
               <p className="eip-cell__hint">Optional comma-separated paths for display labels.</p>
-              <label className="eip-label">
-                <input
-                  className="eip-input"
-                  value={labelInput}
-                  onChange={(e) => setLabelInput(e.target.value)}
-                  placeholder="optional"
-                  autoComplete="off"
-                />
-              </label>
+              {identityReadOnly ? (
+                <pre className="eip-pre eip-pre--compact">{labelInput.trim() || "—"}</pre>
+              ) : (
+                <label className="eip-label">
+                  <input
+                    className="eip-input"
+                    value={labelInput}
+                    onChange={(e) => setLabelInput(e.target.value)}
+                    placeholder="optional"
+                    autoComplete="off"
+                  />
+                </label>
+              )}
             </section>
           </div>
 
-          <p className="eip-footnote">
-            Paths must match the <strong>scrubbed output</strong> shape. Scrubber semantics (identity / display roles)
-            suggest paths when this endpoint is linked to a device.
-          </p>
+          {!identityReadOnly ? (
+            <p className="eip-footnote">
+              Paths must match the <strong>scrubbed output</strong> shape. Scrubber semantics (identity / display roles)
+              suggest paths when this endpoint is linked to a device.
+            </p>
+          ) : null}
 
-          <div className="eip-actions">
-            <button type="submit" className="dm-btn dm-btn--outline" disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              className="dm-btn dm-btn--primary"
-              disabled={publishing || !ep.sample_payload}
-              onClick={() => void onPublish()}
-            >
-              {publishing ? "Publishing…" : "Publish identity"}
-            </button>
-          </div>
+          {!identityReadOnly ? (
+            <div className="eip-actions">
+              <button type="submit" className="dm-btn dm-btn--outline" disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                className="dm-btn dm-btn--primary"
+                disabled={publishing || !ep.sample_payload}
+                onClick={() => void onPublish()}
+              >
+                {publishing ? "Publishing…" : "Publish identity"}
+              </button>
+            </div>
+          ) : null}
         </form>
       ) : null}
     </div>

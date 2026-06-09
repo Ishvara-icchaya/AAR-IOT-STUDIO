@@ -83,3 +83,4 @@ class ResultObjectListV1Response(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     items: list[ResultObjectV1]
+    governance: dict[str, Any] | None = None

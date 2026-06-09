@@ -22,7 +22,6 @@ from app.api.v1 import (
     enterprise_dashboard,
     ingest,
     monitoring,
-    ota,
     published_services,
     raw_data_objects,
     result_objects,
@@ -41,7 +40,7 @@ admin_router.include_router(admin_ports.router)
 
 api_router = APIRouter()
 
-_MOUNT = (
+_BASE_MOUNT: list[tuple[APIRouter, str, str]] = [
     (auth.router, "/auth", "auth"),
     (roles_catalog.router, "/roles", "roles"),
     (permissions_me.router, "/permissions", "permissions"),
@@ -52,7 +51,6 @@ _MOUNT = (
     (device_versions.router, "/device-versions", "device-versions"),
     (simulations.router, "/simulations", "simulations"),
     (control_plane_audit.router, "/audit", "audit"),
-    (ota.router, "/ota", "ota"),
     (device_endpoints.router, "/device-endpoints", "device-endpoints"),
     (endpoints.router, "/endpoints", "endpoints"),
     (device_objects.router, "/device-objects", "device-objects"),
@@ -70,7 +68,9 @@ _MOUNT = (
     (administration.router, "/administration", "administration"),
     (workspace.router, "/workspace", "workspace"),
     (admin_router, "/admin", "admin"),
-)
+]
+
+_MOUNT: list[tuple[APIRouter, str, str]] = list(_BASE_MOUNT)
 
 for router, prefix, tag in _MOUNT:
     api_router.include_router(router, prefix=prefix, tags=[tag])

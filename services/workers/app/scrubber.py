@@ -18,6 +18,7 @@ from app.metadata_db import fetch_site_mapping_studio, insert_data_object
 from app.minio_worker import read_object_slice
 from app.pipeline import emit
 from app.scrubber_engine import ScrubberRunResult, run_scrubber
+from app.device_ingest_policy import device_version_status_allows_ingest
 from app.endpoint_version_identity import process_raw_version_identity
 from app.v2_resolution import try_write_v2_from_scrubber
 from app.worker_heartbeat import start_daemon as start_worker_heartbeat
@@ -86,9 +87,18 @@ def _process_envelope(env: dict) -> None:
     if content_type is not None and not isinstance(content_type, str):
         content_type = None
 
-    site_id, mapping, scrubber_studio = fetch_site_mapping_studio(device_id=device_id)
+    site_id, mapping, scrubber_studio, version_status = fetch_site_mapping_studio(device_id=device_id)
     if not site_id:
         log.error("scrubber device not found device_id=%s", device_id)
+        return
+
+    if not device_version_status_allows_ingest(version_status):
+        log.warning(
+            "scrubber skip device version_status=%s blocks processing raw_object_id=%s device_id=%s",
+            version_status,
+            raw_object_id,
+            device_id,
+        )
         return
 
     if not scrubber_studio:

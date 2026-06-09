@@ -64,3 +64,9 @@ def emit_result_object_created(*, payload: dict) -> None:
     topic = os.environ.get("KAFKA_RESULT_OBJECT_CREATED_TOPIC", "result_object.created")
     key = str(payload.get("result_object_id") or payload.get("workflow_id") or "")
     publish_json(topic=topic, key=key, payload=payload)
+
+
+def emit_version_identity_changed(payload: dict) -> None:
+    topic = os.environ.get("KAFKA_VERSION_IDENTITY_TOPIC", "version.identity.changed")
+    key = str(payload.get("device_id") or payload.get("endpoint_id") or "")
+    publish_json(topic=topic, key=key, payload=payload)

@@ -160,6 +160,9 @@ class DashboardResolvedDeviceCollectionItem(BaseModel):
     health_json: dict[str, Any] | None = None
     updated_at: datetime
     scrubbed_event_id: uuid.UUID | None = None
+    effective_device_version_id: uuid.UUID | None = None
+    pinned_device_version_id: uuid.UUID | None = None
+    read_lane: str | None = None
 
 
 class DashboardResolvedDeviceCollectionSummary(BaseModel):

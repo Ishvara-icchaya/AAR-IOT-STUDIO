@@ -108,23 +108,24 @@
   padding: 0;
 }
 
+/* Device details hub — fixed shell height so tabs do not resize the dialog */
+.app-modal__dialog.device-endpoint-config-modal.device-details-modal {
+  max-width: min(920px, 100%);
+  height: min(85vh, 760px);
+  max-height: min(85vh, 760px);
+}
+
+.app-modal__dialog.device-endpoint-config-modal.device-details-modal .app-modal__body {
+  padding: 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Device manage — wide endpoint editor */
 .device-endpoint-config-modal {
   max-height: min(94vh, 980px);
-}
-
-/* OTA campaign list (Manage Devices modal + /devices/ota) — compact width vs default xl */
-.app-modal__dialog.device-endpoint-config-modal.ota-campaigns-list-modal {
-  max-width: min(900px, 100%);
-}
-
-/* New OTA wizard — ~40% narrower than default xl (1680px → 1008px) */
-.ota-campaign-new-modal.app-modal__dialog--xl {
-  max-width: min(1008px, 100%);
-}
-
-.ota-campaign-new-modal .app-modal__body {
-  padding: 0.85rem 1rem 1.1rem;
 }
 
 /* Scrubber pipeline help — compact width */

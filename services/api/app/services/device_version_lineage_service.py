@@ -80,6 +80,9 @@ def _latest_device_version_for_label(db: Session, device_id: uuid.UUID, version_
     ).scalar_one_or_none()
 
 
+_MISSING = object()
+
+
 def _create_device_version_snapshot(
     db: Session,
     device: Device,
@@ -90,27 +93,45 @@ def _create_device_version_snapshot(
     created_by: uuid.UUID | None,
     routing_lane: str = "shared",
     compatibility: str | None = None,
+    config_version: str | None = None,
+    software_version: str | None = None,
+    snapshot_firmware_version: str | None = None,
+    display_version_label: str | None = None,
+    system_version_key: str | None = None,
+    status: str | None = None,
+    activated_at: datetime | None | object = _MISSING,
 ) -> DeviceVersion:
     now = datetime.now(timezone.utc)
+    disp = (display_version_label or "").strip() or (version_label or "").strip() or "1"
+    status_eff = (status or device.version_status or "active")[:32]
+    if activated_at is _MISSING:
+        activated_eff: datetime | None = now
+    else:
+        activated_eff = activated_at  # type: ignore[assignment]
+    sfv = (snapshot_firmware_version or "").strip()[:128] if snapshot_firmware_version else ""
+    row_fw = sfv or device.firmware_version
     row = DeviceVersion(
         id=uuid.uuid4(),
         device_id=device.id,
         version_label=version_label,
+        system_version_key=(system_version_key.strip()[:128] if system_version_key and system_version_key.strip() else None),
+        display_version_label=disp[:64],
         resolved_device_id=None,
         previous_device_version_id=previous_device_version_id,
-        firmware_version=device.firmware_version,
+        firmware_version=row_fw,
         hardware_version=None,
-        config_version=None,
+        config_version=config_version,
         endpoint_version=None,
         scrubber_version=None,
         schema_version=None,
         manifest_hash=None,
+        software_version=software_version,
         version_source=version_source,
         firmware_channel=device.firmware_channel or "stable",
-        status=(device.version_status or "active")[:32],
+        status=status_eff,
         created_at=now,
         created_by=created_by,
-        activated_at=now,
+        activated_at=activated_eff,
         deprecated_at=None,
         routing_lane=routing_lane,
         compatibility=compatibility,
@@ -193,6 +214,8 @@ def record_version_lineage_transition(
     source_type: str | None = None,
     event_type: str | None = None,
     payload_json: dict[str, Any] | None = None,
+    snapshot_config_version: str | None = None,
+    snapshot_software_version: str | None = None,
 ) -> None:
     """Mark prior head row superseded and append a new lineage row + immutable ``device_versions`` row."""
     if previous_label == new_label:
@@ -209,6 +232,10 @@ def record_version_lineage_transition(
         previous_device_version_id=prev_id,
         version_source=_version_source_for_trigger(trigger_code),
         created_by=created_by,
+        config_version=snapshot_config_version,
+        software_version=snapshot_software_version,
+        display_version_label=new_label,
+        system_version_key=new_label,
     )
     last = db.execute(
         select(DeviceVersionLineage)

@@ -38,6 +38,11 @@ def get_trends_window(
         le=500,
         description="Optional cap on bucket points returned per metric (uniform downsampling).",
     ),
+    device_version_id: uuid.UUID | None = Query(
+        None,
+        alias="deviceVersionId",
+        description="Optional explicit device_versions row (audit/candidate); series keys unchanged.",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -65,6 +70,7 @@ def get_trends_window(
             bucket=bucket,
             as_of_raw=as_of,
             max_points=max_points,
+            device_version_id=device_version_id,
         )
     except PermissionError as e:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(e)) from e

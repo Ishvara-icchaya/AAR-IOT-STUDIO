@@ -590,13 +590,15 @@ export function Scrubber2StepContent({
         {!pathSamplePreview ? (
           <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
             Run <strong>Validate</strong> (server preview) to load field paths from the transformed payload — including
-            derived fields and excluding dropped paths.
+            derived fields and excluding dropped paths. After rows exist, use <strong>Select all for AI</strong> to
+            enable AI exposure on every row with a path.
           </p>
         ) : (
           <p className="scrubber2-muted" style={{ fontSize: "0.78rem", marginTop: 0 }}>
             Use <strong>Default Attributes</strong> to insert <strong>one row per field</strong> from the validated
             preview (preview order), with type and default labels. Existing labels, roles, and AI flags for matching
-            paths are kept; extra rows you added manually remain below. The <strong>Type</strong> column is discovery /
+            paths are kept; extra rows you added manually remain below. Use <strong>Select all for AI</strong> to turn
+            on AI exposure for every row that has a path. The <strong>Type</strong> column is discovery /
             display only — binary, CSV, hex, and array shapes are <strong>not</strong> decoded unless you add an
             explicit <code style={{ fontSize: "0.75em" }}>decode_series</code> step (Configure decode series).
           </p>
@@ -618,6 +620,24 @@ export function Scrubber2StepContent({
             }}
           >
             Default Attributes
+          </button>
+          <button
+            type="button"
+            className="scrubber2-btn scrubber2-btn--ghost"
+            disabled={!model.fieldSemantics.some((r) => r.path.trim())}
+            title="Set AI exposure on for every row that has a path (skips empty rows)."
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setModel((m) => ({
+                ...m,
+                fieldSemantics: m.fieldSemantics.map((fs) =>
+                  fs.path.trim() ? { ...fs, aiExposed: true } : fs,
+                ),
+              }));
+            }}
+          >
+            Select all for AI
           </button>
           <button
             type="button"

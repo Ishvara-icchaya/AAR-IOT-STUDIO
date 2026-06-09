@@ -23,7 +23,7 @@ from app.models.resolved_device import ResolvedDevice
 from app.services.data_object_query import order_by_metadata_recency
 from app.services.functional_audit_alert import emit_functional_audit_alert
 from app.services.workflow_result_query import order_by_metadata_recency as order_result_objects_by_recency
-from app.models.device import Device
+from app.models.device_version import DeviceVersion
 from app.models.device_endpoint import DeviceEndpoint
 from app.models.user import User
 from app.models.user_site import UserSite
@@ -43,6 +43,7 @@ from app.schemas.dashboard import (
     DashboardSourcesDataObjectsResponse,
     DashboardSourcesLatestDeviceStatesResponse,
     DashboardSourcesResolvedDeviceCollectionsResponse,
+    DashboardResolvedDeviceCollectionItem,
     DashboardResolvedDeviceCollectionResponse,
     DashboardSourcesResultObjectsResponse,
     DashboardUpdate,
@@ -63,6 +64,13 @@ from app.services.dashboard_resolved_device_collection import (
     decode_cursor,
     list_collection_sources,
     query_collection_page,
+)
+from app.services.device_version_read_context import (
+    LiveReadLane,
+    batch_effective_shared_device_version_ids,
+    candidate_latest_row,
+    device_id_for_resolved_device,
+    resolve_operational_read_for_resolved_device,
 )
 from app.services.dashboard_resolve import build_dashboard_live_response
 from app.services.dashboard_runtime_layout import build_runtime_layout_response
@@ -321,6 +329,11 @@ def get_runtime_resolved_device_collection(
         description="When true, only rows with non-empty location_json.lat/lon are returned; "
         "summary.excluded_missing_location counts deduped devices missing coordinates.",
     ),
+    device_version_id: uuid.UUID | None = Query(
+        None,
+        alias="deviceVersionId",
+        description="Explicit operational cut (candidate lane overlays live fields).",
+    ),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -359,25 +372,71 @@ def get_runtime_resolved_device_collection(
         cursor=decoded_cursor,
         require_location=require_location,
     )
-    items = [
-        {
-            "latest_device_state_id": st.id,
-            "resolved_device_id": st.resolved_device_id,
-            "device_label": rd.device_label if rd else None,
-            "device_type": rd.device_type if rd else None,
-            "lifecycle_status": st.lifecycle_status,
-            "health_status": st.health_status,
-            "last_event_ts": st.last_event_ts,
-            "location_json": st.location_json,
-            "identity_json": st.identity_json,
-            "display_json": st.display_json,
-            "kpi_json": st.kpi_json,
-            "health_json": st.health_json,
-            "updated_at": st.updated_at,
-            "scrubbed_event_id": st.scrubbed_event_id,
-        }
-        for st, rd in rows
-    ]
+    rids = [st.resolved_device_id for st, _rd in rows]
+    eff_map = batch_effective_shared_device_version_ids(
+        db, customer_id=user.customer_id, resolved_device_ids=rids
+    )
+    pin_dv = db.get(DeviceVersion, device_version_id) if device_version_id else None
+
+    items: list[DashboardResolvedDeviceCollectionItem] = []
+    for st, rd in rows:
+        loc = st.location_json
+        disp = st.display_json
+        kpi = st.kpi_json
+        hj = st.health_json
+        up_at = st.updated_at
+        read_lane: str | None = None
+        pin_id: uuid.UUID | None = None
+        if pin_dv is not None:
+            pid_dev = device_id_for_resolved_device(db, st.resolved_device_id)
+            if pid_dev == pin_dv.device_id:
+                try:
+                    ctx = resolve_operational_read_for_resolved_device(
+                        db,
+                        customer_id=user.customer_id,
+                        resolved_device_id=st.resolved_device_id,
+                        explicit_device_version_id=pin_dv.id,
+                    )
+                except (LookupError, PermissionError):
+                    ctx = None
+                else:
+                    pin_id = pin_dv.id
+                    read_lane = ctx.live_read_lane.value
+                    if ctx.live_read_lane == LiveReadLane.unavailable:
+                        continue
+                    if ctx.live_read_lane == LiveReadLane.candidate_lds:
+                        crow = candidate_latest_row(
+                            db, resolved_device_id=st.resolved_device_id, device_version_id=pin_dv.id
+                        )
+                        if crow:
+                            loc = crow.location_json
+                            disp = crow.display_json if isinstance(crow.display_json, dict) else {}
+                            kpi = crow.kpi_json if isinstance(crow.kpi_json, dict) else {}
+                            hj = crow.health_json
+                            up_at = crow.updated_at
+                        else:
+                            continue
+        items.append(
+            DashboardResolvedDeviceCollectionItem(
+                latest_device_state_id=st.id,
+                resolved_device_id=st.resolved_device_id,
+                device_label=rd.device_label if rd else None,
+                device_type=rd.device_type if rd else None,
+                lifecycle_status=st.lifecycle_status,
+                health_status=st.health_status,
+                last_event_ts=st.last_event_ts,
+                location_json=loc,
+                identity_json=st.identity_json if isinstance(st.identity_json, dict) else {},
+                display_json=dict(disp or {}),
+                kpi_json=dict(kpi or {}),
+                health_json=hj,
+                updated_at=up_at,
+                scrubbed_event_id=st.scrubbed_event_id,
+                effective_device_version_id=eff_map.get(st.resolved_device_id),
+                pinned_device_version_id=pin_id,
+                read_lane=read_lane,
+            )
+        )
     return DashboardResolvedDeviceCollectionResponse(
         items=items,
         summary=summary,

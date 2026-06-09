@@ -1,4 +1,3 @@
-import type { Dispatch, SetStateAction } from "react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Braces, ChevronLeft, ChevronRight, GitBranch, Pencil, Plus, Search } from "lucide-react";
@@ -23,9 +22,7 @@ import { PageShell } from "@/layouts/PageShell";
 import { useShellFeedback } from "@/layouts/shell/useShellFeedback";
 import { ScrubbedEventsSelectModal } from "@/pages/scrubber2/ScrubbedEventsSelectModal";
 import {
-  DEVICE_LABEL_PATH_OPTIONS,
   ENDPOINT_LIFECYCLE_FILTERS,
-  PRIMARY_KEY_PATH_OPTIONS,
   V2_ENDPOINT_PROTOCOL_OPTIONS,
   isValidCustomEndpointName,
   protocolLabelForTable,
@@ -71,10 +68,6 @@ export function IngestDevicesPage() {
   const [endpointName, setEndpointName] = useState("");
   const [protocol, setProtocol] = useState(V2_ENDPOINT_PROTOCOL_OPTIONS[1]?.value ?? "mqtt");
   const [linkDeviceEndpointId, setLinkDeviceEndpointId] = useState("");
-  const [pkSelected, setPkSelected] = useState<Set<string>>(() => new Set());
-  const [labelSelected, setLabelSelected] = useState<Set<string>>(() => new Set());
-  const [pkExtras, setPkExtras] = useState<string[]>([]);
-  const [labelExtras, setLabelExtras] = useState<string[]>([]);
   const [editing, setEditing] = useState<EndpointRead | null>(null);
   const [endpointModalOpen, setEndpointModalOpen] = useState(false);
   const [identityModalId, setIdentityModalId] = useState<string | null>(null);
@@ -82,6 +75,12 @@ export function IngestDevicesPage() {
   const [scrubbedEndpointId, setScrubbedEndpointId] = useState("");
   const [scrubbedEndpointLabel, setScrubbedEndpointLabel] = useState("");
   const [lineageModalOpen, setLineageModalOpen] = useState(false);
+  const [versionIdentityJson, setVersionIdentityJson] = useState("");
+
+  const identityModalEndpoint = useMemo(
+    () => (identityModalId ? items.find((x) => x.id === identityModalId) ?? null : null),
+    [identityModalId, items],
+  );
 
   useShellFeedback(err, ok);
 
@@ -228,10 +227,7 @@ export function IngestDevicesPage() {
     setEndpointName("");
     setProtocol(V2_ENDPOINT_PROTOCOL_OPTIONS[1]?.value ?? "mqtt");
     setLinkDeviceEndpointId("");
-    setPkSelected(new Set());
-    setLabelSelected(new Set());
-    setPkExtras([]);
-    setLabelExtras([]);
+    setVersionIdentityJson("");
   }
 
   function openCreateEndpointModal() {
@@ -246,24 +242,9 @@ export function IngestDevicesPage() {
     setProtocol(V2_ENDPOINT_PROTOCOL_OPTIONS.some((o) => o.value === normProto) ? normProto : "mqtt");
     setEndpointName(ep.endpoint_name);
     setLinkDeviceEndpointId(ep.device_endpoint_id ?? "");
-    const pk =
-      (ep.identity_draft as { primary_device_key_fields?: string[] } | undefined)?.primary_device_key_fields ??
-      ep.primary_device_key_fields ??
-      [];
-    const dl =
-      (ep.identity_draft as { device_label_fields?: string[] } | undefined)?.device_label_fields ??
-      ep.device_label_fields ??
-      [];
-    const pkSet = new Set(pk);
-    const pkCommon = PRIMARY_KEY_PATH_OPTIONS.filter((p) => pkSet.has(p));
-    const pkExtra = pk.filter((x) => !PRIMARY_KEY_PATH_OPTIONS.includes(x as (typeof PRIMARY_KEY_PATH_OPTIONS)[number]));
-    setPkSelected(new Set(pkCommon));
-    setPkExtras(pkExtra);
-    const dlSet = new Set(dl);
-    const dlCommon = DEVICE_LABEL_PATH_OPTIONS.filter((p) => dlSet.has(p));
-    const dlExtra = dl.filter((x) => !DEVICE_LABEL_PATH_OPTIONS.includes(x as (typeof DEVICE_LABEL_PATH_OPTIONS)[number]));
-    setLabelSelected(new Set(dlCommon));
-    setLabelExtras(dlExtra);
+    setVersionIdentityJson(
+      ep.version_identity != null ? JSON.stringify(ep.version_identity, null, 2) : "",
+    );
     setEndpointModalOpen(true);
   }
 
@@ -284,17 +265,29 @@ export function IngestDevicesPage() {
       setErr("Select a site for the new endpoint.");
       return;
     }
+    const viTrim = versionIdentityJson.trim();
+    let version_identity: Record<string, unknown> | undefined;
+    if (viTrim) {
+      try {
+        const parsed: unknown = JSON.parse(viTrim);
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setErr("Version identity must be a JSON object.");
+          return;
+        }
+        version_identity = parsed as Record<string, unknown>;
+      } catch {
+        setErr("Version identity: invalid JSON.");
+        return;
+      }
+    }
     try {
-      const pk = [...Array.from(pkSelected), ...pkExtras];
-      const dl = [...Array.from(labelSelected), ...labelExtras];
       if (editing) {
         await updateEndpoint(editing.id, {
           endpoint_name: name,
           protocol,
-          primary_device_key_fields: pk.length ? pk : null,
-          device_label_fields: dl.length ? dl : null,
           enabled: true,
           device_endpoint_id: linkDeviceEndpointId.trim() || null,
+          ...(viTrim ? { version_identity: version_identity ?? {} } : {}),
         });
         setOk("Endpoint updated.");
       } else {
@@ -302,10 +295,9 @@ export function IngestDevicesPage() {
           site_id: formSiteId,
           endpoint_name: name,
           protocol,
-          primary_device_key_fields: pk.length ? pk : null,
-          device_label_fields: dl.length ? dl : null,
           enabled: true,
           device_endpoint_id: linkDeviceEndpointId.trim() || null,
+          ...(viTrim ? { version_identity: version_identity ?? {} } : {}),
         });
         setOk("Endpoint created.");
       }
@@ -326,15 +318,6 @@ export function IngestDevicesPage() {
   function onFilterSearch(e: FormEvent) {
     e.preventDefault();
     setAppliedQ(searchInput.trim());
-  }
-
-  function toggleInSet(setter: Dispatch<SetStateAction<Set<string>>>, key: string) {
-    setter((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   }
 
   const endpointForm = (
@@ -417,37 +400,51 @@ export function IngestDevicesPage() {
       ) : null}
 
       <fieldset className="ingest-ept-fieldset">
-        <legend>Primary key JSON paths</legend>
-        <div className="ingest-ept-check-grid">
-          {PRIMARY_KEY_PATH_OPTIONS.map((path) => (
-            <label key={path} className="ingest-ept-check">
-              <input type="checkbox" checked={pkSelected.has(path)} onChange={() => toggleInSet(setPkSelected, path)} />
-              <code>{path}</code>
-            </label>
-          ))}
-        </div>
-        {pkExtras.length > 0 ? (
-          <p className="dash-widget__muted" style={{ fontSize: "0.72rem", margin: "0.5rem 0 0" }}>
-            Additional PK paths on this endpoint (preserved on save): <code>{pkExtras.join(", ")}</code>
-          </p>
+        <legend>Identity from scrubber</legend>
+        <p className="dash-widget__muted" style={{ fontSize: "0.78rem", margin: 0, lineHeight: 1.45 }}>
+          Set <strong>identity</strong> and <strong>display</strong> roles on fields in Scrubber Studio (Field Explorer). When you{" "}
+          <strong>publish (freeze)</strong> the pipeline for the linked device, primary key and label paths are written to this endpoint
+          automatically—no checklist here.
+        </p>
+        {editing ? (
+          <dl
+            style={{
+              margin: "0.75rem 0 0",
+              fontSize: "0.82rem",
+              display: "grid",
+              gridTemplateColumns: "11rem 1fr",
+              gap: "0.35rem 0.6rem",
+            }}
+          >
+            <dt className="dash-widget__muted">Applied PK paths</dt>
+            <dd style={{ margin: 0 }}>
+              <code>{(editing.primary_device_key_fields ?? []).join(", ") || "—"}</code>
+            </dd>
+            <dt className="dash-widget__muted">Label paths</dt>
+            <dd style={{ margin: 0 }}>
+              <code>{(editing.device_label_fields ?? []).join(", ") || "—"}</code>
+            </dd>
+            <dt className="dash-widget__muted">Source</dt>
+            <dd style={{ margin: 0 }}>{editing.identity_managed_by_scrubber ? "Published scrubber" : "Manual / pending scrubber"}</dd>
+          </dl>
         ) : null}
       </fieldset>
 
       <fieldset className="ingest-ept-fieldset">
-        <legend>Device label JSON paths</legend>
-        <div className="ingest-ept-check-grid">
-          {DEVICE_LABEL_PATH_OPTIONS.map((path) => (
-            <label key={path} className="ingest-ept-check">
-              <input type="checkbox" checked={labelSelected.has(path)} onChange={() => toggleInSet(setLabelSelected, path)} />
-              <code>{path}</code>
-            </label>
-          ))}
-        </div>
-        {labelExtras.length > 0 ? (
-          <p className="dash-widget__muted" style={{ fontSize: "0.72rem", margin: "0.5rem 0 0" }}>
-            Additional label paths on this endpoint (preserved on save): <code>{labelExtras.join(", ")}</code>
-          </p>
-        ) : null}
+        <legend>Raw version identity (optional)</legend>
+        <p className="dash-widget__muted" style={{ fontSize: "0.75rem", margin: "0 0 0.5rem" }}>
+          JSON for pre-scrubber fingerprint detection: <code>enabled</code>, <code>paths</code>, optional <code>fingerprint_fields</code>. Leave
+          empty on edit to keep the saved config unchanged.
+        </p>
+        <textarea
+          className="dm-search-input"
+          style={{ minHeight: 120, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: "0.8rem" }}
+          value={versionIdentityJson}
+          onChange={(e) => setVersionIdentityJson(e.target.value)}
+          spellCheck={false}
+          aria-label="Version identity JSON"
+          placeholder='{"enabled":true,"paths":{"fw":"firmware_version"}}'
+        />
       </fieldset>
 
       <div className="ingest-ept-actions ingest-ept-actions--modal-footer">
@@ -466,7 +463,7 @@ export function IngestDevicesPage() {
       <div className="dm-root">
         <OpsPageHeader
           title="Endpoints"
-          subtitle="Create v2 ingest endpoints, link registered device endpoints, and map identity for resolution."
+          subtitle="Create v2 ingest endpoints and link device transports. Primary key and labels come from Scrubber Studio (publish the pipeline to apply them to the endpoint)."
           actions={
             <>
               <button
@@ -595,7 +592,7 @@ export function IngestDevicesPage() {
                               Linked device
                             </th>
                             <th className="dm-data-table__th dm-data-table__th--center" scope="col">
-                              Identity
+                              Identity / sample
                             </th>
                             <th className="dm-data-table__th dm-data-table__th--actions" scope="col">
                               Actions
@@ -631,6 +628,9 @@ export function IngestDevicesPage() {
                                   {linked ? <span>{linked}</span> : <span className="dash-widget__muted">—</span>}
                                 </td>
                                 <td className="dm-data-table__td dm-data-table__td--center">
+                                  {(() => {
+                                    const idLabel = ep.identity_managed_by_scrubber ? "View identity & sample" : "Map identity";
+                                    return (
                                   <button
                                     type="button"
                                     className="dm-name-link"
@@ -656,8 +656,10 @@ export function IngestDevicesPage() {
                                     }}
                                   >
                                     <GitBranch size={14} strokeWidth={2} aria-hidden style={{ verticalAlign: "middle", marginRight: 4 }} />
-                                    Map identity
+                                    {idLabel}
                                   </button>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="dm-data-table__td dm-data-table__td--actions">
                                   <div className="dm-act-grid">
@@ -733,7 +735,7 @@ export function IngestDevicesPage() {
 
         <AppModalShell
           open={Boolean(identityModalId)}
-          title="Endpoint identity"
+          title={identityModalEndpoint?.identity_managed_by_scrubber ? "Endpoint identity (read-only)" : "Endpoint identity"}
           titleId="ingest-identity-modal-title"
           onClose={closeIdentityModal}
           size="lg"

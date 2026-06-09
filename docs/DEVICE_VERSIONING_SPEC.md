@@ -2,7 +2,7 @@
 
 Normative addenda. Implementation MUST conform to these locks.
 
-**Implementation sequencing** (OTA, immutable `device_versions`, lineage extensions, routing): [OTA_VERSION_LINEAGE_PHASES.md](./OTA_VERSION_LINEAGE_PHASES.md).
+**Implementation sequencing** (immutable `device_versions`, lineage extensions, routing): see **Delivered** / **Still open** in [ROADMAP.md](./ROADMAP.md) and sections below in this spec.
 
 **Endpoint-level version detection** (raw-payload worker stage, Redis fingerprinting, async version-change events, execution before scrubber): [ENDPOINT_VERSION_IDENTITY.md](./ENDPOINT_VERSION_IDENTITY.md).
 
@@ -372,12 +372,12 @@ Allowed values elsewhere in v8 metadata: `stable` \| `beta` \| `dev` \| `custom`
 
 **For changes applied only through the v8 Device Registration modal (Tab 3 — declared metadata):**
 
-- A **new** `device_version` MUST be created when **`ota_supported`** changes (material readiness change).
-- A **new** `device_version` MUST be created when **§13** row **2** applies — **Explicit version creation** (user or API explicitly requests a new device version).
+- **`ota_supported`**, **`rollback_supported`**, and **`firmware_channel`** are **device metadata only**; changing them **does not** auto-mint a `device_version` or bump `devices.device_version`.
+- A **new** `device_version` MUST be created only when **§13** row **2** applies — **Explicit version creation** (user or API supplies a **new** `device_version` label, e.g. `PATCH /devices/{id}` with `device_version`, or **Device details → Versions → Add version** in the UI).
 
-**v1 API:** `PATCH /devices` bumps `device_version` when `ota_supported` changes and the client did not supply a new label in the same request, and records lineage with `trigger_code=ota`.
+**v1 API enforcement:** The API records a new immutable `device_versions` row and lineage transition (`trigger_code=explicit`) only when the JSON body **includes the `device_version` field** and its value differs from the stored label. Requests that change readiness or channel fields without `device_version` update metadata only.
 
-**For v8, do not** auto-mint a `device_version` solely from Tab 3 edits to **`hardware_version`**, **`firmware_version`**, **`firmware_channel`**, or **`rollback_supported`** (declared strings/booleans/channel without an explicit version action). Telemetry or OTA-driven updates remain governed by **§8** / **§13** outside this subsection.
+**For v8, do not** auto-mint a `device_version` solely from Tab 3 edits to **`hardware_version`**, **`firmware_version`**, **`firmware_channel`**, **`rollback_supported`**, or **`ota_supported`** without an explicit new version label. Telemetry, ingest-shape, and endpoint identity detection remain governed by **§8** / **§13** outside this subsection.
 
 ### 16.4 Save UX (create and edit)
 

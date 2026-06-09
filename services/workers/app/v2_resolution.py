@@ -324,6 +324,17 @@ def try_write_v2_from_scrubber(
                 lds_row = cur.fetchone()
                 latest_device_state_id = str(lds_row[0]) if lds_row else None
         conn.commit()
+        try:
+            from app.version_identity_linkage import reconcile_after_v2_resolution
+
+            reconcile_after_v2_resolution(
+                device_id=str(device_id),
+                endpoint_id=str(endpoint_id),
+                resolved_device_id=str(resolved_device_id),
+                pk_hash=pk_hash,
+            )
+        except Exception:
+            log.debug("version_identity_linkage reconcile skipped", exc_info=True)
         if scrubbed_event_id_s and latest_device_state_id:
             topic = os.environ.get("KAFKA_LATEST_DEVICE_STATE_TOPIC", "latest_device_state.updated")
             publish_json(
